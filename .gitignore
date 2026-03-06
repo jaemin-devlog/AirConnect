@@ -36,3 +36,22 @@ out/
 ### VS Code ###
 .vscode/
 src/main/resources/application.yml
+
+
+# application config
+src/main/resources/application.yml
+
+# Apple key
+src/main/resources/key/
+*.p8
+
+# env
+.env
+
+# mac
+.DS_Store
+
+# build
+/build
+
+

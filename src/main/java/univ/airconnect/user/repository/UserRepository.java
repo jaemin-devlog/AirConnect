@@ -9,4 +9,5 @@ import univ.airconnect.user.domain.entity.User;
 public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByProviderAndSocialId(SocialProvider provider, String socialId);
+
 }

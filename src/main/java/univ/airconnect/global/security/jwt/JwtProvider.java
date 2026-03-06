@@ -6,12 +6,9 @@ import java.util.Date;
 
 import javax.crypto.SecretKey;
 
+import io.jsonwebtoken.*;
 import org.springframework.stereotype.Component;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
@@ -37,11 +34,11 @@ public class JwtProvider {
         Instant expiry = now.plusSeconds(jwtProperties.accessTokenExpirationSeconds());
 
         return Jwts.builder()
-                .subject(String.valueOf(userId))
+                .setSubject(String.valueOf(userId))
                 .claim(CLAIM_TYPE, TOKEN_TYPE_ACCESS)
-                .issuedAt(Date.from(now))
-                .expiration(Date.from(expiry))
-                .signWith(secretKey)
+                .setIssuedAt(Date.from(now))
+                .setExpiration(Date.from(expiry))
+                .signWith(secretKey, SignatureAlgorithm.HS256)
                 .compact();
     }
 
@@ -50,12 +47,12 @@ public class JwtProvider {
         Instant expiry = now.plusSeconds(jwtProperties.refreshTokenExpirationSeconds());
 
         return Jwts.builder()
-                .subject(String.valueOf(userId))
+                .setSubject(String.valueOf(userId))
                 .claim(CLAIM_TYPE, TOKEN_TYPE_REFRESH)
                 .claim(CLAIM_DEVICE_ID, deviceId)
-                .issuedAt(Date.from(now))
-                .expiration(Date.from(expiry))
-                .signWith(secretKey)
+                .setIssuedAt(Date.from(now))
+                .setExpiration(Date.from(expiry))
+                .signWith(secretKey, SignatureAlgorithm.HS256)
                 .compact();
     }
 
@@ -108,10 +105,10 @@ public class JwtProvider {
     }
 
     private Claims parseClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(secretKey)
+        return Jwts.parserBuilder()
+                .setSigningKey(secretKey)
                 .build()
-                .parseSignedClaims(token)
-                .getPayload();
+                .parseClaimsJws(token)
+                .getBody();
     }
 }
