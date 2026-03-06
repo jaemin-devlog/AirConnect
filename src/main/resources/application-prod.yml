@@ -1,0 +1,53 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: airconnect
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: Asia/Seoul
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD:}
+
+logging:
+  level:
+    root: INFO
+    univ.airconnect: INFO
+
+kakao:
+  base-url: https://kapi.kakao.com
+  me-path: /v2/user/me
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiration-seconds: 3600
+  refresh-token-expiration-seconds: 2592000
+
+apple:
+  team-id: ${TEAM_ID}
+  key-id: ${KEY_ID}
+  bundle-id: ${BUNDLE_ID}
+  key-path: ${KEY_PATH}
