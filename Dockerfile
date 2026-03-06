@@ -1,8 +1,7 @@
 # ---------- build stage ----------
-FROM eclipse-temurin:17-jdk-jammy
+FROM gradle:8.5-jdk17 AS builder
 
 WORKDIR /app
-
 COPY . .
 
 RUN gradle clean build -x test
