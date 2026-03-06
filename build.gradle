@@ -25,28 +25,34 @@ repositories {
 }
 
 dependencies {
+    // 기본 웹 / DB / Redis
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.boot:spring-boot-configuration-processor'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+    // Security는 이후 JWT 필터/보안 설정에 필요
+    // 단, SecurityConfig가 없으면 기본 보안이 걸릴 수 있으니 곧 설정 추가 필요
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // @ConfigurationProperties 메타데이터 생성용
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    // Lombok
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
+    // MySQL
     runtimeOnly 'com.mysql:mysql-connector-j'
 
-
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.security:spring-security-test'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-
-    // OAuth2 클라이언트 (Kakao, Apple 연동용)
-    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
-
-    // JWT 발급 및 검증용 (jjwt 라이브러리 권장)
+    // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.5'
+
+    // 테스트
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
