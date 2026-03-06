@@ -8,7 +8,7 @@ COPY . .
 RUN gradle clean build -x test
 
 # ---------- run stage ----------
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:17-jdk-jammy
 
 WORKDIR /app
 
