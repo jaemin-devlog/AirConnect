@@ -4,28 +4,28 @@ import org.springframework.http.HttpStatus;
 
 public enum AuthErrorCode {
 
-    INVALID_LOGIN_REQUEST(HttpStatus.BAD_REQUEST, "AUTH_INVALID_LOGIN_REQUEST", "Invalid login request"),
-    INVALID_REFRESH_REQUEST(HttpStatus.BAD_REQUEST, "AUTH_INVALID_REFRESH_REQUEST", "Invalid refresh request"),
-    INVALID_LOGOUT_REQUEST(HttpStatus.BAD_REQUEST, "AUTH_INVALID_LOGOUT_REQUEST", "Invalid logout request"),
+    INVALID_LOGIN_REQUEST(HttpStatus.BAD_REQUEST, "AUTH_INVALID_LOGIN_REQUEST", "로그인 요청이 올바르지 않습니다."),
+    INVALID_REFRESH_REQUEST(HttpStatus.BAD_REQUEST, "AUTH_INVALID_REFRESH_REQUEST", "토큰 재발급 요청이 올바르지 않습니다."),
+    INVALID_LOGOUT_REQUEST(HttpStatus.BAD_REQUEST, "AUTH_INVALID_LOGOUT_REQUEST", "로그아웃 요청이 올바르지 않습니다."),
 
-    SOCIAL_PROVIDER_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_SOCIAL_PROVIDER_REQUIRED", "Social provider is required"),
-    SOCIAL_TOKEN_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_SOCIAL_TOKEN_REQUIRED", "Social token is required"),
-    DEVICE_ID_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_DEVICE_ID_REQUIRED", "DeviceId is required"),
-    REFRESH_TOKEN_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_REFRESH_TOKEN_REQUIRED", "Refresh token is required"),
+    SOCIAL_PROVIDER_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_SOCIAL_PROVIDER_REQUIRED", "소셜 로그인 제공자가 필요합니다."),
+    SOCIAL_TOKEN_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_SOCIAL_TOKEN_REQUIRED", "소셜 토큰이 필요합니다."),
+    DEVICE_ID_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_DEVICE_ID_REQUIRED", "deviceId가 필요합니다."),
+    REFRESH_TOKEN_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_REFRESH_TOKEN_REQUIRED", "Refresh Token이 필요합니다."),
 
-    TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH_EXPIRED_TOKEN", "Token expired"),
-    INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_TOKEN", "Invalid token"),
-    INVALID_ACCESS_TOKEN_TYPE(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_ACCESS_TOKEN_TYPE", "Invalid access token type"),
-    INVALID_REFRESH_TOKEN_TYPE(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_REFRESH_TOKEN_TYPE", "Invalid refresh token type"),
+    TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH_EXPIRED_TOKEN", "토큰이 만료되었습니다."),
+    INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_TOKEN", "유효하지 않은 토큰입니다."),
+    INVALID_ACCESS_TOKEN_TYPE(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_ACCESS_TOKEN_TYPE", "유효하지 않은 Access Token 타입입니다."),
+    INVALID_REFRESH_TOKEN_TYPE(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_REFRESH_TOKEN_TYPE", "유효하지 않은 Refresh Token 타입입니다."),
 
-    NOT_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_NOT_REFRESH_TOKEN", "Not a refresh token"),
-    DEVICE_MISMATCH(HttpStatus.UNAUTHORIZED, "AUTH_DEVICE_MISMATCH", "Device mismatch"),
-    REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_TOKEN_NOT_FOUND", "Refresh token not found"),
-    REFRESH_TOKEN_MISMATCH(HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_TOKEN_MISMATCH", "Refresh token mismatch"),
+    NOT_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_NOT_REFRESH_TOKEN", "Refresh Token이 아닙니다."),
+    DEVICE_MISMATCH(HttpStatus.UNAUTHORIZED, "AUTH_DEVICE_MISMATCH", "디바이스 정보가 일치하지 않습니다."),
+    REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_TOKEN_NOT_FOUND", "저장된 Refresh Token을 찾을 수 없습니다."),
+    REFRESH_TOKEN_MISMATCH(HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_TOKEN_MISMATCH", "Refresh Token이 일치하지 않습니다."),
 
-    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "AUTH_USER_NOT_FOUND", "User not found"),
-    USER_DELETED(HttpStatus.FORBIDDEN, "USER_DELETED", "User is deleted"),
-    USER_SUSPENDED(HttpStatus.FORBIDDEN, "USER_SUSPENDED", "User is suspended");
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "AUTH_USER_NOT_FOUND", "사용자를 찾을 수 없습니다."),
+    USER_DELETED(HttpStatus.FORBIDDEN, "USER_DELETED", "삭제된 사용자입니다."),
+    USER_SUSPENDED(HttpStatus.FORBIDDEN, "USER_SUSPENDED", "정지된 사용자입니다.");
 
     private final HttpStatus httpStatus;
     private final String code;
