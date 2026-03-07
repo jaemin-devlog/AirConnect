@@ -61,6 +61,9 @@ dependencies {
 
 // JSON
     implementation 'com.fasterxml.jackson.core:jackson-databind'
+
+    //postgreSQL
+    runtimeOnly 'org.postgresql:postgresql'
 }
 
 tasks.named('test') {
