@@ -15,6 +15,7 @@ public enum AuthErrorCode {
 
     TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH_EXPIRED_TOKEN", "토큰이 만료되었습니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_TOKEN", "유효하지 않은 토큰입니다."),
+    INVALID_APPLE_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_APPLE_TOKEN", "유효하지 않은 Apple 토큰입니다."),
     INVALID_ACCESS_TOKEN_TYPE(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_ACCESS_TOKEN_TYPE", "유효하지 않은 Access Token 타입입니다."),
     INVALID_REFRESH_TOKEN_TYPE(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_REFRESH_TOKEN_TYPE", "유효하지 않은 Refresh Token 타입입니다."),
 

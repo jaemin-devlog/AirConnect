@@ -1,13 +1,31 @@
 package univ.airconnect.auth.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 
 /**
- 앱에서 카카오 SDK 로그인 후 카카오 accessToken을 넘김
- deviceId는 앱이 생성해서 고정 저장(UUID 추천)
+ * 소셜 로그인 요청 DTO
+ *
+ * 사용 예시:
+ * - Kakao: provider=KAKAO, socialToken={kakaoAccessToken}
+ * - Apple: provider=APPLE, socialToken={identityToken}
+ *
+ * deviceId는 앱에서 생성해서 고정 저장 (UUID 추천)
+ * 멀티 디바이스 토큰 관리에 사용됨
  */
-public record SocialLoginRequest(
-        SocialProvider provider,
-        String socialToken,
-        String deviceId
-) {}
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
+public class SocialLoginRequest {
+    @JsonProperty("provider")
+    private SocialProvider provider;
+
+    @JsonProperty("socialToken")
+    private String socialToken;
+
+    @JsonProperty("deviceId")
+    private String deviceId;
+}

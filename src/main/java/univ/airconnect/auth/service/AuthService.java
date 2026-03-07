@@ -5,6 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import univ.airconnect.auth.domain.entity.RefreshToken;
+import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
 import univ.airconnect.auth.dto.response.TokenPairResponse;
@@ -13,6 +14,7 @@ import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
+import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
@@ -24,6 +26,7 @@ import univ.airconnect.user.repository.UserRepository;
 public class AuthService {
 
     private final SocialAuthResolver socialAuthResolver;
+    private final AppleAuthClient appleAuthClient;
     private final UserRepository userRepository;
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -32,19 +35,27 @@ public class AuthService {
     public TokenPairResponse socialLogin(SocialLoginRequest request) {
         validateSocialLoginRequest(request);
 
-        SocialAuthClient client = socialAuthResolver.getClient(request.provider());
-        String socialId = client.getSocialId(request.socialToken());
+        SocialAuthClient client = socialAuthResolver.getClient(request.getProvider());
+        String socialId = client.getSocialId(request.getSocialToken());
 
-        User user = userRepository.findByProviderAndSocialId(request.provider(), socialId)
-                .orElseGet(() -> userRepository.save(User.create(request.provider(), socialId)));
+        // Apple 로그인인 경우 email 정보 추출
+        final String email;
+        if (request.getProvider() == SocialProvider.APPLE) {
+            email = appleAuthClient.getEmail(request.getSocialToken());
+        } else {
+            email = null;
+        }
+
+        User user = userRepository.findByProviderAndSocialId(request.getProvider(), socialId)
+                .orElseGet(() -> userRepository.save(User.create(request.getProvider(), socialId, email)));
 
         validateUserStatus(user);
 
         String accessToken = jwtProvider.createAccessToken(user.getId());
-        String refreshToken = jwtProvider.createRefreshToken(user.getId(), request.deviceId());
+        String refreshToken = jwtProvider.createRefreshToken(user.getId(), request.getDeviceId());
 
         refreshTokenRepository.save(
-                RefreshToken.create(user.getId(), request.deviceId(), refreshToken)
+                RefreshToken.create(user.getId(), request.getDeviceId(), refreshToken)
         );
 
         return new TokenPairResponse(accessToken, refreshToken);
@@ -54,25 +65,25 @@ public class AuthService {
     public TokenPairResponse refresh(TokenRefreshRequest request) {
         validateRefreshRequest(request);
 
-        jwtProvider.validateRefreshToken(request.refreshToken());
+        jwtProvider.validateRefreshToken(request.getRefreshToken());
 
-        if (!jwtProvider.isRefreshToken(request.refreshToken())) {
+        if (!jwtProvider.isRefreshToken(request.getRefreshToken())) {
             throw new AuthException(AuthErrorCode.NOT_REFRESH_TOKEN);
         }
 
-        Long userId = jwtProvider.getUserId(request.refreshToken());
-        String deviceIdFromToken = jwtProvider.getDeviceId(request.refreshToken());
+        Long userId = jwtProvider.getUserId(request.getRefreshToken());
+        String deviceIdFromToken = jwtProvider.getDeviceId(request.getRefreshToken());
 
-        if (!request.deviceId().equals(deviceIdFromToken)) {
+        if (!request.getDeviceId().equals(deviceIdFromToken)) {
             throw new AuthException(AuthErrorCode.DEVICE_MISMATCH);
         }
 
-        String refreshTokenKey = buildRefreshTokenKey(userId, request.deviceId());
+        String refreshTokenKey = buildRefreshTokenKey(userId, request.getDeviceId());
 
         RefreshToken savedToken = refreshTokenRepository.findById(refreshTokenKey)
                 .orElseThrow(() -> new AuthException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND));
 
-        if (!savedToken.getToken().equals(request.refreshToken())) {
+        if (!savedToken.getToken().equals(request.getRefreshToken())) {
             throw new AuthException(AuthErrorCode.REFRESH_TOKEN_MISMATCH);
         }
 
@@ -82,10 +93,10 @@ public class AuthService {
         validateUserStatus(user);
 
         String newAccessToken = jwtProvider.createAccessToken(user.getId());
-        String newRefreshToken = jwtProvider.createRefreshToken(user.getId(), request.deviceId());
+        String newRefreshToken = jwtProvider.createRefreshToken(user.getId(), request.getDeviceId());
 
         refreshTokenRepository.save(
-                RefreshToken.create(user.getId(), request.deviceId(), newRefreshToken)
+                RefreshToken.create(user.getId(), request.getDeviceId(), newRefreshToken)
         );
 
         return new TokenPairResponse(newAccessToken, newRefreshToken);
@@ -104,13 +115,13 @@ public class AuthService {
         if (request == null) {
             throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
         }
-        if (request.provider() == null) {
+        if (request.getProvider() == null) {
             throw new AuthException(AuthErrorCode.SOCIAL_PROVIDER_REQUIRED);
         }
-        if (request.socialToken() == null || request.socialToken().isBlank()) {
+        if (request.getSocialToken() == null || request.getSocialToken().isBlank()) {
             throw new AuthException(AuthErrorCode.SOCIAL_TOKEN_REQUIRED);
         }
-        if (request.deviceId() == null || request.deviceId().isBlank()) {
+        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
             throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
         }
     }
@@ -119,10 +130,10 @@ public class AuthService {
         if (request == null) {
             throw new AuthException(AuthErrorCode.INVALID_REFRESH_REQUEST);
         }
-        if (request.refreshToken() == null || request.refreshToken().isBlank()) {
+        if (request.getRefreshToken() == null || request.getRefreshToken().isBlank()) {
             throw new AuthException(AuthErrorCode.REFRESH_TOKEN_REQUIRED);
         }
-        if (request.deviceId() == null || request.deviceId().isBlank()) {
+        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
             throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
         }
     }

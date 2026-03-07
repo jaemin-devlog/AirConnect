@@ -35,23 +35,68 @@ out/
 
 ### VS Code ###
 .vscode/
+launch.json
+*.code-workspace
+
+# Build
+/build
+*.jar
+!gradle-wrapper.jar
+
+# IDE
+.classpath
+.project
+.settings/
+*.swp
+*.swo
+*~
+
+# Application config (민감한 정보)
 src/main/resources/application.yml
+src/main/resources/application-prod.yml
+src/main/resources/application-*.yml
 
-
-# application config
-src/main/resources/application.yml
-
-# Apple key
+# Apple/Kakao API Keys (⭐ 중요!)
 src/main/resources/key/
 *.p8
+*.properties
+!src/main/resources/key/.gitkeep
 
-# env
+# Environment variables (⭐ 중요!)
 .env
+.env.local
+.env.*.local
 
-# mac
+# OS
 .DS_Store
+Thumbs.db
 
-# build
-/build
+# Temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+
+# IDE specific
+.vscode/
+.idea/
+
+# Dependencies
+/node_modules
+*.lock
+package-lock.json
+yarn.lock
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Local deployment
+docker-compose.local.yml
 
 
