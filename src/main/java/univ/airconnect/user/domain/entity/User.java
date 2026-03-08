@@ -43,7 +43,7 @@ public class User {
     private String nickname;
 
     @Column(length = 20)
-    private String phoneNumber;
+    private Integer studentNum;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -74,6 +74,9 @@ public class User {
     @Column(length = 500)
     private String restrictedReason;
 
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private UserProfile userProfile;
+
     @Builder
     private User(
             Long id,
@@ -82,7 +85,7 @@ public class User {
             String email,
             String name,
             String nickname,
-            String phoneNumber,
+            Integer StudentNum,
             UserStatus status,
             OnboardingStatus onboardingStatus,
             LocalDateTime createdAt,
@@ -99,7 +102,7 @@ public class User {
         this.email = email;
         this.name = name;
         this.nickname = nickname;
-        this.phoneNumber = phoneNumber;
+        this.studentNum = studentNum;
         this.status = status;
         this.onboardingStatus = onboardingStatus;
         this.createdAt = createdAt;
@@ -127,10 +130,10 @@ public class User {
     }
 
     // 회원가입 완료 시 호출
-    public void completeSignUp(String name, String nickname, String phoneNumber) {
+    public void completeSignUp(String name, String nickname, Integer studentNum) {
         this.name = name;
         this.nickname = nickname;
-        this.phoneNumber = phoneNumber;
+        this.studentNum = studentNum;
         this.onboardingStatus = OnboardingStatus.FULL;
         this.lastActiveAt = LocalDateTime.now();
     }
