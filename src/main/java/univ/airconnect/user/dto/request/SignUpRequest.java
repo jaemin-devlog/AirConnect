@@ -19,5 +19,6 @@ public class SignUpRequest {
     private String name;             // 사용자명
     private String nickname;         // 닉네임
     private Integer studentNum;      // 전화번호
+    private String deptName;        // 학과명
 }
 

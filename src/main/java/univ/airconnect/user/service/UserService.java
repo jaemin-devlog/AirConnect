@@ -44,7 +44,8 @@ public class UserService {
         user.completeSignUp(
                 request.getName(),
                 request.getNickname(),
-                request.getStudentNum()
+                request.getStudentNum(),
+                request.getDeptName()
         );
 
         userRepository.save(user);

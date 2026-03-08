@@ -40,6 +40,9 @@ public class User {
     private String name;
 
     @Column(length = 100)
+    private String deptName;
+
+    @Column(length = 100)
     private String nickname;
 
     @Column(length = 20)
@@ -85,6 +88,7 @@ public class User {
             String email,
             String name,
             String nickname,
+            String deptName,
             Integer StudentNum,
             UserStatus status,
             OnboardingStatus onboardingStatus,
@@ -102,6 +106,7 @@ public class User {
         this.email = email;
         this.name = name;
         this.nickname = nickname;
+        this.deptName = deptName;
         this.studentNum = studentNum;
         this.status = status;
         this.onboardingStatus = onboardingStatus;
@@ -130,10 +135,11 @@ public class User {
     }
 
     // 회원가입 완료 시 호출
-    public void completeSignUp(String name, String nickname, Integer studentNum) {
+    public void completeSignUp(String name, String nickname, Integer studentNum, String deptName) {
         this.name = name;
         this.nickname = nickname;
         this.studentNum = studentNum;
+        this.deptName = deptName;
         this.onboardingStatus = OnboardingStatus.FULL;
         this.lastActiveAt = LocalDateTime.now();
     }
