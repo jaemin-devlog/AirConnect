@@ -18,6 +18,6 @@ public class SignUpRequest {
     // 회원가입 추가 정보
     private String name;             // 사용자명
     private String nickname;         // 닉네임
-    private String phoneNumber;      // 전화번호
+    private Integer studentNum;      // 전화번호
 }
 

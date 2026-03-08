@@ -8,8 +8,10 @@ import org.springframework.web.bind.annotation.*;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
 import univ.airconnect.user.dto.request.SignUpRequest;
+import univ.airconnect.user.dto.request.UpdateProfileRequest;
 import univ.airconnect.user.dto.response.SignUpResponse;
 import univ.airconnect.user.dto.response.UserMeResponse;
+import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.service.UserService;
 
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
@@ -28,10 +30,10 @@ public class UserController {
             @RequestBody SignUpRequest request,
             HttpServletRequest httpRequest
     ) {
-        log.info("회원가입 요청: userId={}", userId);
+        log.info("📝 회원가입 요청: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
         SignUpResponse response = userService.signUp(userId, request);
-        log.info("회원가입 완료: userId={}", userId);
+        log.info("✅ 회원가입 완료: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
@@ -43,4 +45,42 @@ public class UserController {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         return ResponseEntity.ok(ApiResponse.ok(userService.getMe(userId), traceId));
     }
+
+    @PostMapping("/profile")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> createProfile(
+            @CurrentUserId Long userId,
+            @RequestBody UpdateProfileRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        log.info("📸 프로필 생성 요청: userId={}", userId);
+        String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
+        UserProfileResponse response = userService.createProfile(userId, request);
+        log.info("✅ 프로필 생성 완료: userId={}", userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> getProfile(
+            @CurrentUserId Long userId,
+            HttpServletRequest request
+    ) {
+        log.info("📖 프로필 조회 요청: userId={}", userId);
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        UserProfileResponse response = userService.getProfile(userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    @PutMapping("/profile")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> updateProfile(
+            @CurrentUserId Long userId,
+            @RequestBody UpdateProfileRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        log.info("🔄 프로필 업데이트 요청: userId={}", userId);
+        String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
+        UserProfileResponse response = userService.updateProfile(userId, request);
+        log.info("✅ 프로필 업데이트 완료: userId={}", userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
 }
+
