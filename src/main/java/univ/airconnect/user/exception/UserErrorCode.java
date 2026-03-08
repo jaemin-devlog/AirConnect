@@ -6,7 +6,8 @@ public enum UserErrorCode {
 
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found"),
     USER_DELETED(HttpStatus.FORBIDDEN, "USER_DELETED", "User is deleted"),
-    USER_SUSPENDED(HttpStatus.FORBIDDEN, "USER_SUSPENDED", "User is suspended");
+    USER_SUSPENDED(HttpStatus.FORBIDDEN, "USER_SUSPENDED", "User is suspended"),
+    INVALID_INPUT(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "Invalid input provided");
 
     private final HttpStatus httpStatus;
     private final String code;
