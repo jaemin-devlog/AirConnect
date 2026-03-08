@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserStatus;
 
 @Entity
@@ -35,12 +36,43 @@ public class User {
     @Column(length = 255)
     private String email;
 
+    @Column(length = 100)
+    private String name;
+
+    @Column(length = 100)
+    private String nickname;
+
+    @Column(length = 20)
+    private String phoneNumber;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private OnboardingStatus onboardingStatus;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
+
+    @Column
+    private LocalDateTime lastActiveAt;
+
+    @Column
+    private LocalDateTime deletedAt;
+
+    @Column
+    private LocalDateTime suspendedUntil;
+
+    @Column
+    private LocalDateTime restrictedAt;
+
+    @Column
+    private LocalDateTime restrictedUntil;
+
+    @Column(length = 500)
+    private String restrictedReason;
 
     @Builder
     private User(
@@ -48,15 +80,35 @@ public class User {
             SocialProvider provider,
             String socialId,
             String email,
+            String name,
+            String nickname,
+            String phoneNumber,
             UserStatus status,
-            LocalDateTime createdAt
+            OnboardingStatus onboardingStatus,
+            LocalDateTime createdAt,
+            LocalDateTime lastActiveAt,
+            LocalDateTime deletedAt,
+            LocalDateTime suspendedUntil,
+            LocalDateTime restrictedAt,
+            LocalDateTime restrictedUntil,
+            String restrictedReason
     ) {
         this.id = id;
         this.provider = provider;
         this.socialId = socialId;
         this.email = email;
+        this.name = name;
+        this.nickname = nickname;
+        this.phoneNumber = phoneNumber;
         this.status = status;
+        this.onboardingStatus = onboardingStatus;
         this.createdAt = createdAt;
+        this.lastActiveAt = lastActiveAt;
+        this.deletedAt = deletedAt;
+        this.suspendedUntil = suspendedUntil;
+        this.restrictedAt = restrictedAt;
+        this.restrictedUntil = restrictedUntil;
+        this.restrictedReason = restrictedReason;
     }
 
     public static User create(SocialProvider provider, String socialId) {
@@ -69,7 +121,18 @@ public class User {
                 .socialId(socialId)
                 .email(email)
                 .status(UserStatus.ACTIVE)
+                .onboardingStatus(OnboardingStatus.BASIC)
                 .createdAt(LocalDateTime.now())
                 .build();
     }
+
+    // 회원가입 완료 시 호출
+    public void completeSignUp(String name, String nickname, String phoneNumber) {
+        this.name = name;
+        this.nickname = nickname;
+        this.phoneNumber = phoneNumber;
+        this.onboardingStatus = OnboardingStatus.FULL;
+        this.lastActiveAt = LocalDateTime.now();
+    }
 }
+
