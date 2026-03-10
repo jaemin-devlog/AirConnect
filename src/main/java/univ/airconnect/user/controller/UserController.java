@@ -42,8 +42,11 @@ public class UserController {
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
+        log.info("👤 사용자 정보 조회 요청: userId={}", userId);
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(userService.getMe(userId), traceId));
+        UserMeResponse response = userService.getMe(userId);
+        log.info("✅ 사용자 정보 조회 완료: userId={}", userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
     @PostMapping("/profile")
