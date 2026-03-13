@@ -1,13 +1,30 @@
-# 📋 Apple 로그인 Backend API 명세
+# 🚀 AirConnect API 명세서
 
-## 🎯 사용 가능한 엔드포인트
+**API 버전:** v1  
+**기본 URL:** `http://localhost:8080` (로컬)  
+**작성일:** 2026-03-13
 
-### 1️⃣ Apple 로그인
-```
-POST /api/v1/auth/social/login
-```
+---
 
-#### 요청 (Request)
+## 📑 목차
+
+- [인증 (Authentication)](#인증-authentication)
+- [사용자 (User)](#사용자-user)
+- [프로필 (Profile)](#프로필-profile)
+- [에러 응답](#에러-응답)
+
+---
+
+## 인증 (Authentication)
+
+### 1. 소셜 로그인
+**엔드포인트:** `POST /api/v1/auth/social/login`
+
+**설명:** Apple 또는 Kakao 소셜 로그인을 통해 사용자 인증 및 토큰 발급
+
+**권한:** 없음 (Public)
+
+**요청 본문:**
 ```json
 {
   "provider": "APPLE",
@@ -16,46 +33,47 @@ POST /api/v1/auth/social/login
 }
 ```
 
-**필드 설명:**
-- `provider`: "APPLE" (고정값)
-- `socialToken`: Apple에서 받은 identityToken (JWT 형식)
-- `deviceId`: 기기 고유 ID (UUID 권장, 앱에서 생성해서 고정 저장)
+**요청 파라미터:**
 
-#### 성공 응답 (200 OK)
+| 파라미터 | 타입 | 필수 | 설명 |
+|---------|------|------|------|
+| provider | String | ✅ | `APPLE`, `KAKAO` |
+| socialToken | String | ✅ | 소셜 플랫폼의 ID 토큰 |
+| deviceId | String | ✅ | 클라이언트 기기 고유 식별자 |
+
+**성공 응답 (200 OK):**
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImV4cCI6MTY0NjY2NjY2Nn0.xxx",
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImRldmljZUlkIjoiNTUwZTg0MDAiLCJleHAiOjE2NDkyNDI2NjZ9.xxx"
+  "success": true,
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  },
+  "traceId": "d9c447aa-3e8e-4331-92a3-66b7eb432bd7"
 }
 ```
 
-**응답 필드:**
-- `accessToken`: API 호출 시 사용 (15분 유효)
-- `refreshToken`: Token 갱신 시 사용 (30일 유효)
+**에러:**
 
-#### 실패 응답 (400/500)
-```json
-{
-  "code": "AUTH_SOCIAL_TOKEN_REQUIRED",
-  "message": "소셜 토큰이 필요합니다."
-}
-```
-
-**가능한 에러 코드:**
-- `AUTH_SOCIAL_PROVIDER_REQUIRED`: provider 누락
-- `AUTH_SOCIAL_TOKEN_REQUIRED`: socialToken 누락
-- `AUTH_DEVICE_ID_REQUIRED`: deviceId 누락
-- `AUTH_INVALID_APPLE_TOKEN`: Apple 토큰 검증 실패
-- (기타 서버 에러)
+| 코드 | Status | 설명 |
+|------|--------|------|
+| INVALID_LOGIN_REQUEST | 400 | 요청 데이터 검증 실패 |
+| SOCIAL_PROVIDER_REQUIRED | 400 | provider 필드 누락 |
+| SOCIAL_TOKEN_REQUIRED | 400 | socialToken 필드 누락 |
+| DEVICE_ID_REQUIRED | 400 | deviceId 필드 누락 |
+| USER_DELETED | 403 | 탈퇴한 사용자 |
+| USER_SUSPENDED | 403 | 정지된 사용자 |
 
 ---
 
-### 2️⃣ Token 갱신
-```
-POST /api/v1/auth/refresh
-```
+### 2. 토큰 갱신
+**엔드포인트:** `POST /api/v1/auth/refresh`
 
-#### 요청
+**설명:** 만료된 액세스 토큰을 새로운 토큰으로 갱신
+
+**권한:** 없음 (Public)
+
+**요청 본문:**
 ```json
 {
   "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
@@ -63,212 +81,397 @@ POST /api/v1/auth/refresh
 }
 ```
 
-**필드 설명:**
-- `refreshToken`: 로그인 시 받은 refreshToken
-- `deviceId`: 로그인 시 사용한 동일한 deviceId
-
-#### 성공 응답 (200 OK)
+**성공 응답 (200 OK):**
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  "success": true,
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  },
+  "traceId": "d9c447aa-3e8e-4331-92a3-66b7eb432bd7"
 }
 ```
 
-#### 실패 응답
-```json
-{
-  "code": "AUTH_REFRESH_TOKEN_NOT_FOUND",
-  "message": "저장된 Refresh Token을 찾을 수 없습니다."
-}
-```
+**에러:**
 
-**가능한 에러 코드:**
-- `AUTH_DEVICE_MISMATCH`: deviceId 불일치
-- `AUTH_REFRESH_TOKEN_MISMATCH`: 토큰 불일치
-- `AUTH_REFRESH_TOKEN_NOT_FOUND`: 토큰 만료
-- `AUTH_TOKEN_EXPIRED`: 토큰 만료됨
+| 코드 | Status | 설명 |
+|------|--------|------|
+| DEVICE_MISMATCH | 403 | deviceId 불일치 |
+| REFRESH_TOKEN_NOT_FOUND | 404 | 저장된 토큰 없음 |
+| REFRESH_TOKEN_MISMATCH | 403 | 토큰 값 불일치 |
+| USER_NOT_FOUND | 404 | 사용자 없음 |
 
 ---
 
-### 3️⃣ 로그아웃
-```
-POST /api/v1/auth/logout
-```
+### 3. 로그아웃
+**엔드포인트:** `POST /api/v1/auth/logout`
 
-#### 요청 헤더
-```
-Authorization: Bearer {accessToken}
-Content-Type: application/json
-```
+**설명:** 현재 디바이스의 리프레시 토큰 삭제
 
-#### 요청 Body
+**권한:** ✅ 필수 (`Authorization: Bearer {accessToken}`)
+
+**요청 본문:**
 ```json
 {
   "deviceId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
-#### 성공 응답 (204 No Content)
+**성공 응답 (204 No Content):**
 ```
 (응답 본문 없음)
 ```
 
-#### 실패 응답
+---
+
+### 4. 테스트 토큰 생성 (개발용)
+**엔드포인트:** `POST /api/v1/auth/test/token`
+
+**설명:** 개발/테스트 환경에서만 임시 토큰 생성
+
+**권한:** 없음 (Public)
+
+**환경:** `dev`, `local` 프로필에서만 사용 가능
+
+**요청 본문:**
 ```json
 {
-  "code": "AUTH_USER_NOT_FOUND",
-  "message": "사용자를 찾을 수 없습니다."
+  "deviceId": "test-device-001"
+}
+```
+
+**성공 응답 (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  },
+  "traceId": "d9c447aa-3e8e-4331-92a3-66b7eb432bd7"
 }
 ```
 
 ---
 
-## 🔑 인증 (Authorization)
+## 사용자 (User)
 
-### API 호출 시 Token 사용
+### 1. 회원가입 완료
+**엔드포인트:** `POST /api/v1/users/sign-up`
 
-모든 인증이 필요한 API에 다음 헤더 추가:
-```
-Authorization: Bearer {accessToken}
+**설명:** 소셜 로그인 후 기본 정보 입력하여 회원가입 완료
+
+**권한:** ✅ 필수 (`Authorization: Bearer {accessToken}`)
+
+**요청 본문:**
+```json
+{
+  "name": "홍길동",
+  "nickname": "길동이",
+  "studentNum": 20230001,
+  "deptName": "컴퓨터공학과"
+}
 ```
 
-**예시 (사용자 정보 조회):**
+**요청 파라미터:**
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|---------|------|------|------|
+| name | String | ✅ | 사용자 실명 (1-100자) |
+| nickname | String | ✅ | 닉네임 (1-100자) |
+| studentNum | Integer | ✅ | 학번 |
+| deptName | String | ✅ | 학과명 (1-100자) |
+
+**성공 응답 (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "userId": 10,
+    "email": "user@example.com",
+    "name": "홍길동",
+    "status": "ACTIVE"
+  },
+  "traceId": "d9c447aa-3e8e-4331-92a3-66b7eb432bd7"
+}
 ```
-GET /api/v1/user/me
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-Content-Type: application/json
-```
+
+**에러:**
+
+| 코드 | Status | 설명 |
+|------|--------|------|
+| INVALID_INPUT | 400 | 필수 항목 누락 |
+| USER_NOT_FOUND | 404 | 사용자 없음 |
+| USER_DELETED | 403 | 탈퇴한 사용자 |
+| UNAUTHORIZED | 401 | 유효하지 않은 토큰 |
 
 ---
 
-## ⏰ Token 관리
+### 2. 내 정보 조회
+**엔드포인트:** `GET /api/v1/users/me`
 
-### AccessToken 수명
-- **유효 시간:** 15분
-- **만료 후:** Token 갱신 필요
-- **확인 방법:** 401 Unauthorized 응답 받으면 갱신
+**설명:** 현재 로그인한 사용자의 기본 정보 및 프로필 요약 조회
 
-### RefreshToken 수명
-- **유효 시간:** 30일
-- **저장 위치:** 안전한 저장소 (Keychain/Encrypted Storage)
-- **만료 후:** 다시 로그인 필요
+**권한:** ✅ 필수 (`Authorization: Bearer {accessToken}`)
 
-### 자동 갱신 플로우
-```
-1. API 호출 → 401 응답
-2. RefreshToken 사용해서 Token 갱신
-3. 새로운 AccessToken 받기
-4. 원래 요청 재시도
-```
-
----
-
-## 📱 실제 사용 예시
-
-### iOS (Swift)
-```swift
-// 1️⃣ 로그인
-func login(identityToken: String) {
-    let body = [
-        "provider": "APPLE",
-        "socialToken": identityToken,
-        "deviceId": getOrCreateDeviceId()
-    ]
-    
-    makeRequest(url: "/api/v1/auth/social/login", method: "POST", body: body) { response in
-        if let tokens = response.data as? [String: String] {
-            KeychainManager.save(accessToken: tokens["accessToken"]!)
-            KeychainManager.save(refreshToken: tokens["refreshToken"]!)
-        }
+**성공 응답 (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "userId": 10,
+    "provider": "KAKAO",
+    "socialId": "123456789",
+    "email": "user@example.com",
+    "name": "홍길동",
+    "deptName": "컴퓨터공학과",
+    "nickname": "길동이",
+    "studentNum": 20230001,
+    "status": "ACTIVE",
+    "onboardingStatus": "FULL",
+    "profileExists": true,
+    "profile": {
+      "userId": 10,
+      "nickname": "길동이",
+      "gender": "M",
+      "department": "컴퓨터공학과",
+      "birthYear": 2000,
+      "height": 180,
+      "mbti": "ENFP",
+      "smoking": "N",
+      "military": "N",
+      "religion": "기독교",
+      "residence": "서울시 강남구",
+      "intro": "안녕하세요!",
+      "contactStyle": "카톡",
+      "profileImageKey": "image_key_123",
+      "updatedAt": "2026-03-13T14:30:00"
     }
+  },
+  "traceId": "d9c447aa-3e8e-4331-92a3-66b7eb432bd7"
 }
+```
 
-// 2️⃣ API 호출
-func callAPI(endpoint: String) {
-    let accessToken = KeychainManager.retrieve(key: "accessToken") ?? ""
-    
-    makeRequest(url: endpoint, method: "GET", 
-                headers: ["Authorization": "Bearer \(accessToken)"]) { response in
-        if response.statusCode == 401 {
-            // Token 갱신
-            refreshToken()
-            // 재시도
-            callAPI(endpoint: endpoint)
-        }
-    }
+**에러:**
+
+| 코드 | Status | 설명 |
+|------|--------|------|
+| USER_NOT_FOUND | 404 | 사용자 없음 |
+| USER_DELETED | 403 | 탈퇴한 사용자 |
+| UNAUTHORIZED | 401 | 유효하지 않은 토큰 |
+
+---
+
+### 3. 회원 탈퇴
+**엔드포인트:** `DELETE /api/v1/users/me`
+
+**설명:** 현재 계정 탈퇴 (상태 변경, 프로필 익명화, 토큰 삭제)
+
+**권한:** ✅ 필수 (`Authorization: Bearer {accessToken}`)
+
+**요청 본문 (선택사항):**
+```json
+{
+  "reason": "서비스를 더 이상 사용하지 않음"
 }
+```
 
-// 3️⃣ Token 갱신
-func refreshToken() {
-    let refreshToken = KeychainManager.retrieve(key: "refreshToken") ?? ""
-    let body = [
-        "refreshToken": refreshToken,
-        "deviceId": getOrCreateDeviceId()
-    ]
-    
-    makeRequest(url: "/api/v1/auth/refresh", method: "POST", body: body) { response in
-        if let tokens = response.data as? [String: String] {
-            KeychainManager.save(accessToken: tokens["accessToken"]!)
-            KeychainManager.save(refreshToken: tokens["refreshToken"]!)
-        }
-    }
+**성공 응답 (200 OK):**
+```json
+{
+  "success": true,
+  "data": null,
+  "traceId": "d9c447aa-3e8e-4331-92a3-66b7eb432bd7"
 }
+```
 
-// 4️⃣ 로그아웃
-func logout() {
-    let accessToken = KeychainManager.retrieve(key: "accessToken") ?? ""
-    let body = ["deviceId": getOrCreateDeviceId()]
-    
-    makeRequest(url: "/api/v1/auth/logout", method: "POST", 
-                headers: ["Authorization": "Bearer \(accessToken)"],
-                body: body) { response in
-        KeychainManager.delete(key: "accessToken")
-        KeychainManager.delete(key: "refreshToken")
-    }
+**탈퇴 후 처리:**
+- 사용자 상태: `DELETED`로 변경
+- 프로필 정보: 익명화 (닉네임은 `deleted-user-{userId}`로 변경)
+- 모든 리프레시 토큰 삭제
+
+---
+
+## 프로필 (Profile)
+
+### 1. 프로필 생성
+**엔드포인트:** `POST /api/v1/users/profile`
+
+**설명:** 사용자의 상세 프로필 정보를 생성
+
+**권한:** ✅ 필수 (`Authorization: Bearer {accessToken}`)
+
+**요청 본문:**
+```json
+{
+  "nickname": "길동이",
+  "gender": "M",
+  "department": "컴퓨터공학과",
+  "birthYear": 2000,
+  "height": 180,
+  "mbti": "ENFP",
+  "smoking": "N",
+  "military": "N",
+  "religion": "기독교",
+  "residence": "서울시 강남구",
+  "intro": "안녕하세요!",
+  "contactStyle": "카톡",
+  "profileImageKey": "image_key_123"
+}
+```
+
+**성공 응답 (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "userId": 10,
+    "nickname": "길동이",
+    "gender": "M",
+    "department": "컴퓨터공학과",
+    "birthYear": 2000,
+    "height": 180,
+    "mbti": "ENFP",
+    "smoking": "N",
+    "military": "N",
+    "religion": "기독교",
+    "residence": "서울시 강남구",
+    "intro": "안녕하세요!",
+    "contactStyle": "카톡",
+    "profileImageKey": "image_key_123",
+    "updatedAt": "2026-03-13T14:30:00"
+  },
+  "traceId": "d9c447aa-3e8e-4331-92a3-66b7eb432bd7"
 }
 ```
 
 ---
 
-## 🌐 서버 설정
+### 2. 프로필 조회
+**엔드포인트:** `GET /api/v1/users/profile`
 
-### 개발 환경
-```
-Base URL: http://localhost:8080
-HTTP 통신 가능
-```
+**설명:** 현재 사용자의 프로필 정보 조회
 
-### 프로덕션 환경
-```
-Base URL: https://your-server.com
-HTTPS 필수 (Apple 요구사항)
+**권한:** ✅ 필수 (`Authorization: Bearer {accessToken}`)
+
+**성공 응답 (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "userId": 10,
+    "nickname": "길동이",
+    "gender": "M",
+    "department": "컴퓨터공학과",
+    "birthYear": 2000,
+    "height": 180,
+    "mbti": "ENFP",
+    "smoking": "N",
+    "military": "N",
+    "religion": "기독교",
+    "residence": "서울시 강남구",
+    "intro": "안녕하세요!",
+    "contactStyle": "카톡",
+    "profileImageKey": "image_key_123",
+    "updatedAt": "2026-03-13T14:30:00"
+  },
+  "traceId": "d9c447aa-3e8e-4331-92a3-66b7eb432bd7"
+}
 ```
 
 ---
 
-## ✅ 체크리스트
+### 3. 프로필 업데이트
+**엔드포인트:** `PATCH /api/v1/users/profile`
 
-- [ ] Base URL 설정됨
-- [ ] identityToken 획득 로직 구현됨
-- [ ] Token 저장 로직 구현됨
-- [ ] 자동 Token 갱신 로직 구현됨
-- [ ] Authorization 헤더 추가됨
-- [ ] 에러 처리 구현됨
-- [ ] 로그아웃 로직 구현됨
+**설명:** 기존 프로필 정보를 수정 (부분 수정 가능)
+
+**권한:** ✅ 필수 (`Authorization: Bearer {accessToken}`)
+
+**요청 본문:**
+```json
+{
+  "nickname": "길동이 변경됨",
+  "intro": "더 좋은 소개글로 변경!",
+  "profileImageKey": "new_image_key_456"
+}
+```
+
+**성공 응답 (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "userId": 10,
+    "nickname": "길동이 변경됨",
+    "gender": "M",
+    "department": "컴퓨터공학과",
+    "birthYear": 2000,
+    "height": 180,
+    "mbti": "ENFP",
+    "smoking": "N",
+    "military": "N",
+    "religion": "기독교",
+    "residence": "서울시 강남구",
+    "intro": "더 좋은 소개글로 변경!",
+    "contactStyle": "카톡",
+    "profileImageKey": "new_image_key_456",
+    "updatedAt": "2026-03-13T14:35:00"
+  },
+  "traceId": "d9c447aa-3e8e-4331-92a3-66b7eb432bd7"
+}
+```
 
 ---
 
-## 🚀 테스트 순서
+## 에러 응답
 
-1. **Postman으로 먼저 테스트** (Backend 확인)
-2. **Simulator에서 테스트** (기본)
-3. **실제 기기에서 테스트** (최종)
+### 표준 에러 응답 형식
+
+```json
+{
+  "success": false,
+  "error": {
+    "status": 400,
+    "code": "INVALID_INPUT",
+    "message": "Invalid input provided"
+  },
+  "traceId": "d9c447aa-3e8e-4331-92a3-66b7eb432bd7"
+}
+```
+
+### 전체 에러 코드
+
+| 코드 | Status | 설명 |
+|------|--------|------|
+| UNAUTHORIZED | 401 | 인증 토큰 누락 또는 유효하지 않음 |
+| FORBIDDEN | 403 | 접근 권한 없음 |
+| USER_NOT_FOUND | 404 | 사용자 없음 |
+| USER_DELETED | 403 | 탈퇴한 사용자 |
+| USER_SUSPENDED | 403 | 정지된 사용자 |
+| INVALID_INPUT | 400 | 유효하지 않은 입력값 |
 
 ---
 
-**Backend 준비 상태: 🌟🌟🌟🌟🌟 100% 완료!**
+## 주요 정보
 
-이 명세만 따라 구현하면 바로 앱에서 Apple 로그인 가능! 🎉
+### 토큰 유효 기간
+- **Access Token:** 30분
+- **Refresh Token:** 30일
 
+### 계정 상태
+- **ACTIVE:** 정상 활성 계정
+- **SUSPENDED:** 정지된 계정 (로그인 불가)
+- **DELETED:** 탈퇴한 계정 (복구 불가)
+
+### 온보딩 상태
+- **BASIC:** 소셜 로그인만 완료 (회원가입 미완료)
+- **FULL:** 회원가입 완료 (기본 정보 입력 완료)
+
+---
+
+**API 문서 버전:** 1.0.0  
+**최종 업데이트:** 2026-03-13  
+**담당자:** AirConnect Backend Team
 
