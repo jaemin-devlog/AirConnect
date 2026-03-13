@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
+import univ.airconnect.user.dto.request.DeleteAccountRequest;
 import univ.airconnect.user.dto.request.SignUpRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
 import univ.airconnect.user.dto.response.SignUpResponse;
@@ -42,8 +43,11 @@ public class UserController {
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
+        log.info("👤 사용자 정보 조회 요청: userId={}", userId);
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(userService.getMe(userId), traceId));
+        UserMeResponse response = userService.getMe(userId);
+        log.info("✅ 사용자 정보 조회 완료: userId={}", userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
     @PostMapping("/profile")
@@ -70,7 +74,7 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
-    @PutMapping("/profile")
+    @PatchMapping("/profile")
     public ResponseEntity<ApiResponse<UserProfileResponse>> updateProfile(
             @CurrentUserId Long userId,
             @RequestBody UpdateProfileRequest request,
@@ -82,5 +86,17 @@ public class UserController {
         log.info("✅ 프로필 업데이트 완료: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
-}
 
+    @DeleteMapping("/me")
+    public ResponseEntity<ApiResponse<Void>> deleteAccount(
+            @CurrentUserId Long userId,
+            @RequestBody(required = false) DeleteAccountRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        log.info("🗑️ 회원 탈퇴 요청: userId={}", userId);
+        String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
+        userService.deleteAccount(userId, request);
+        log.info("🚪 회원 탈퇴 완료: userId={}", userId);
+        return ResponseEntity.ok(ApiResponse.ok(null, traceId));
+    }
+}

@@ -146,6 +146,44 @@ public class AuthService {
         log.info("✅ RefreshToken 삭제 완료: userId={}", userId);
     }
 
+    /**
+     * 개발/테스트 환경에서만 사용 가능한 임시 토큰 생성
+     * 프로덕션 환경에서는 이 메서드를 호출하지 않습니다.
+     */
+    @Transactional
+    public TokenPairResponse createTestToken(String deviceId) {
+        log.warn("🧪 테스트 토큰 생성 (개발 환경에서만 사용)");
+
+        if (deviceId == null || deviceId.isBlank()) {
+            throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
+        }
+
+        // 테스트용 사용자 생성 또는 기존 사용자 사용
+        String testSocialId = "test-user-" + System.currentTimeMillis();
+        User testUser = userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, testSocialId)
+                .orElseGet(() -> {
+                    log.info("👤 테스트 사용자 생성: socialId={}", testSocialId);
+                    return userRepository.save(User.create(SocialProvider.KAKAO, testSocialId, "test@example.com"));
+                });
+
+        log.info("✅ 테스트 사용자 조회/생성 완료: userId={}", testUser.getId());
+
+        validateUserStatus(testUser);
+
+        String accessToken = jwtProvider.createAccessToken(testUser.getId());
+        String refreshToken = jwtProvider.createRefreshToken(testUser.getId(), deviceId);
+
+        log.debug("🎫 테스트 토큰 생성 완료: userId={}, deviceId={}", testUser.getId(), deviceId);
+
+        refreshTokenRepository.save(
+                RefreshToken.create(testUser.getId(), deviceId, refreshToken)
+        );
+
+        log.info("💾 테스트 RefreshToken 저장 완료: userId={}", testUser.getId());
+
+        return new TokenPairResponse(accessToken, refreshToken);
+    }
+
     private void validateSocialLoginRequest(SocialLoginRequest request) {
         if (request == null) {
             throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
