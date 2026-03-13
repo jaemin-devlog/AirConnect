@@ -77,7 +77,7 @@ public class User {
     @Column(length = 500)
     private String restrictedReason;
 
-    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
     private UserProfile userProfile;
 
     @Builder
@@ -89,7 +89,7 @@ public class User {
             String name,
             String nickname,
             String deptName,
-            Integer StudentNum,
+            Integer studentNum,
             UserStatus status,
             OnboardingStatus onboardingStatus,
             LocalDateTime createdAt,
@@ -134,7 +134,6 @@ public class User {
                 .build();
     }
 
-    // 회원가입 완료 시 호출
     public void completeSignUp(String name, String nickname, Integer studentNum, String deptName) {
         this.name = name;
         this.nickname = nickname;
@@ -143,5 +142,13 @@ public class User {
         this.onboardingStatus = OnboardingStatus.FULL;
         this.lastActiveAt = LocalDateTime.now();
     }
-}
 
+    public void markDeleted() {
+        if (this.status == UserStatus.DELETED) {
+            return;
+        }
+        this.status = UserStatus.DELETED;
+        this.deletedAt = LocalDateTime.now();
+        this.lastActiveAt = null;
+    }
+}

@@ -70,7 +70,6 @@ public class UserProfile {
 
     @Builder
     private UserProfile(
-            Long userId,
             User user,
             String nickname,
             String gender,
@@ -88,7 +87,6 @@ public class UserProfile {
             String profileImageKey,
             LocalDateTime updatedAt
     ) {
-        this.userId = userId;
         this.user = user;
         this.nickname = nickname;
         this.gender = gender;
@@ -102,24 +100,60 @@ public class UserProfile {
         this.residence = residence;
         this.intro = intro;
         this.contactStyle = contactStyle;
-        this.stdNum = stdNum;
         this.profileImageKey = profileImageKey;
         this.updatedAt = updatedAt;
     }
 
-    public static UserProfile create(User user, String nickname) {
+    public static UserProfile create(
+            User user,
+            String nickname,
+            String gender,
+            String department,
+            Integer birthYear,
+            Integer height,
+            String mbti,
+            String smoking,
+            String military,
+            String religion,
+            String residence,
+            String intro,
+            String contactStyle,
+            String profileImageKey
+    ) {
         return UserProfile.builder()
                 .user(user)
-                .userId(user.getId())
                 .nickname(nickname)
+                .gender(gender)
+                .department(department)
+                .birthYear(birthYear)
+                .height(height)
+                .mbti(mbti)
+                .smoking(smoking)
+                .military(military)
+                .religion(religion)
+                .residence(residence)
+                .intro(intro)
+                .contactStyle(contactStyle)
+                .profileImageKey(profileImageKey)
                 .updatedAt(LocalDateTime.now())
                 .build();
     }
 
-    public void update(String nickname, String gender, String department, Integer birthYear,
-                       Integer height, String mbti, String smoking, String military,
-                       String religion, String residence, String intro, String contactStyle,
-                       String profileImageKey) {
+    public void update(
+            String nickname,
+            String gender,
+            String department,
+            Integer birthYear,
+            Integer height,
+            String mbti,
+            String smoking,
+            String military,
+            String religion,
+            String residence,
+            String intro,
+            String contactStyle,
+            String profileImageKey
+    ) {
         this.nickname = nickname;
         this.gender = gender;
         this.department = department;
@@ -135,5 +169,22 @@ public class UserProfile {
         this.profileImageKey = profileImageKey;
         this.updatedAt = LocalDateTime.now();
     }
-}
 
+    public void anonymize() {
+        this.nickname = "deleted-user-" + this.userId;
+        this.gender = null;
+        this.department = null;
+        this.birthYear = null;
+        this.height = null;
+        this.mbti = null;
+        this.smoking = null;
+        this.military = null;
+        this.religion = null;
+        this.residence = null;
+        this.intro = null;
+        this.contactStyle = null;
+        this.stdNum = null;
+        this.profileImageKey = null;
+        this.updatedAt = LocalDateTime.now();
+    }
+}

@@ -4,8 +4,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import univ.airconnect.auth.domain.entity.RefreshToken;
+import univ.airconnect.auth.repository.RefreshTokenRepository;
+import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.dto.request.DeleteAccountRequest;
 import univ.airconnect.user.dto.request.SignUpRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
 import univ.airconnect.user.dto.response.SignUpResponse;
@@ -13,8 +17,8 @@ import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
-import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
+import univ.airconnect.user.repository.UserRepository;
 
 @Slf4j
 @Service
@@ -24,6 +28,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     @Transactional
     public SignUpResponse signUp(Long userId, SignUpRequest request) {
@@ -40,7 +45,8 @@ public class UserService {
             throw new UserException(UserErrorCode.INVALID_INPUT);
         }
 
-        // 회원가입 정보로 사용자 업데이트
+        ensureUserActive(user);
+
         user.completeSignUp(
                 request.getName(),
                 request.getNickname(),
@@ -48,7 +54,6 @@ public class UserService {
                 request.getDeptName()
         );
 
-        userRepository.save(user);
         log.info("✅ 회원가입 완료: userId={}, name={}", userId, request.getName());
 
         return new SignUpResponse(
@@ -63,11 +68,25 @@ public class UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
 
+        ensureUserActive(user);
+
+        UserProfileResponse profile = userProfileRepository.findByUserId(userId)
+                .map(UserProfileResponse::from)
+                .orElse(null);
+
         return UserMeResponse.builder()
                 .userId(user.getId())
                 .provider(user.getProvider())
                 .socialId(user.getSocialId())
+                .email(user.getEmail())
+                .name(user.getName())
+                .deptName(user.getDeptName())
+                .nickname(user.getNickname())
+                .studentNum(user.getStudentNum())
                 .status(user.getStatus())
+                .onboardingStatus(user.getOnboardingStatus())
+                .profileExists(profile != null)
+                .profile(profile)
                 .build();
     }
 
@@ -81,31 +100,37 @@ public class UserService {
                     return new UserException(UserErrorCode.USER_NOT_FOUND);
                 });
 
+        ensureUserActive(user);
+
         if (request.getNickname() == null || request.getNickname().isBlank()) {
             log.warn("⚠️ 닉네임이 필수입니다");
             throw new UserException(UserErrorCode.INVALID_INPUT);
         }
 
-        UserProfile userProfile = UserProfile.builder()
-                .user(user)
-                .userId(userId)
-                .nickname(request.getNickname())
-                .gender(request.getGender())
-                .department(request.getDepartment())
-                .birthYear(request.getBirthYear())
-                .height(request.getHeight())
-                .mbti(request.getMbti())
-                .smoking(request.getSmoking())
-                .military(request.getMilitary())
-                .religion(request.getReligion())
-                .residence(request.getResidence())
-                .intro(request.getIntro())
-                .contactStyle(request.getContactStyle())
-                .profileImageKey(request.getProfileImageKey())
-                .updatedAt(java.time.LocalDateTime.now())
-                .build();
+        if (userProfileRepository.findByUserId(userId).isPresent()) {
+            log.warn("⚠️ 이미 프로필이 존재함: userId={}", userId);
+            throw new UserException(UserErrorCode.INVALID_INPUT);
+        }
+
+        UserProfile userProfile = UserProfile.create(
+                user,
+                request.getNickname(),
+                request.getGender(),
+                request.getDepartment(),
+                request.getBirthYear(),
+                request.getHeight(),
+                request.getMbti(),
+                request.getSmoking(),
+                request.getMilitary(),
+                request.getReligion(),
+                request.getResidence(),
+                request.getIntro(),
+                request.getContactStyle(),
+                request.getProfileImageKey()
+        );
 
         userProfileRepository.save(userProfile);
+
         log.info("✅ 프로필 생성 완료: userId={}", userId);
 
         return UserProfileResponse.from(userProfile);
@@ -120,6 +145,8 @@ public class UserService {
                     log.error("❌ 프로필을 찾을 수 없음: userId={}", userId);
                     return new UserException(UserErrorCode.USER_NOT_FOUND);
                 });
+
+        ensureUserActive(userProfile.getUser());
 
         userProfile.update(
                 request.getNickname(),
@@ -137,7 +164,6 @@ public class UserService {
                 request.getProfileImageKey()
         );
 
-        userProfileRepository.save(userProfile);
         log.info("✅ 프로필 업데이트 완료: userId={}", userId);
 
         return UserProfileResponse.from(userProfile);
@@ -152,7 +178,54 @@ public class UserService {
                     return new UserException(UserErrorCode.USER_NOT_FOUND);
                 });
 
+        ensureUserActive(userProfile.getUser());
+
         return UserProfileResponse.from(userProfile);
     }
-}
 
+    @Transactional
+    public void deleteAccount(Long userId, DeleteAccountRequest request) {
+        String reason = request != null ? request.getReason() : null;
+        log.info("🗑️ 회원 탈퇴 처리 시작: userId={}, reason={}", userId, reason);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+
+        if (user.getStatus() == UserStatus.DELETED) {
+            log.info("ℹ️ 이미 탈퇴한 사용자: userId={}", userId);
+            purgeRefreshTokens(userId);
+            return;
+        }
+
+        user.markDeleted();
+
+        userProfileRepository.findByUserId(userId)
+                .ifPresent(profile -> {
+                    profile.anonymize();
+                    log.debug("👤 프로필 정보를 익명화: userId={}", userId);
+                });
+
+        purgeRefreshTokens(userId);
+        log.info("✅ 회원 탈퇴 완료: userId={}", userId);
+    }
+
+    private void purgeRefreshTokens(Long userId) {
+        Iterable<RefreshToken> tokens = refreshTokenRepository.findByUserId(userId);
+        for (RefreshToken token : tokens) {
+            if (token == null) {
+                continue;
+            }
+            refreshTokenRepository.deleteById(token.getId());
+            log.debug("🧹 RefreshToken 삭제: key={}", token.getId());
+        }
+    }
+
+    private void ensureUserActive(User user) {
+        if (user == null) {
+            return;
+        }
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new UserException(UserErrorCode.USER_DELETED);
+        }
+    }
+}
