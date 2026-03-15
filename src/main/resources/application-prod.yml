@@ -19,7 +19,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: create
     open-in-view: false
     show-sql: false
     properties:
@@ -40,6 +40,11 @@ logging:
     org.hibernate.orm.jdbc.bind: TRACE
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/airconnect.log
+    max-size: 10MB
+    max-history: 30
+    total-size-cap: 1GB
 
 
 kakao:

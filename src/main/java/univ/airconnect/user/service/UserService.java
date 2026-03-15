@@ -102,11 +102,6 @@ public class UserService {
 
         ensureUserActive(user);
 
-        if (request.getNickname() == null || request.getNickname().isBlank()) {
-            log.warn("⚠️ 닉네임이 필수입니다");
-            throw new UserException(UserErrorCode.INVALID_INPUT);
-        }
-
         if (userProfileRepository.findByUserId(userId).isPresent()) {
             log.warn("⚠️ 이미 프로필이 존재함: userId={}", userId);
             throw new UserException(UserErrorCode.INVALID_INPUT);
@@ -114,10 +109,6 @@ public class UserService {
 
         UserProfile userProfile = UserProfile.create(
                 user,
-                request.getNickname(),
-                request.getGender(),
-                request.getDepartment(),
-                request.getBirthYear(),
                 request.getHeight(),
                 request.getMbti(),
                 request.getSmoking(),
@@ -125,8 +116,7 @@ public class UserService {
                 request.getReligion(),
                 request.getResidence(),
                 request.getIntro(),
-                request.getContactStyle(),
-                request.getProfileImageKey()
+                request.getInstagram()
         );
 
         userProfileRepository.save(userProfile);
@@ -149,10 +139,6 @@ public class UserService {
         ensureUserActive(userProfile.getUser());
 
         userProfile.update(
-                request.getNickname(),
-                request.getGender(),
-                request.getDepartment(),
-                request.getBirthYear(),
                 request.getHeight(),
                 request.getMbti(),
                 request.getSmoking(),
@@ -160,8 +146,7 @@ public class UserService {
                 request.getReligion(),
                 request.getResidence(),
                 request.getIntro(),
-                request.getContactStyle(),
-                request.getProfileImageKey()
+                request.getInstagram()
         );
 
         log.info("✅ 프로필 업데이트 완료: userId={}", userId);

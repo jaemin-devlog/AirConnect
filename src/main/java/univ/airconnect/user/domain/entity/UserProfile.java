@@ -7,12 +7,14 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import univ.airconnect.user.domain.MilitaryStatus;
 
 @Entity
 @Table(name = "user_profiles")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserProfile {
+
 
     @Id
     @Column(name = "user_id")
@@ -22,18 +24,6 @@ public class UserProfile {
     @MapsId
     @JoinColumn(name = "user_id")
     private User user;
-
-    @Column(nullable = false, length = 100)
-    private String nickname;
-
-    @Column(length = 20)
-    private String gender;
-
-    @Column(length = 100)
-    private String department;
-
-    @Column
-    private Integer birthYear;
 
     @Column
     private Integer height;
@@ -45,7 +35,8 @@ public class UserProfile {
     private String smoking;
 
     @Column(length = 20)
-    private String military;
+    @Enumerated(EnumType.STRING)
+    private MilitaryStatus military;
 
     @Column(length = 50)
     private String religion;
@@ -56,42 +47,27 @@ public class UserProfile {
     @Column(length = 500)
     private String intro;
 
-    @Column(length = 100)
-    private String contactStyle;
-
-    @Column(length = 50)
-    private String stdNum;
-
-    @Column(length = 255)
-    private String profileImageKey;
+    @Column(length = 200)
+    private String instagram;
 
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+
     @Builder
     private UserProfile(
             User user,
-            String nickname,
-            String gender,
-            String department,
-            Integer birthYear,
             Integer height,
             String mbti,
             String smoking,
-            String military,
+            MilitaryStatus military,
             String religion,
             String residence,
             String intro,
-            String contactStyle,
-            String stdNum,
-            String profileImageKey,
+            String instagram,
             LocalDateTime updatedAt
     ) {
         this.user = user;
-        this.nickname = nickname;
-        this.gender = gender;
-        this.department = department;
-        this.birthYear = birthYear;
         this.height = height;
         this.mbti = mbti;
         this.smoking = smoking;
@@ -99,33 +75,23 @@ public class UserProfile {
         this.religion = religion;
         this.residence = residence;
         this.intro = intro;
-        this.contactStyle = contactStyle;
-        this.profileImageKey = profileImageKey;
+        this.instagram = instagram;
         this.updatedAt = updatedAt;
     }
 
     public static UserProfile create(
             User user,
-            String nickname,
-            String gender,
-            String department,
-            Integer birthYear,
             Integer height,
             String mbti,
             String smoking,
-            String military,
+            MilitaryStatus military,
             String religion,
             String residence,
             String intro,
-            String contactStyle,
-            String profileImageKey
+            String instagram
     ) {
         return UserProfile.builder()
                 .user(user)
-                .nickname(nickname)
-                .gender(gender)
-                .department(department)
-                .birthYear(birthYear)
                 .height(height)
                 .mbti(mbti)
                 .smoking(smoking)
@@ -133,31 +99,21 @@ public class UserProfile {
                 .religion(religion)
                 .residence(residence)
                 .intro(intro)
-                .contactStyle(contactStyle)
-                .profileImageKey(profileImageKey)
+                .instagram(instagram)
                 .updatedAt(LocalDateTime.now())
                 .build();
     }
 
     public void update(
-            String nickname,
-            String gender,
-            String department,
-            Integer birthYear,
             Integer height,
             String mbti,
             String smoking,
-            String military,
+            MilitaryStatus military,
             String religion,
             String residence,
             String intro,
-            String contactStyle,
-            String profileImageKey
+            String instagram
     ) {
-        this.nickname = nickname;
-        this.gender = gender;
-        this.department = department;
-        this.birthYear = birthYear;
         this.height = height;
         this.mbti = mbti;
         this.smoking = smoking;
@@ -165,16 +121,11 @@ public class UserProfile {
         this.religion = religion;
         this.residence = residence;
         this.intro = intro;
-        this.contactStyle = contactStyle;
-        this.profileImageKey = profileImageKey;
+        this.instagram = instagram;
         this.updatedAt = LocalDateTime.now();
     }
 
     public void anonymize() {
-        this.nickname = "deleted-user-" + this.userId;
-        this.gender = null;
-        this.department = null;
-        this.birthYear = null;
         this.height = null;
         this.mbti = null;
         this.smoking = null;
@@ -182,9 +133,7 @@ public class UserProfile {
         this.religion = null;
         this.residence = null;
         this.intro = null;
-        this.contactStyle = null;
-        this.stdNum = null;
-        this.profileImageKey = null;
+        this.instagram = null;
         this.updatedAt = LocalDateTime.now();
     }
 }
