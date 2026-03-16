@@ -21,6 +21,7 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
         http
                 .csrf(csrf -> csrf.disable())
                 .formLogin(form -> form.disable())
@@ -30,10 +31,26 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
+
+                        // 인증 관련
                         .requestMatchers("/api/v1/auth/**").permitAll()
+
+                        // 이메일 인증
                         .requestMatchers("/api/v1/verification/**").permitAll()
+
+                        // 프로필 이미지
+                        .requestMatchers("/api/v1/users/profile-image").permitAll()
+                        .requestMatchers("/api/v1/users/profile-images/**").permitAll()
+
+                        // WebSocket
+                        .requestMatchers("/ws-stomp/**").permitAll()
+
+                        // Swagger
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/health").permitAll()
+
+                        // Preflight
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

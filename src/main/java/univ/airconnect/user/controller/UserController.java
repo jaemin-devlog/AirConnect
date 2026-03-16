@@ -3,17 +3,22 @@ package univ.airconnect.user.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
 import univ.airconnect.user.dto.request.DeleteAccountRequest;
 import univ.airconnect.user.dto.request.SignUpRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
+import univ.airconnect.user.dto.response.ProfileImageUploadResponse;
 import univ.airconnect.user.dto.response.SignUpResponse;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
+import univ.airconnect.user.service.UserProfileImageService;
 import univ.airconnect.user.service.UserService;
+
 
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 
@@ -24,6 +29,7 @@ import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 public class UserController {
 
     private final UserService userService;
+    private final UserProfileImageService userProfileImageService;
 
     @PostMapping("/sign-up")
     public ResponseEntity<ApiResponse<SignUpResponse>> signUp(
@@ -85,6 +91,19 @@ public class UserController {
         UserProfileResponse response = userService.updateProfile(userId, request);
         log.info("✅ 프로필 업데이트 완료: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    @PostMapping(value = "/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<ProfileImageUploadResponse>> uploadProfileImage(
+            @CurrentUserId Long userId,
+            @RequestParam("file") MultipartFile file,
+            HttpServletRequest httpRequest
+    ) {
+        log.info("🖼️ 프로필 이미지 업로드 요청: userId={}", userId);
+        String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
+        String imageUrl = userProfileImageService.saveProfileImage(userId, file);
+        log.info("✅ 프로필 이미지 업로드 완료: userId={}, imageUrl={}", userId, imageUrl);
+        return ResponseEntity.ok(ApiResponse.ok(new ProfileImageUploadResponse(imageUrl), traceId));
     }
 
     @DeleteMapping("/me")

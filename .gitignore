@@ -76,6 +76,7 @@ Thumbs.db
 *.tmp
 *.bak
 *.swp
+logs/
 
 # IDE specific
 .vscode/

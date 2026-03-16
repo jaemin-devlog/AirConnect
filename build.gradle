@@ -25,47 +25,47 @@ repositories {
 }
 
 dependencies {
-    // 기본 웹 / DB / Redis
+    // Web & Data
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // Email
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
-    // Security는 이후 JWT 필터/보안 설정에 필요
-    // 단, SecurityConfig가 없으면 기본 보안이 걸릴 수 있으니 곧 설정 추가 필요
+    // WebSocket (채팅)
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    // Security
     implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // Validation
     implementation 'org.springframework.boot:spring-boot-starter-validation'
 
-    // @ConfigurationProperties 메타데이터 생성용
+    // Configuration Processor
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
     // Lombok
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
-    // MySQL
+    // Database
     runtimeOnly 'com.mysql:mysql-connector-j'
-
-    // JWT
-    implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.5'
-
-    // 테스트
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.security:spring-security-test'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    runtimeOnly 'org.postgresql:postgresql'
 
     // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
 
-// JSON
+    // JSON
     implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
-    //postgreSQL
-    runtimeOnly 'org.postgresql:postgresql'
+    // Test
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {

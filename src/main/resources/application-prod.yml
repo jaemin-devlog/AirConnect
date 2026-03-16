@@ -5,6 +5,16 @@ spring:
   application:
     name: airconnect
 
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  web:
+    resources:
+      # 정적 리소스 경로를 명시적으로 제한하여 /api/** 경로가 정적 리소스로 처리되지 않도록 함
+      static-locations: classpath:/static/,classpath:/public/,classpath:/resources/,classpath:/templates/
+
   jackson:
     default-property-inclusion: non_null
     serialization:
@@ -12,10 +22,10 @@ spring:
     time-zone: Asia/Seoul
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
-    driver-class-name: org.postgresql.Driver
+    driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
     hibernate:
@@ -25,6 +35,7 @@ spring:
     properties:
       hibernate:
         format_sql: false
+        dialect: org.hibernate.dialect.MySQLDialect
 
   data:
     redis:
@@ -40,7 +51,11 @@ logging:
     org.hibernate.orm.jdbc.bind: TRACE
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-
+  file:
+    name: logs/airconnect.log
+    max-size: 10MB
+    max-history: 30
+    total-size-cap: 1GB
 
 kakao:
   base-url: https://kapi.kakao.com
@@ -56,3 +71,9 @@ apple:
   key-id: ${KEY_ID}
   bundle-id: ${BUNDLE_ID}
   key-path: ${KEY_PATH}
+
+app:
+  upload:
+    profile-image-dir: ${PROFILE_IMAGE_DIR:/var/lib/airconnect/profile-images}
+    profile-image-url-base: ${PROFILE_IMAGE_URL_BASE}
+
