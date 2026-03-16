@@ -55,7 +55,7 @@ public class AuthService {
         User user = userRepository.findByProviderAndSocialId(request.getProvider(), socialId)
                 .orElseGet(() -> {
                     log.info("👤 신규 사용자 생성: provider={}, socialId={}",
-                             request.getProvider(), socialId);
+                            request.getProvider(), socialId);
                     return userRepository.save(User.create(request.getProvider(), socialId, email));
                 });
 
