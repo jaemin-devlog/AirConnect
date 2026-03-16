@@ -1,9 +1,11 @@
 package univ.airconnect.chat.controller;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import univ.airconnect.chat.dto.request.ChatMessageRequest;
 import univ.airconnect.chat.service.ChatService;
@@ -24,27 +26,33 @@ public class ChatController {
      */
     @MessageMapping("/chat/message")
     public void message(
-            ChatMessageRequest request,
+            @Payload @Valid ChatMessageRequest request,
             Principal principal
     ) {
         Long userId = extractUserId(principal);
-        log.info("STOMP SEND: roomId={}, senderId={}", request.getRoomId(), userId);
-        
+
         if (userId == null) {
-            log.error("STOMP SEND REJECTED: User not authenticated or principal type mismatch");
-            return;
+            log.error("STOMP SEND REJECTED: invalid principal. principalType={}",
+                    principal != null ? principal.getClass().getName() : "null");
+            throw new IllegalStateException("인증된 사용자 정보를 확인할 수 없습니다.");
         }
 
+        log.info("STOMP SEND: roomId={}, senderId={}", request.getRoomId(), userId);
         chatService.sendMessage(userId, request);
     }
 
     private Long extractUserId(Principal principal) {
-        if (principal instanceof UsernamePasswordAuthenticationToken) {
-            Object principalObj = ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
-            if (principalObj instanceof CustomUserPrincipal) {
-                return ((CustomUserPrincipal) principalObj).getUserId();
+        if (principal instanceof Authentication authentication) {
+            Object principalObj = authentication.getPrincipal();
+            if (principalObj instanceof CustomUserPrincipal customUserPrincipal) {
+                return customUserPrincipal.getUserId();
             }
         }
+
+        if (principal instanceof CustomUserPrincipal customUserPrincipal) {
+            return customUserPrincipal.getUserId();
+        }
+
         return null;
     }
 }

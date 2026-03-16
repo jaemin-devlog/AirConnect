@@ -1,11 +1,18 @@
 package univ.airconnect.chat.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import univ.airconnect.chat.domain.ChatRoomType;
+import univ.airconnect.chat.dto.request.ChatRoomCreateRequest;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.service.ChatService;
@@ -17,6 +24,7 @@ import java.util.List;
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 
 @Slf4j
+@Validated
 @RestController
 @RequestMapping("/api/v1/chat")
 @RequiredArgsConstructor
@@ -29,13 +37,17 @@ public class ChatRoomController {
      */
     @PostMapping("/rooms")
     public ResponseEntity<ApiResponse<ChatRoomResponse>> createRoom(
-            @RequestParam String name,
-            @RequestParam ChatRoomType type,
+            @RequestBody @Valid ChatRoomCreateRequest createRequest,
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        ChatRoomResponse response = chatService.createChatRoom(name, type, userId);
+        ChatRoomResponse response = chatService.createChatRoom(
+                createRequest.getName(),
+                createRequest.getType(),
+                userId,
+                createRequest.getTargetUserId()
+        );
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
@@ -44,7 +56,7 @@ public class ChatRoomController {
      */
     @PostMapping("/rooms/{roomId}/join")
     public ResponseEntity<ApiResponse<Void>> joinRoom(
-            @PathVariable Long roomId,
+            @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
@@ -58,7 +70,7 @@ public class ChatRoomController {
      */
     @PostMapping("/rooms/{roomId}/leave")
     public ResponseEntity<ApiResponse<Void>> leaveRoom(
-            @PathVariable Long roomId,
+            @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
@@ -81,16 +93,35 @@ public class ChatRoomController {
     }
 
     /**
-     * 특정 채팅방의 메시지 조회
+     * 특정 채팅방의 메시지 조회 (커서 페이징 지원)
      */
     @GetMapping("/rooms/{roomId}/messages")
     public ResponseEntity<ApiResponse<List<ChatMessageResponse>>> findMessages(
-            @PathVariable Long roomId,
+            @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
+            @CurrentUserId Long userId,
+            @RequestParam(required = false) @Positive(message = "마지막 메시지 ID는 양수여야 합니다.") Long lastMessageId,
+            @RequestParam(defaultValue = "20")
+            @Min(value = 1, message = "조회 크기는 1 이상이어야 합니다.")
+            @Max(value = 100, message = "조회 크기는 100 이하여야 합니다.")
+            int size,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        List<ChatMessageResponse> response = chatService.findMessagesByRoomId(roomId, userId, lastMessageId, size);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    /**
+     * 특정 채팅방의 읽음 상태 갱신
+     */
+    @PatchMapping("/rooms/{roomId}/read")
+    public ResponseEntity<ApiResponse<Void>> updateReadStatus(
+            @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        List<ChatMessageResponse> response = chatService.findMessagesByRoomId(roomId, userId);
-        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+        chatService.updateLastRead(roomId, userId);
+        return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }
 }

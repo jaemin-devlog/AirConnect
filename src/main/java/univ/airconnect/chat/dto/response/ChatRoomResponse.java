@@ -14,13 +14,24 @@ public class ChatRoomResponse {
     private String name;
     private ChatRoomType type;
     private LocalDateTime createdAt;
+    private String latestMessage;
+    private LocalDateTime latestMessageTime;
+    private int unreadCount;
 
-    public static ChatRoomResponse from(ChatRoom entity) {
+    public static ChatRoomResponse from(ChatRoom entity, String latestMessage, LocalDateTime latestMessageTime, int unreadCount) {
         return ChatRoomResponse.builder()
                 .id(entity.getId())
                 .name(entity.getName())
                 .type(entity.getType())
                 .createdAt(entity.getCreatedAt())
+                .latestMessage(latestMessage)
+                .latestMessageTime(latestMessageTime)
+                .unreadCount(unreadCount)
                 .build();
+    }
+
+    // 기존 호환성을 위해 유지
+    public static ChatRoomResponse from(ChatRoom entity) {
+        return from(entity, null, null, 0);
     }
 }

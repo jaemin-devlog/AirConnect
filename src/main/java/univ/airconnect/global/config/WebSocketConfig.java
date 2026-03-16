@@ -18,23 +18,26 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        // 메시지를 구독하는 요청의 prefix
+        // 구독 prefix
         config.enableSimpleBroker("/sub");
-        // 메시지를 발행하는 요청의 prefix
+        // 발행 prefix
         config.setApplicationDestinationPrefixes("/pub");
     }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // stomp 엔드포인트 설정: /ws-stomp
+        // 네이티브 앱 및 일반 WebSocket/STOMP 클라이언트용
         registry.addEndpoint("/ws-stomp")
+                .setAllowedOriginPatterns("*");
+
+        // 브라우저 SockJS가 꼭 필요한 경우에만 유지
+        registry.addEndpoint("/ws-stomp-sockjs")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
     }
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        // stompHandler를 인터셉터로 등록하여 JWT 검증 수행
         registration.interceptors(stompHandler);
     }
 }
