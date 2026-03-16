@@ -60,6 +60,8 @@ public class UserProfileImageService {
 
             // 이미지 URL
             String imageUrl = imageUrlBase + "/" + fileName;
+            log.info("📸 생성된 이미지 URL: {}", imageUrl);
+            log.debug("📋 imageUrlBase: {}, fileName: {}", imageUrlBase, fileName);
 
             // 프로필 정보 업데이트 또는 생성
             UserProfile userProfile = userProfileRepository.findByUserId(userId)
@@ -70,7 +72,7 @@ public class UserProfileImageService {
 
             userProfile.updateProfileImagePath(fileName);
             userProfileRepository.save(userProfile);
-            log.info("✅ 프로필 이미지 경로 업데이트 완료: userId={}, imageUrl={}", userId, imageUrl);
+            log.info("✅ 프로필 이미지 경로 업데이트 완료: userId={}, fileName={}, imageUrl={}", userId, fileName, imageUrl);
 
             return imageUrl;
         } catch (IOException e) {

@@ -76,8 +76,14 @@ public class UserService {
 
         ensureUserActive(user);
 
+        log.debug("🔗 현재 imageUrlBase: {}", imageUrlBase);
         UserProfileResponse profile = userProfileRepository.findByUserId(userId)
-                .map(userProfile -> UserProfileResponse.from(userProfile, imageUrlBase))
+                .map(userProfile -> {
+                    log.debug("📸 저장된 profileImagePath (파일명): {}", userProfile.getProfileImagePath());
+                    UserProfileResponse resp = UserProfileResponse.from(userProfile, imageUrlBase);
+                    log.debug("📸 변환된 profileImagePath (URL): {}", resp.getProfileImagePath());
+                    return resp;
+                })
                 .orElse(null);
 
         return UserMeResponse.builder()
@@ -162,6 +168,7 @@ public class UserService {
 
     public UserProfileResponse getProfile(Long userId) {
         log.info("📖 프로필 조회: userId={}", userId);
+        log.debug("🔗 현재 imageUrlBase: {}", imageUrlBase);
 
         UserProfile userProfile = userProfileRepository.findByUserId(userId)
                 .orElseThrow(() -> {
@@ -171,7 +178,11 @@ public class UserService {
 
         ensureUserActive(userProfile.getUser());
 
-        return UserProfileResponse.from(userProfile, imageUrlBase);
+        log.debug("📸 저장된 profileImagePath (파일명): {}", userProfile.getProfileImagePath());
+        UserProfileResponse response = UserProfileResponse.from(userProfile, imageUrlBase);
+        log.debug("📸 변환된 profileImagePath (URL): {}", response.getProfileImagePath());
+
+        return response;
     }
 
     @Transactional
