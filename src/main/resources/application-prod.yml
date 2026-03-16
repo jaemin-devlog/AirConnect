@@ -12,7 +12,6 @@ spring:
 
   web:
     resources:
-      # 정적 리소스 경로를 명시적으로 제한하여 /api/** 경로가 정적 리소스로 처리되지 않도록 함
       static-locations: classpath:/static/,classpath:/public/,classpath:/resources/,classpath:/templates/
 
   jackson:
@@ -40,6 +39,22 @@ spring:
   data:
     redis:
       url: ${REDIS_URL}
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
 logging:
   level:
@@ -76,4 +91,3 @@ app:
   upload:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/var/lib/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE}
-
