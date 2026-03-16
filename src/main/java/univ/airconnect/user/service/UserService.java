@@ -2,6 +2,7 @@ package univ.airconnect.user.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.auth.domain.entity.RefreshToken;
@@ -29,6 +30,11 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+
+    @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
+    private String imageUrlBase;
+
+    // ...existing code...
 
     @Transactional
     public SignUpResponse signUp(Long userId, SignUpRequest request) {
@@ -71,7 +77,7 @@ public class UserService {
         ensureUserActive(user);
 
         UserProfileResponse profile = userProfileRepository.findByUserId(userId)
-                .map(UserProfileResponse::from)
+                .map(userProfile -> UserProfileResponse.from(userProfile, imageUrlBase))
                 .orElse(null);
 
         return UserMeResponse.builder()
@@ -123,7 +129,7 @@ public class UserService {
 
         log.info("✅ 프로필 생성 완료: userId={}", userId);
 
-        return UserProfileResponse.from(userProfile);
+        return UserProfileResponse.from(userProfile, imageUrlBase);
     }
 
     @Transactional
@@ -151,7 +157,7 @@ public class UserService {
 
         log.info("✅ 프로필 업데이트 완료: userId={}", userId);
 
-        return UserProfileResponse.from(userProfile);
+        return UserProfileResponse.from(userProfile, imageUrlBase);
     }
 
     public UserProfileResponse getProfile(Long userId) {
@@ -165,7 +171,7 @@ public class UserService {
 
         ensureUserActive(userProfile.getUser());
 
-        return UserProfileResponse.from(userProfile);
+        return UserProfileResponse.from(userProfile, imageUrlBase);
     }
 
     @Transactional
