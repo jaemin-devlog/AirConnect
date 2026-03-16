@@ -2,6 +2,7 @@ package univ.airconnect.user.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.auth.domain.entity.RefreshToken;
@@ -29,6 +30,11 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+
+    @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
+    private String imageUrlBase;
+
+    // ...existing code...
 
     @Transactional
     public SignUpResponse signUp(Long userId, SignUpRequest request) {
@@ -70,8 +76,14 @@ public class UserService {
 
         ensureUserActive(user);
 
+        log.debug("🔗 현재 imageUrlBase: {}", imageUrlBase);
         UserProfileResponse profile = userProfileRepository.findByUserId(userId)
-                .map(UserProfileResponse::from)
+                .map(userProfile -> {
+                    log.debug("📸 저장된 profileImagePath (파일명): {}", userProfile.getProfileImagePath());
+                    UserProfileResponse resp = UserProfileResponse.from(userProfile, imageUrlBase);
+                    log.debug("📸 변환된 profileImagePath (URL): {}", resp.getProfileImagePath());
+                    return resp;
+                })
                 .orElse(null);
 
         return UserMeResponse.builder()
@@ -123,7 +135,7 @@ public class UserService {
 
         log.info("✅ 프로필 생성 완료: userId={}", userId);
 
-        return UserProfileResponse.from(userProfile);
+        return UserProfileResponse.from(userProfile, imageUrlBase);
     }
 
     @Transactional
@@ -151,11 +163,12 @@ public class UserService {
 
         log.info("✅ 프로필 업데이트 완료: userId={}", userId);
 
-        return UserProfileResponse.from(userProfile);
+        return UserProfileResponse.from(userProfile, imageUrlBase);
     }
 
     public UserProfileResponse getProfile(Long userId) {
         log.info("📖 프로필 조회: userId={}", userId);
+        log.debug("🔗 현재 imageUrlBase: {}", imageUrlBase);
 
         UserProfile userProfile = userProfileRepository.findByUserId(userId)
                 .orElseThrow(() -> {
@@ -165,7 +178,11 @@ public class UserService {
 
         ensureUserActive(userProfile.getUser());
 
-        return UserProfileResponse.from(userProfile);
+        log.debug("📸 저장된 profileImagePath (파일명): {}", userProfile.getProfileImagePath());
+        UserProfileResponse response = UserProfileResponse.from(userProfile, imageUrlBase);
+        log.debug("📸 변환된 profileImagePath (URL): {}", response.getProfileImagePath());
+
+        return response;
     }
 
     @Transactional

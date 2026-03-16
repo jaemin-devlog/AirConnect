@@ -22,9 +22,16 @@ public class UserProfileResponse {
     private String residence;
     private String intro;
     private String instagram;
+    private String profileImagePath;
     private LocalDateTime updatedAt;
 
-    public static UserProfileResponse from(UserProfile userProfile) {
+    public static UserProfileResponse from(UserProfile userProfile, String imageUrlBase) {
+        // 프로필 이미지 URL 생성 (파일명이 있을 경우만)
+        String profileImagePath = null;
+        if (userProfile.getProfileImagePath() != null && !userProfile.getProfileImagePath().isEmpty()) {
+            profileImagePath = imageUrlBase + "/" + userProfile.getProfileImagePath();
+        }
+
         return UserProfileResponse.builder()
                 .userId(userProfile.getUserId())
                 .height(userProfile.getHeight())
@@ -35,8 +42,11 @@ public class UserProfileResponse {
                 .residence(userProfile.getResidence())
                 .intro(userProfile.getIntro())
                 .instagram(userProfile.getInstagram())
+                .profileImagePath(profileImagePath)
                 .updatedAt(userProfile.getUpdatedAt())
                 .build();
     }
 }
+
+
 
