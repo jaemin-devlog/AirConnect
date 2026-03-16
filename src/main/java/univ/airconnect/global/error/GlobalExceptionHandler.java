@@ -2,6 +2,8 @@ package univ.airconnect.global.error;
 
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.response.ErrorBody;
+import univ.airconnect.verification.exception.VerificationErrorCode;
+import univ.airconnect.verification.exception.VerificationException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +15,25 @@ import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(VerificationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleVerification(VerificationException e, HttpServletRequest request) {
+        VerificationErrorCode vec = e.getErrorCode();
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+
+        log.warn("❌ VerificationException [{}] - {}", traceId, e.getMessage());
+
+        ErrorBody body = new ErrorBody(
+                vec.getCode(),
+                e.getMessage(),
+                vec.getHttpStatus().value(),
+                traceId,
+                null
+        );
+
+        return ResponseEntity.status(vec.getHttpStatus())
+                .body(ApiResponse.fail(body, traceId));
+    }
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e, HttpServletRequest request) {
