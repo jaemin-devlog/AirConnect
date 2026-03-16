@@ -22,6 +22,7 @@ public class UserProfileResponse {
     private String residence;
     private String intro;
     private String instagram;
+    private String profileImagePath;
     private LocalDateTime updatedAt;
 
     public static UserProfileResponse from(UserProfile userProfile) {
@@ -35,6 +36,7 @@ public class UserProfileResponse {
                 .residence(userProfile.getResidence())
                 .intro(userProfile.getIntro())
                 .instagram(userProfile.getInstagram())
+                .profileImagePath(userProfile.getProfileImagePath())
                 .updatedAt(userProfile.getUpdatedAt())
                 .build();
     }

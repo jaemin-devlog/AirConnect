@@ -50,6 +50,9 @@ public class UserProfile {
     @Column(length = 200)
     private String instagram;
 
+    @Column(length = 500)
+    private String profileImagePath;
+
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
@@ -65,6 +68,7 @@ public class UserProfile {
             String residence,
             String intro,
             String instagram,
+            String profileImagePath,
             LocalDateTime updatedAt
     ) {
         this.user = user;
@@ -76,6 +80,7 @@ public class UserProfile {
         this.residence = residence;
         this.intro = intro;
         this.instagram = instagram;
+        this.profileImagePath = profileImagePath;
         this.updatedAt = updatedAt;
     }
 
@@ -134,6 +139,12 @@ public class UserProfile {
         this.residence = null;
         this.intro = null;
         this.instagram = null;
+        this.profileImagePath = null;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void updateProfileImagePath(String profileImagePath) {
+        this.profileImagePath = profileImagePath;
         this.updatedAt = LocalDateTime.now();
     }
 }
