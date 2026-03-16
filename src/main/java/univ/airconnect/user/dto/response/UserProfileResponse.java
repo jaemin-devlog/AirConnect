@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.domain.MilitaryStatus;
 
 import java.time.LocalDateTime;
 
@@ -13,28 +14,19 @@ import java.time.LocalDateTime;
 public class UserProfileResponse {
 
     private Long userId;
-    private String nickname;
-    private String gender;
-    private String department;
-    private Integer birthYear;
     private Integer height;
     private String mbti;
     private String smoking;
-    private String military;
+    private MilitaryStatus military;
     private String religion;
     private String residence;
     private String intro;
-    private String contactStyle;
-    private String profileImageKey;
+    private String instagram;
     private LocalDateTime updatedAt;
 
     public static UserProfileResponse from(UserProfile userProfile) {
         return UserProfileResponse.builder()
                 .userId(userProfile.getUserId())
-                .nickname(userProfile.getNickname())
-                .gender(userProfile.getGender())
-                .department(userProfile.getDepartment())
-                .birthYear(userProfile.getBirthYear())
                 .height(userProfile.getHeight())
                 .mbti(userProfile.getMbti())
                 .smoking(userProfile.getSmoking())
@@ -42,8 +34,7 @@ public class UserProfileResponse {
                 .religion(userProfile.getReligion())
                 .residence(userProfile.getResidence())
                 .intro(userProfile.getIntro())
-                .contactStyle(userProfile.getContactStyle())
-                .profileImageKey(userProfile.getProfileImageKey())
+                .instagram(userProfile.getInstagram())
                 .updatedAt(userProfile.getUpdatedAt())
                 .build();
     }
