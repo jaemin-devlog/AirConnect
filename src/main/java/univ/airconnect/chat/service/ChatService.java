@@ -221,7 +221,7 @@ public class ChatService {
         updateLastRead(request.getRoomId(), userId, chatMessage.getId());
 
         String profileImage = (user.getUserProfile() != null)
-                ? user.getUserProfile().getProfileImageKey()
+                ? user.getUserProfile().getProfileImagePath()
                 : null;
 
         int unreadCount = getUnreadCount(request.getRoomId(), chatMessage.getId());
@@ -260,7 +260,7 @@ public class ChatService {
         chatMessageRepository.save(exitMessage);
 
         String profileImage = (user.getUserProfile() != null)
-                ? user.getUserProfile().getProfileImageKey()
+                ? user.getUserProfile().getProfileImagePath()
                 : null;
 
         int unreadCount = getUnreadCount(roomId, exitMessage.getId());
@@ -331,13 +331,14 @@ public class ChatService {
         if (messages.isEmpty()) {
             return Collections.emptyList();
         }
-// 1. 발신자(User) ID 목록 추출 및 일괄 조회 (N+1 방지)
-Set<Long> senderIds = messages.stream()
-        .map(ChatMessage::getSenderId)
-        .collect(Collectors.toSet());
 
-Map<Long, User> userMap = userRepository.findAllByIdWithProfile(senderIds).stream()
-        .collect(Collectors.toMap(User::getId, user -> user));
+        // 1. 발신자(User) ID 목록 추출 및 일괄 조회 (N+1 방지)
+        Set<Long> senderIds = messages.stream()
+                .map(ChatMessage::getSenderId)
+                .collect(Collectors.toSet());
+
+        Map<Long, User> userMap = userRepository.findAllByIdWithProfile(senderIds).stream()
+                .collect(Collectors.toMap(User::getId, user -> user));
 
         List<ChatRoomMember> members = chatRoomMemberRepository.findByChatRoomId(roomId);
 
@@ -345,7 +346,7 @@ Map<Long, User> userMap = userRepository.findAllByIdWithProfile(senderIds).strea
                 .map(msg -> {
                     User sender = userMap.get(msg.getSenderId());
                     String profileImage = (sender != null && sender.getUserProfile() != null)
-                            ? sender.getUserProfile().getProfileImageKey()
+                            ? sender.getUserProfile().getProfileImagePath()
                             : null;
                     int unreadCount = getUnreadCount(msg.getId(), members);
                     return ChatMessageResponse.from(msg, profileImage, unreadCount);
