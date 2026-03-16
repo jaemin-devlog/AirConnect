@@ -29,7 +29,14 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // Email
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+
+    // WebSocket (채팅)
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    // Security
     implementation 'org.springframework.boot:spring-boot-starter-security'
 
     // Validation
@@ -46,7 +53,7 @@ dependencies {
     runtimeOnly 'com.mysql:mysql-connector-j'
     runtimeOnly 'org.postgresql:postgresql'
 
-    // JWT (0.11.5 버전으로 통일하여 기존 JwtProvider 코드와 호환성 유지)
+    // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
