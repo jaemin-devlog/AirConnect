@@ -23,14 +23,13 @@ public class UserProfileResponse {
     private String intro;
     private String instagram;
     private String profileImagePath;
-    private String profileImageUrl;
     private LocalDateTime updatedAt;
 
     public static UserProfileResponse from(UserProfile userProfile, String imageUrlBase) {
         // 프로필 이미지 URL 생성 (파일명이 있을 경우만)
-        String profileImageUrl = null;
+        String profileImagePath = null;
         if (userProfile.getProfileImagePath() != null && !userProfile.getProfileImagePath().isEmpty()) {
-            profileImageUrl = imageUrlBase + "/" + userProfile.getProfileImagePath();
+            profileImagePath = imageUrlBase + "/" + userProfile.getProfileImagePath();
         }
 
         return UserProfileResponse.builder()
@@ -43,8 +42,7 @@ public class UserProfileResponse {
                 .residence(userProfile.getResidence())
                 .intro(userProfile.getIntro())
                 .instagram(userProfile.getInstagram())
-                .profileImagePath(userProfile.getProfileImagePath())
-                .profileImageUrl(profileImageUrl)
+                .profileImagePath(profileImagePath)
                 .updatedAt(userProfile.getUpdatedAt())
                 .build();
     }
