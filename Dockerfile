@@ -15,4 +15,4 @@ RUN find /app -name "*plain.jar" -delete && \
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
