@@ -10,6 +10,11 @@ spring:
       max-file-size: 10MB
       max-request-size: 10MB
 
+  web:
+    resources:
+      # 정적 리소스 경로를 명시적으로 제한하여 /api/** 경로가 정적 리소스로 처리되지 않도록 함
+      static-locations: classpath:/static/,classpath:/public/,classpath:/resources/,classpath:/templates/
+
   jackson:
     default-property-inclusion: non_null
     serialization:
