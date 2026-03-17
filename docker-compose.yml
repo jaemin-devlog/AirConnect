@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # 1. Spring Boot 애플리케이션
+  airconnect-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: airconnect-app
+    ports:
+      - "${PORT}:${PORT}"
+    environment:
+      # 서버 포트 및 프로필
+      - SERVER_PORT=${PORT}
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
+
+      # DB 설정 (제공해주신 변수 사용)
+      - SPRING_DATASOURCE_URL=jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      
+      # Redis 설정 (URL 형식 처리)
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      
+      # JWT 및 Apple/Bundle 설정
+      - JWT_SECRET=${JWT_SECRET}
+      - APPLE_TEAM_ID=${TEAM_ID}
+      - APPLE_KEY_ID=${KEY_ID}
+      - APPLE_BUNDLE_ID=${BUNDLE_ID}
+      - APPLE_KEY_PATH=${KEY_PATH}
+      
+      # 이미지 및 경로 설정
+      - PROFILE_IMAGE_URL_BASE=${PROFILE_IMAGE_URL_BASE}
+      - PROFILE_IMAGE_PATH=${APP_UPLOAD_PROFILE_IMAGE_DIR}
+    volumes:
+      - ./profile-images:${APP_UPLOAD_PROFILE_IMAGE_DIR}
+      - ./logs:/app/logs
+      # Apple Key 파일이 있는 경우 볼륨 마운트 필요 (예: ./keys:/app/keys)
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - airconnect-network
+    restart: always
+
+  # 2. MySQL 데이터베이스
+  mysql:
+    image: mysql:8.0
+    container_name: airconnect-mysql
+    ports:
+      - "${DB_PORT}:3306"
+    environment:
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
+      - TZ=Asia/Seoul
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    networks:
+      - airconnect-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # 3. Redis 캐시
+  redis:
+    image: redis:7.2-alpine
+    container_name: airconnect-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - ./redis-data:/data
+    networks:
+      - airconnect-network
+    restart: always
+
+networks:
+  airconnect-network:
+    driver: bridge
