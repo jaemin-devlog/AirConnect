@@ -22,7 +22,8 @@ services:
       # Redis 설정 (URL 형식 처리)
       - SPRING_DATA_REDIS_HOST=redis
       - SPRING_DATA_REDIS_PORT=6379
-      
+      - SPRING_DATA_REDIS_URL=redis://redis:6379
+      -
       # JWT 및 Apple/Bundle 설정
       - JWT_SECRET=${JWT_SECRET}
       - APPLE_TEAM_ID=${TEAM_ID}
