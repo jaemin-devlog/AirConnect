@@ -18,9 +18,8 @@ public class ChatMessageResponse {
     private String message;
     private MessageType type;
     private LocalDateTime createdAt;
-    private int unreadCount; // 읽지 않은 사람 수
 
-    public static ChatMessageResponse from(ChatMessage entity, String profileImage, int unreadCount) {
+    public static ChatMessageResponse from(ChatMessage entity, String profileImage) {
         return ChatMessageResponse.builder()
                 .id(entity.getId())
                 .roomId(entity.getRoomId())
@@ -30,7 +29,6 @@ public class ChatMessageResponse {
                 .message(entity.getMessage())
                 .type(entity.getType())
                 .createdAt(entity.getCreatedAt())
-                .unreadCount(unreadCount)
                 .build();
     }
 }

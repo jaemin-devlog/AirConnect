@@ -182,23 +182,6 @@ public class ChatService {
     }
 
     /**
-     * 특정 메시지의 안읽은 사람 수 계산 (최적화용)
-     */
-    private int getUnreadCount(Long messageId, List<ChatRoomMember> members) {
-        return (int) members.stream()
-                .filter(m -> m.getLastReadMessageId() == null || m.getLastReadMessageId() < messageId)
-                .count();
-    }
-
-    /**
-     * 특정 메시지의 안읽은 사람 수 계산 (단일 조회용)
-     */
-    public int getUnreadCount(Long roomId, Long messageId) {
-        List<ChatRoomMember> members = chatRoomMemberRepository.findByChatRoomId(roomId);
-        return getUnreadCount(messageId, members);
-    }
-
-    /**
      * 메시지 전송 및 저장
      */
     @Transactional
@@ -224,8 +207,7 @@ public class ChatService {
                 ? user.getUserProfile().getProfileImagePath()
                 : null;
 
-        int unreadCount = getUnreadCount(request.getRoomId(), chatMessage.getId());
-        ChatMessageResponse response = ChatMessageResponse.from(chatMessage, profileImage, unreadCount);
+        ChatMessageResponse response = ChatMessageResponse.from(chatMessage, profileImage);
 
         try {
             String payload = objectMapper.writeValueAsString(response);
@@ -263,8 +245,7 @@ public class ChatService {
                 ? user.getUserProfile().getProfileImagePath()
                 : null;
 
-        int unreadCount = getUnreadCount(roomId, exitMessage.getId());
-        ChatMessageResponse response = ChatMessageResponse.from(exitMessage, profileImage, unreadCount);
+        ChatMessageResponse response = ChatMessageResponse.from(exitMessage, profileImage);
 
         try {
             String payload = objectMapper.writeValueAsString(response);
@@ -340,16 +321,13 @@ public class ChatService {
         Map<Long, User> userMap = userRepository.findAllByIdWithProfile(senderIds).stream()
                 .collect(Collectors.toMap(User::getId, user -> user));
 
-        List<ChatRoomMember> members = chatRoomMemberRepository.findByChatRoomId(roomId);
-
         List<ChatMessageResponse> response = messages.stream()
                 .map(msg -> {
                     User sender = userMap.get(msg.getSenderId());
                     String profileImage = (sender != null && sender.getUserProfile() != null)
                             ? sender.getUserProfile().getProfileImagePath()
                             : null;
-                    int unreadCount = getUnreadCount(msg.getId(), members);
-                    return ChatMessageResponse.from(msg, profileImage, unreadCount);
+                    return ChatMessageResponse.from(msg, profileImage);
                 })
                 .collect(Collectors.toList());
 
