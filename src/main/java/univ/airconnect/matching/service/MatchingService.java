@@ -25,6 +25,8 @@ import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.dto.response.UserMeResponse;
+import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -79,6 +81,18 @@ public class MatchingService {
         matchingQueueEntryRepository.findByUserIdAndActiveTrue(userId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.MATCHING_NOT_STARTED));
 
+        // 티켓 2개 소비
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
+        
+        if (user.getTickets() < 2) {
+            log.warn("⚠️ 티켓 부족: userId={}, 현재 티켓={}", userId, user.getTickets());
+            throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
+        }
+
+        user.consumeTickets(2);
+        log.info("🎫 매칭 티켓 사용: userId={}, 사용한 티켓=2, 남은 티켓={}", userId, user.getTickets());
+
         List<MatchingQueueEntry> available = matchingQueueEntryRepository.findAvailableCandidates(
                 userId,
                 requesterGender,
@@ -99,25 +113,50 @@ public class MatchingService {
         }
 
         if (selectedIds.isEmpty()) {
-            return MatchingRecommendationResponse.builder()
-                    .count(0)
-                    .candidates(Collections.emptyList())
-                    .build();
+            log.info("🔄 매칭 사이클 리셋: userId={}, 기존 노출 이력 삭제 후 재추천", userId);
+            
+            // 노출 이력을 리셋해 사이클 재시작
+            matchingExposureRepository.deleteByUserId(userId);
+
+            // 노출 이력 삭제 후 다시 조회
+            available = matchingQueueEntryRepository.findAvailableCandidates(
+                    userId,
+                    requesterGender,
+                    PageRequest.of(0, LOOKUP_BATCH_SIZE)
+            );
+
+            for (MatchingQueueEntry queueEntry : available) {
+                Long candidateId = queueEntry.getUserId();
+                matchingExposureRepository.save(MatchingExposure.create(userId, candidateId));
+                selectedIds.add(candidateId);
+                if (selectedIds.size() == RECOMMEND_LIMIT) {
+                    break;
+                }
+            }
+
+            if (selectedIds.isEmpty()) {
+                log.warn("⚠️ 추천 대상 부족: userId={}, 충분한 후보가 없습니다", userId);
+                return MatchingRecommendationResponse.builder()
+                        .count(0)
+                        .candidates(Collections.emptyList())
+                        .build();
+            }
         }
 
         Map<Long, User> userMap = userRepository.findAllByIdWithProfile(selectedIds)
                 .stream()
-                .collect(HashMap::new, (map, user) -> map.put(user.getId(), user), HashMap::putAll);
+                .collect(HashMap::new, (map, candidateUser) -> map.put(candidateUser.getId(), candidateUser), HashMap::putAll);
 
-        List<MatchingCandidateResponse> candidates = selectedIds.stream()
+        List<UserMeResponse> candidates = selectedIds.stream()
                 .map(userMap::get)
                 .filter(Objects::nonNull)
-                .map(this::toCandidateResponse)
+                .map(this::toUserMeResponse)
                 .toList();
 
         return MatchingRecommendationResponse.builder()
                 .count(candidates.size())
                 .candidates(candidates)
+                .userTicketsRemaining(user.getTickets())
                 .build();
     }
 
@@ -154,19 +193,27 @@ public class MatchingService {
         return new MatchingConnectResponse(connection.getChatRoomId(), targetUserId, false);
     }
 
-    private MatchingCandidateResponse toCandidateResponse(User user) {
+    private UserMeResponse toUserMeResponse(User user) {
         UserProfile profile = user.getUserProfile();
+        
+        UserProfileResponse profileResponse = null;
+        if (profile != null) {
+            profileResponse = UserProfileResponse.from(profile, imageUrlBase);
+        }
 
-        return MatchingCandidateResponse.builder()
+        return UserMeResponse.builder()
                 .userId(user.getId())
-                .nickname(user.getNickname())
+                .provider(user.getProvider())
+                .socialId(user.getSocialId())
+                .email(user.getEmail())
+                .name(user.getName())
                 .deptName(user.getDeptName())
+                .nickname(user.getNickname())
                 .studentNum(user.getStudentNum())
-                .intro(profile != null ? profile.getIntro() : null)
-                .mbti(profile != null ? profile.getMbti() : null)
-                .residence(profile != null ? profile.getResidence() : null)
-                .profileImagePath(profile != null ? toFullImageUrl(profile.getProfileImagePath()) : null)
-                .profileUpdatedAt(profile != null ? profile.getUpdatedAt() : null)
+                .status(user.getStatus())
+                .onboardingStatus(user.getOnboardingStatus())
+                .profileExists(profile != null)
+                .profile(profileResponse)
                 .build();
     }
 

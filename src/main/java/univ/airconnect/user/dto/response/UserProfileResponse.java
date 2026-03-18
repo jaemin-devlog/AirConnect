@@ -1,5 +1,6 @@
 package univ.airconnect.user.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -14,17 +15,40 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class UserProfileResponse {
 
+    @JsonProperty("userId")
     private Long userId;
+    
+    @JsonProperty("height")
     private Integer height;
+    
+    @JsonProperty("mbti")
     private String mbti;
+    
+    @JsonProperty("smoking")
     private String smoking;
+    
+    @JsonProperty("gender")
     private Gender gender;
+    
+    @JsonProperty("military")
     private MilitaryStatus military;
+    
+    @JsonProperty("religion")
     private String religion;
+    
+    @JsonProperty("residence")
     private String residence;
+    
+    @JsonProperty("intro")
     private String intro;
+    
+    @JsonProperty("instagram")
     private String instagram;
+    
+    @JsonProperty("profileImagePath")
     private String profileImagePath;
+    
+    @JsonProperty("updatedAt")
     private LocalDateTime updatedAt;
 
     public static UserProfileResponse from(UserProfile userProfile, String imageUrlBase) {
@@ -50,6 +74,4 @@ public class UserProfileResponse {
                 .build();
     }
 }
-
-
 

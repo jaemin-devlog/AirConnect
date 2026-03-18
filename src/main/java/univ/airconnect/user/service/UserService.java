@@ -9,6 +9,7 @@ import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.matching.domain.entity.MatchingQueueEntry;
 import univ.airconnect.matching.repository.MatchingQueueEntryRepository;
+import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
@@ -20,6 +21,7 @@ import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
+import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -31,6 +33,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
+    private final UserMilestoneRepository userMilestoneRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final MatchingQueueEntryRepository matchingQueueEntryRepository;
 
@@ -121,6 +124,14 @@ public class UserService {
                 })
                 .orElse(null);
 
+        // 마일리스톤 정보 조회
+        boolean profileImageUploaded = userMilestoneRepository.existsByUserIdAndMilestoneType(
+                userId, MilestoneType.PROFILE_IMAGE_UPLOADED
+        );
+        boolean emailVerified = userMilestoneRepository.existsByUserIdAndMilestoneType(
+                userId, MilestoneType.EMAIL_VERIFIED
+        );
+
         return UserMeResponse.builder()
                 .userId(user.getId())
                 .provider(user.getProvider())
@@ -133,6 +144,9 @@ public class UserService {
                 .status(user.getStatus())
                 .onboardingStatus(user.getOnboardingStatus())
                 .profileExists(profile != null)
+                .profileImageUploaded(profileImageUploaded)
+                .emailVerified(emailVerified)
+                .tickets(user.getTickets())
                 .profile(profile)
                 .build();
     }
@@ -230,13 +244,8 @@ public class UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
 
-        if (user.getStatus() == UserStatus.DELETED) {
-            log.info("ℹ️ 이미 탈퇴한 사용자: userId={}", userId);
-            purgeRefreshTokens(userId);
-            return;
-        }
-
-        user.markDeleted();
+        // 테스트 환경: 탈퇴 후 재가입 가능하도록 ACTIVE 유지하되, 기본 정보만 리셋
+        user.resetOnboarding();
 
         userProfileRepository.findByUserId(userId)
                 .ifPresent(profile -> {
@@ -245,7 +254,7 @@ public class UserService {
                 });
 
         purgeRefreshTokens(userId);
-        log.info("✅ 회원 탈퇴 완료: userId={}", userId);
+        log.info("✅ 회원 탈퇴 완료 (테스트 환경 - 재가입 가능): userId={}", userId);
     }
 
     private void purgeRefreshTokens(Long userId) {
