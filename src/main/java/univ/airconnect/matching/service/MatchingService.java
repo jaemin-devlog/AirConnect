@@ -99,10 +99,34 @@ public class MatchingService {
         }
 
         if (selectedIds.isEmpty()) {
-            return MatchingRecommendationResponse.builder()
-                    .count(0)
-                    .candidates(Collections.emptyList())
-                    .build();
+            log.info("🔄 매칭 사이클 리셋: userId={}, 기존 노출 이력 삭제 후 재추천", userId);
+            
+            // 노출 이력을 리셋해 사이클 재시작
+            matchingExposureRepository.deleteByUserId(userId);
+
+            // 노출 이력 삭제 후 다시 조회
+            available = matchingQueueEntryRepository.findAvailableCandidates(
+                    userId,
+                    requesterGender,
+                    PageRequest.of(0, LOOKUP_BATCH_SIZE)
+            );
+
+            for (MatchingQueueEntry queueEntry : available) {
+                Long candidateId = queueEntry.getUserId();
+                matchingExposureRepository.save(MatchingExposure.create(userId, candidateId));
+                selectedIds.add(candidateId);
+                if (selectedIds.size() == RECOMMEND_LIMIT) {
+                    break;
+                }
+            }
+
+            if (selectedIds.isEmpty()) {
+                log.warn("⚠️ 추천 대상 부족: userId={}, 충분한 후보가 없습니다", userId);
+                return MatchingRecommendationResponse.builder()
+                        .count(0)
+                        .candidates(Collections.emptyList())
+                        .build();
+            }
         }
 
         Map<Long, User> userMap = userRepository.findAllByIdWithProfile(selectedIds)
