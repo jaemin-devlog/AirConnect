@@ -9,21 +9,29 @@ services:
     ports:
       - "${PORT}:${PORT}"
     environment:
-      - "SERVER_PORT=${PORT}"
-      - "SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}"
-      - "SPRING_DATASOURCE_URL=jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
-      - "SPRING_DATASOURCE_USERNAME=${DB_USERNAME}"
-      - "SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}"
-      - "SPRING_DATA_REDIS_HOST=redis"
-      - "SPRING_DATA_REDIS_PORT=6379"
-      - "SPRING_DATA_REDIS_URL=redis://redis:6379"
-      - "JWT_SECRET=${JWT_SECRET}"
-      - "APPLE_TEAM_ID=${TEAM_ID}"
-      - "APPLE_KEY_ID=${KEY_ID}"
-      - "APPLE_BUNDLE_ID=${BUNDLE_ID}"
-      - "APPLE_KEY_PATH=${KEY_PATH}"
-      - "PROFILE_IMAGE_URL_BASE=${PROFILE_IMAGE_URL_BASE}"
-      - "PROFILE_IMAGE_PATH=${APP_UPLOAD_PROFILE_IMAGE_DIR}"
+      PORT: ${PORT}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      REDIS_URL: redis://redis:6379
+
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      TEAM_ID: ${TEAM_ID}
+      KEY_ID: ${KEY_ID}
+      BUNDLE_ID: ${BUNDLE_ID}
+      KEY_PATH: ${KEY_PATH}
+
+      PROFILE_IMAGE_URL_BASE: ${PROFILE_IMAGE_URL_BASE}
+      PROFILE_IMAGE_DIR: ${APP_UPLOAD_PROFILE_IMAGE_DIR}
     volumes:
       - "./profile-images:${APP_UPLOAD_PROFILE_IMAGE_DIR}"
       - "./logs:/app/logs"
@@ -43,9 +51,9 @@ services:
     ports:
       - "${DB_PORT}:3306"
     environment:
-      - "MYSQL_DATABASE=${DB_NAME}"
-      - "MYSQL_ROOT_PASSWORD=${DB_PASSWORD}"
-      - "TZ=Asia/Seoul"
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Seoul
     volumes:
       - "./mysql-data:/var/lib/mysql"
     networks:
