@@ -1,0 +1,36 @@
+package univ.airconnect.matching.exception;
+
+import org.springframework.http.HttpStatus;
+
+public enum MatchingErrorCode {
+
+    MATCHING_NOT_STARTED(HttpStatus.BAD_REQUEST, "MATCHING_NOT_STARTED", "Matching is not started"),
+    PROFILE_REQUIRED(HttpStatus.BAD_REQUEST, "PROFILE_REQUIRED", "Profile is required to use matching"),
+    PROFILE_GENDER_REQUIRED(HttpStatus.BAD_REQUEST, "PROFILE_GENDER_REQUIRED", "Profile gender is required to use matching"),
+    INVALID_TARGET(HttpStatus.BAD_REQUEST, "INVALID_TARGET", "Invalid target user"),
+    CANDIDATE_NOT_EXPOSED(HttpStatus.BAD_REQUEST, "CANDIDATE_NOT_EXPOSED", "Target user was not exposed as a candidate"),
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found");
+
+    private final HttpStatus httpStatus;
+    private final String code;
+    private final String message;
+
+    MatchingErrorCode(HttpStatus httpStatus, String code, String message) {
+        this.httpStatus = httpStatus;
+        this.code = code;
+        this.message = message;
+    }
+
+    public HttpStatus getHttpStatus() {
+        return httpStatus;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+}
+

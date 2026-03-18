@@ -10,6 +10,7 @@ import univ.airconnect.auth.dto.request.LogoutRequest;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TestTokenRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
+import univ.airconnect.auth.dto.response.LoginResponse;
 import univ.airconnect.auth.dto.response.TokenPairResponse;
 import univ.airconnect.auth.service.AuthService;
 import univ.airconnect.global.security.resolver.CurrentUserId;
@@ -26,9 +27,9 @@ public class AuthController {
     private String activeProfile;
 
     @PostMapping("/social/login")
-    public ResponseEntity<TokenPairResponse> socialLogin(@RequestBody SocialLoginRequest request) {
+    public ResponseEntity<LoginResponse> socialLogin(@RequestBody SocialLoginRequest request) {
         log.info("📲 소셜 로그인 요청: {}", request.getProvider());
-        TokenPairResponse response = authService.socialLogin(request);
+        LoginResponse response = authService.socialLogin(request);
         log.info("✅ 로그인 성공");
         return ResponseEntity.ok(response);
     }
@@ -55,7 +56,7 @@ public class AuthController {
      * 프로덕션 환경에서는 이 엔드포인트를 사용할 수 없습니다.
      */
     @PostMapping("/test/token")
-    public ResponseEntity<TokenPairResponse> createTestToken(@RequestBody TestTokenRequest request) {
+    public ResponseEntity<LoginResponse> createTestToken(@RequestBody TestTokenRequest request) {
         // 개발 환경에서만 허용
         if (!isDevEnvironment()) {
             log.error("❌ 테스트 토큰 생성 실패: 프로덕션 환경에서는 사용 불가");
@@ -63,7 +64,7 @@ public class AuthController {
         }
 
         log.warn("🧪 테스트 토큰 생성 요청: deviceId={}", request.getDeviceId());
-        TokenPairResponse response = authService.createTestToken(request.getDeviceId());
+        LoginResponse response = authService.createTestToken(request.getDeviceId());
         log.warn("✅ 테스트 토큰 생성 완료");
         return ResponseEntity.ok(response);
     }

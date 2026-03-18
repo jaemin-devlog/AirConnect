@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
+import univ.airconnect.matching.domain.entity.MatchingQueueEntry;
+import univ.airconnect.matching.repository.MatchingQueueEntryRepository;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
@@ -30,6 +32,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final MatchingQueueEntryRepository matchingQueueEntryRepository;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -60,13 +63,45 @@ public class UserService {
                 request.getDeptName()
         );
 
-        log.info("✅ 회원가입 완료: userId={}, name={}", userId, request.getName());
+        userProfileRepository.findByUserId(userId)
+                .ifPresentOrElse(
+                        profile -> profile.update(
+                                request.getHeight(),
+                                request.getMbti(),
+                                request.getSmoking(),
+                                request.getGender(),
+                                request.getMilitary(),
+                                request.getReligion(),
+                                request.getResidence(),
+                                request.getIntro(),
+                                request.getInstagram()
+                        ),
+                        () -> userProfileRepository.save(UserProfile.create(
+                                user,
+                                request.getHeight(),
+                                request.getMbti(),
+                                request.getSmoking(),
+                                request.getGender(),
+                                request.getMilitary(),
+                                request.getReligion(),
+                                request.getResidence(),
+                                request.getIntro(),
+                                request.getInstagram()
+                        ))
+                );
+
+        log.info("✅ 회원가입/프로필 생성 완료: userId={}, name={}", userId, request.getName());
+
+        boolean matchingQueueActive = tryStartMatchingQueueAfterSignUp(userId);
 
         return new SignUpResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getName(),
-                user.getStatus().toString()
+                user.getStatus().toString(),
+                user.getOnboardingStatus().toString(),
+                true,
+                matchingQueueActive
         );
     }
 
@@ -124,6 +159,7 @@ public class UserService {
                 request.getHeight(),
                 request.getMbti(),
                 request.getSmoking(),
+                request.getGender(),
                 request.getMilitary(),
                 request.getReligion(),
                 request.getResidence(),
@@ -154,6 +190,7 @@ public class UserService {
                 request.getHeight(),
                 request.getMbti(),
                 request.getSmoking(),
+                request.getGender(),
                 request.getMilitary(),
                 request.getReligion(),
                 request.getResidence(),
@@ -228,6 +265,21 @@ public class UserService {
         }
         if (user.getStatus() == UserStatus.DELETED) {
             throw new UserException(UserErrorCode.USER_DELETED);
+        }
+    }
+
+    private boolean tryStartMatchingQueueAfterSignUp(Long userId) {
+        try {
+            matchingQueueEntryRepository.findByUserId(userId)
+                    .ifPresentOrElse(
+                            MatchingQueueEntry::activateAndRequeue,
+                            () -> matchingQueueEntryRepository.save(MatchingQueueEntry.create(userId))
+                    );
+            log.info("✅ 회원가입 직후 매칭 큐 자동 진입 완료: userId={}", userId);
+            return true;
+        } catch (Exception e) {
+            log.error("⚠️ 회원가입 직후 매칭 큐 자동 진입 실패(회원가입 유지): userId={}", userId, e);
+            return false;
         }
     }
 }

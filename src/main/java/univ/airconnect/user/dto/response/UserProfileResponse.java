@@ -3,6 +3,7 @@ package univ.airconnect.user.dto.response;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.domain.MilitaryStatus;
 
@@ -17,6 +18,7 @@ public class UserProfileResponse {
     private Integer height;
     private String mbti;
     private String smoking;
+    private Gender gender;
     private MilitaryStatus military;
     private String religion;
     private String residence;
@@ -37,6 +39,7 @@ public class UserProfileResponse {
                 .height(userProfile.getHeight())
                 .mbti(userProfile.getMbti())
                 .smoking(userProfile.getSmoking())
+                .gender(userProfile.getGender())
                 .military(userProfile.getMilitary())
                 .religion(userProfile.getReligion())
                 .residence(userProfile.getResidence())

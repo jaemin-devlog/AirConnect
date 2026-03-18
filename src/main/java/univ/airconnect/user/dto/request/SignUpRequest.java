@@ -4,6 +4,8 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import univ.airconnect.user.domain.Gender;
+import univ.airconnect.user.domain.MilitaryStatus;
 
 @Getter
 @NoArgsConstructor
@@ -20,5 +22,16 @@ public class SignUpRequest {
     private String nickname;         // 닉네임
     private Integer studentNum;      // 전화번호
     private String deptName;        // 학과명
+
+    // 프로필 정보
+    private Integer height;
+    private String mbti;
+    private String smoking;
+    private Gender gender;
+    private MilitaryStatus military;
+    private String religion;
+    private String residence;
+    private String intro;
+    private String instagram;
 }
 
