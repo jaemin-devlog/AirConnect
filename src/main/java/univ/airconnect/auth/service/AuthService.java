@@ -9,6 +9,7 @@ import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
+import univ.airconnect.auth.dto.response.LoginResponse;
 import univ.airconnect.auth.dto.response.TokenPairResponse;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
@@ -17,9 +18,13 @@ import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
 import univ.airconnect.global.security.jwt.JwtProvider;
+import univ.airconnect.matching.exception.MatchingException;
+import univ.airconnect.matching.service.MatchingService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.repository.UserRepository;
+import univ.airconnect.user.service.UserService;
 
 @Slf4j
 @Service
@@ -32,9 +37,11 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserService userService;
+    private final MatchingService matchingService;
 
     @Transactional
-    public TokenPairResponse socialLogin(SocialLoginRequest request) {
+    public LoginResponse socialLogin(SocialLoginRequest request) {
         log.info("🔐 소셜 로그인 시작: provider={}", request.getProvider());
 
         validateSocialLoginRequest(request);
@@ -74,7 +81,17 @@ public class AuthService {
 
         log.info("💾 RefreshToken 저장 완료: userId={}", user.getId());
 
-        return new TokenPairResponse(accessToken, refreshToken);
+        tryStartMatchingQueue(user.getId());
+
+        // 사용자 정보 조회 (프로필 포함)
+        UserMeResponse userInfo = userService.getMe(user.getId());
+        log.info("✅ 사용자 정보 조회 완료: userId={}", user.getId());
+
+        return LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .user(userInfo)
+                .build();
     }
 
     @Transactional
@@ -151,7 +168,7 @@ public class AuthService {
      * 프로덕션 환경에서는 이 메서드를 호출하지 않습니다.
      */
     @Transactional
-    public TokenPairResponse createTestToken(String deviceId) {
+    public LoginResponse createTestToken(String deviceId) {
         log.warn("🧪 테스트 토큰 생성 (개발 환경에서만 사용)");
 
         if (deviceId == null || deviceId.isBlank()) {
@@ -181,7 +198,17 @@ public class AuthService {
 
         log.info("💾 테스트 RefreshToken 저장 완료: userId={}", testUser.getId());
 
-        return new TokenPairResponse(accessToken, refreshToken);
+        tryStartMatchingQueue(testUser.getId());
+
+        // 사용자 정보 조회 (프로필 포함)
+        UserMeResponse userInfo = userService.getMe(testUser.getId());
+        log.info("✅ 테스트 사용자 정보 조회 완료: userId={}", testUser.getId());
+
+        return LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .user(userInfo)
+                .build();
     }
 
     private void validateSocialLoginRequest(SocialLoginRequest request) {
@@ -222,5 +249,16 @@ public class AuthService {
 
     private String buildRefreshTokenKey(Long userId, String deviceId) {
         return userId + ":" + deviceId;
+    }
+
+    private void tryStartMatchingQueue(Long userId) {
+        try {
+            matchingService.start(userId);
+            log.info("✅ 로그인 직후 매칭 큐 자동 진입 완료: userId={}", userId);
+        } catch (MatchingException e) {
+            log.info("ℹ️ 로그인 직후 매칭 큐 자동 진입 스킵: userId={}, reason={}", userId, e.getMessage());
+        } catch (Exception e) {
+            log.error("⚠️ 로그인 직후 매칭 큐 자동 진입 실패(로그인 유지): userId={}", userId, e);
+        }
     }
 }

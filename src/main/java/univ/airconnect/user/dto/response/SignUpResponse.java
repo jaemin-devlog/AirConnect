@@ -10,5 +10,8 @@ public class SignUpResponse {
     private String email;
     private String name;
     private String status;
+    private String onboardingStatus;
+    private boolean profileExists;
+    private boolean matchingQueueActive;
 }
 

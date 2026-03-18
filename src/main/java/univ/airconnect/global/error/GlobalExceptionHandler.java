@@ -2,6 +2,8 @@ package univ.airconnect.global.error;
 
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.response.ErrorBody;
+import univ.airconnect.matching.exception.MatchingErrorCode;
+import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.verification.exception.VerificationErrorCode;
 import univ.airconnect.verification.exception.VerificationException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +17,25 @@ import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MatchingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMatching(MatchingException e, HttpServletRequest request) {
+        MatchingErrorCode mec = e.getErrorCode();
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+
+        log.warn("❌ MatchingException [{}] - {}", traceId, e.getMessage());
+
+        ErrorBody body = new ErrorBody(
+                mec.getCode(),
+                e.getMessage(),
+                mec.getHttpStatus().value(),
+                traceId,
+                null
+        );
+
+        return ResponseEntity.status(mec.getHttpStatus())
+                .body(ApiResponse.fail(body, traceId));
+    }
 
     @ExceptionHandler(VerificationException.class)
     public ResponseEntity<ApiResponse<Void>> handleVerification(VerificationException e, HttpServletRequest request) {
