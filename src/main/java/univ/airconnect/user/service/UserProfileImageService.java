@@ -6,10 +6,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import univ.airconnect.user.domain.MilestoneType;
+import univ.airconnect.user.domain.entity.UserMilestone;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
+import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
+import univ.airconnect.user.repository.UserRepository;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,6 +30,8 @@ import java.util.UUID;
 public class UserProfileImageService {
 
     private final UserProfileRepository userProfileRepository;
+    private final UserRepository userRepository;
+    private final UserMilestoneRepository userMilestoneRepository;
 
     @Value("${app.upload.profile-image-dir:/tmp/airconnect/profile-images}")
     private String uploadDir;
@@ -72,6 +78,10 @@ public class UserProfileImageService {
 
             userProfile.updateProfileImagePath(fileName);
             userProfileRepository.save(userProfile);
+
+            // 마일리지 부여 (중복 부여 방지)
+            grantMilestoneIfNotAlreadyGranted(userId, MilestoneType.PROFILE_IMAGE_UPLOADED);
+
             log.info("✅ 프로필 이미지 경로 업데이트 완료: userId={}, fileName={}, imageUrl={}", userId, fileName, imageUrl);
 
             return imageUrl;
@@ -160,6 +170,33 @@ public class UserProfileImageService {
         }
         return ".jpg";
     }
-}
 
+    /**
+     * 마일리지를 부여합니다. 과거에 같은 마일리스톤이 부여된 적이 없으면 티켓 1개를 추가하고 기록합니다.
+     *
+     * @param userId 사용자 ID
+     * @param milestoneType 마일리스톤 타입
+     */
+    private void grantMilestoneIfNotAlreadyGranted(Long userId, MilestoneType milestoneType) {
+        // 이미 이 마일리스톤이 부여되었는지 확인
+        boolean alreadyGranted = userMilestoneRepository.existsByUserIdAndMilestoneType(userId, milestoneType);
+
+        if (alreadyGranted) {
+            log.info("ℹ️ 이미 지급된 마일리스톤 (중복 부여 방지): userId={}, milestoneType={}", userId, milestoneType);
+            return;
+        }
+
+        // 마일리스톤 기록 추가
+        UserMilestone milestone = UserMilestone.create(userId, milestoneType);
+        userMilestoneRepository.save(milestone);
+
+        // 사용자 티켓 1개 추가
+        var user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+        user.addTickets(1);
+
+        log.info("🎫 마일리스톤 지급 완료: userId={}, milestoneType={}, 부여 티켓=1, 총 티켓={}", 
+                userId, milestoneType, user.getTickets());
+    }
+}
 

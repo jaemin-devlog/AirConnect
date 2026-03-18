@@ -1,5 +1,8 @@
 package univ.airconnect.auth.service;
 
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -175,8 +178,8 @@ public class AuthService {
             throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
         }
 
-        // 테스트용 사용자 생성 또는 기존 사용자 사용
-        String testSocialId = "test-user-" + System.currentTimeMillis();
+        // 같은 deviceId에서는 동일 테스트 계정을 사용한다.
+        String testSocialId = "test-user-" + UUID.nameUUIDFromBytes(deviceId.trim().getBytes(StandardCharsets.UTF_8));
         User testUser = userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, testSocialId)
                 .orElseGet(() -> {
                     log.info("👤 테스트 사용자 생성: socialId={}", testSocialId);

@@ -25,6 +25,8 @@ import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.dto.response.UserMeResponse;
+import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -79,6 +81,18 @@ public class MatchingService {
         matchingQueueEntryRepository.findByUserIdAndActiveTrue(userId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.MATCHING_NOT_STARTED));
 
+        // 티켓 2개 소비
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
+        
+        if (user.getTickets() < 2) {
+            log.warn("⚠️ 티켓 부족: userId={}, 현재 티켓={}", userId, user.getTickets());
+            throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
+        }
+
+        user.consumeTickets(2);
+        log.info("🎫 매칭 티켓 사용: userId={}, 사용한 티켓=2, 남은 티켓={}", userId, user.getTickets());
+
         List<MatchingQueueEntry> available = matchingQueueEntryRepository.findAvailableCandidates(
                 userId,
                 requesterGender,
@@ -131,17 +145,18 @@ public class MatchingService {
 
         Map<Long, User> userMap = userRepository.findAllByIdWithProfile(selectedIds)
                 .stream()
-                .collect(HashMap::new, (map, user) -> map.put(user.getId(), user), HashMap::putAll);
+                .collect(HashMap::new, (map, candidateUser) -> map.put(candidateUser.getId(), candidateUser), HashMap::putAll);
 
-        List<MatchingCandidateResponse> candidates = selectedIds.stream()
+        List<UserMeResponse> candidates = selectedIds.stream()
                 .map(userMap::get)
                 .filter(Objects::nonNull)
-                .map(this::toCandidateResponse)
+                .map(this::toUserMeResponse)
                 .toList();
 
         return MatchingRecommendationResponse.builder()
                 .count(candidates.size())
                 .candidates(candidates)
+                .userTicketsRemaining(user.getTickets())
                 .build();
     }
 
@@ -178,19 +193,27 @@ public class MatchingService {
         return new MatchingConnectResponse(connection.getChatRoomId(), targetUserId, false);
     }
 
-    private MatchingCandidateResponse toCandidateResponse(User user) {
+    private UserMeResponse toUserMeResponse(User user) {
         UserProfile profile = user.getUserProfile();
+        
+        UserProfileResponse profileResponse = null;
+        if (profile != null) {
+            profileResponse = UserProfileResponse.from(profile, imageUrlBase);
+        }
 
-        return MatchingCandidateResponse.builder()
+        return UserMeResponse.builder()
                 .userId(user.getId())
-                .nickname(user.getNickname())
+                .provider(user.getProvider())
+                .socialId(user.getSocialId())
+                .email(user.getEmail())
+                .name(user.getName())
                 .deptName(user.getDeptName())
+                .nickname(user.getNickname())
                 .studentNum(user.getStudentNum())
-                .intro(profile != null ? profile.getIntro() : null)
-                .mbti(profile != null ? profile.getMbti() : null)
-                .residence(profile != null ? profile.getResidence() : null)
-                .profileImagePath(profile != null ? toFullImageUrl(profile.getProfileImagePath()) : null)
-                .profileUpdatedAt(profile != null ? profile.getUpdatedAt() : null)
+                .status(user.getStatus())
+                .onboardingStatus(user.getOnboardingStatus())
+                .profileExists(profile != null)
+                .profile(profileResponse)
                 .build();
     }
 

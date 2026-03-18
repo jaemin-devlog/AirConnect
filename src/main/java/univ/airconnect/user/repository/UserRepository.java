@@ -14,6 +14,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByProviderAndSocialId(SocialProvider provider, String socialId);
 
+    Optional<User> findByEmail(String email);
+
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.userProfile WHERE u.id IN :ids")
     List<User> findAllByIdWithProfile(@Param("ids") Collection<Long> ids);
 }

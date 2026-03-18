@@ -77,6 +77,9 @@ public class User {
     @Column(length = 500)
     private String restrictedReason;
 
+    @Column(nullable = false)
+    private Integer tickets;
+
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
     private UserProfile userProfile;
 
@@ -98,7 +101,8 @@ public class User {
             LocalDateTime suspendedUntil,
             LocalDateTime restrictedAt,
             LocalDateTime restrictedUntil,
-            String restrictedReason
+            String restrictedReason,
+            Integer tickets
     ) {
         this.id = id;
         this.provider = provider;
@@ -117,6 +121,7 @@ public class User {
         this.restrictedAt = restrictedAt;
         this.restrictedUntil = restrictedUntil;
         this.restrictedReason = restrictedReason;
+        this.tickets = tickets != null ? tickets : 100;
     }
 
     public static User create(SocialProvider provider, String socialId) {
@@ -130,6 +135,7 @@ public class User {
                 .email(email)
                 .status(UserStatus.ACTIVE)
                 .onboardingStatus(OnboardingStatus.BASIC)
+                .tickets(100)
                 .createdAt(LocalDateTime.now())
                 .build();
     }
@@ -141,6 +147,26 @@ public class User {
         this.deptName = deptName;
         this.onboardingStatus = OnboardingStatus.FULL;
         this.lastActiveAt = LocalDateTime.now();
+    }
+
+    public void resetOnboarding() {
+        this.name = null;
+        this.nickname = null;
+        this.studentNum = null;
+        this.deptName = null;
+        this.onboardingStatus = OnboardingStatus.BASIC;
+        this.lastActiveAt = null;
+    }
+
+    public void consumeTickets(int amount) {
+        if (this.tickets < amount) {
+            throw new IllegalArgumentException("티켓이 부족합니다. 현재: " + this.tickets + ", 필요: " + amount);
+        }
+        this.tickets -= amount;
+    }
+
+    public void addTickets(int amount) {
+        this.tickets += amount;
     }
 
     public void markDeleted() {
