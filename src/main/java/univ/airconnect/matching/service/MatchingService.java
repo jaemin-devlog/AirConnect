@@ -58,10 +58,32 @@ public class MatchingService {
             throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
         }
 
-        // 현재 조건 후보 중 상위 2명만 추천한다.
-        List<User> selectedUsers = userRepository.findActiveUsersWithProfileForMatching(userId).stream()
+        List<User> allCandidates = userRepository.findActiveUsersWithProfileForMatching(userId);
+
+        // 노출 이력을 사용해 새로고침 시 후보가 순환되도록 한다.
+        Set<Long> exposedCandidateIds = new HashSet<>(
+                matchingExposureRepository.findCandidateUserIdsByUserId(userId)
+        );
+
+        List<User> unseenCandidates = allCandidates.stream()
+                .filter(candidate -> !exposedCandidateIds.contains(candidate.getId()))
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+
+        Collections.shuffle(unseenCandidates);
+
+        List<User> selectedUsers = unseenCandidates.stream()
                 .limit(RECOMMENDATION_LIMIT)
                 .toList();
+
+        // 이미 모든 후보가 소진된 경우 노출 이력을 리셋하고 처음부터 다시 순환한다.
+        if (selectedUsers.isEmpty() && !allCandidates.isEmpty()) {
+            matchingExposureRepository.deleteByUserId(userId);
+            List<User> resetCandidates = new ArrayList<>(allCandidates);
+            Collections.shuffle(resetCandidates);
+            selectedUsers = resetCandidates.stream()
+                    .limit(RECOMMENDATION_LIMIT)
+                    .toList();
+        }
 
         if (selectedUsers.isEmpty()) {
             log.warn("⚠️ 추천 대상 없음: userId={}, 티켓 소진 안 함", userId);
@@ -73,8 +95,7 @@ public class MatchingService {
                     .build();
         }
 
-        // 새로고침 시 응답된 후보(최대 2명)만 연결 가능하도록 노출 이력을 재구성한다.
-        matchingExposureRepository.deleteByUserId(userId);
+        // connect 검증용으로 이번에 응답된 후보를 노출 이력에 반영한다.
         List<Long> candidateIds = selectedUsers.stream()
                 .map(User::getId)
                 .distinct()

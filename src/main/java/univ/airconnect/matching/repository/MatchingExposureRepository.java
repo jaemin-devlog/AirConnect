@@ -1,5 +1,7 @@
 package univ.airconnect.matching.repository;
 
+import java.util.List;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -18,5 +20,12 @@ public interface MatchingExposureRepository extends JpaRepository<MatchingExposu
             VALUES (:userId, :candidateUserId, NOW())
             """, nativeQuery = true)
     void insertIgnore(@Param("userId") Long userId, @Param("candidateUserId") Long candidateUserId);
+
+    @Query("""
+            SELECT me.candidateUserId
+            FROM MatchingExposure me
+            WHERE me.userId = :userId
+            """)
+    List<Long> findCandidateUserIdsByUserId(@Param("userId") Long userId);
 }
 
