@@ -23,25 +23,6 @@ public class MatchingController {
 
     private final MatchingService matchingService;
 
-    @PostMapping("/start")
-    public ResponseEntity<ApiResponse<MatchingStartResponse>> start(
-            @CurrentUserId Long userId,
-            HttpServletRequest request
-    ) {
-        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        matchingService.start(userId);
-        return ResponseEntity.ok(ApiResponse.ok(new MatchingStartResponse(true), traceId));
-    }
-
-    @PostMapping("/stop")
-    public ResponseEntity<ApiResponse<MatchingStartResponse>> stop(
-            @CurrentUserId Long userId,
-            HttpServletRequest request
-    ) {
-        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        matchingService.stop(userId);
-        return ResponseEntity.ok(ApiResponse.ok(new MatchingStartResponse(false), traceId));
-    }
 
     @GetMapping("/recommendations")
     public ResponseEntity<ApiResponse<MatchingRecommendationResponse>> recommend(

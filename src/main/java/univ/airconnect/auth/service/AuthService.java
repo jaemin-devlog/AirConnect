@@ -21,8 +21,6 @@ import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
 import univ.airconnect.global.security.jwt.JwtProvider;
-import univ.airconnect.matching.exception.MatchingException;
-import univ.airconnect.matching.service.MatchingService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.dto.response.UserMeResponse;
@@ -41,7 +39,6 @@ public class AuthService {
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
     private final UserService userService;
-    private final MatchingService matchingService;
 
     @Transactional
     public LoginResponse socialLogin(SocialLoginRequest request) {
@@ -83,8 +80,6 @@ public class AuthService {
         );
 
         log.info("💾 RefreshToken 저장 완료: userId={}", user.getId());
-
-        tryStartMatchingQueue(user.getId());
 
         // 사용자 정보 조회 (프로필 포함)
         UserMeResponse userInfo = userService.getMe(user.getId());
@@ -201,8 +196,6 @@ public class AuthService {
 
         log.info("💾 테스트 RefreshToken 저장 완료: userId={}", testUser.getId());
 
-        tryStartMatchingQueue(testUser.getId());
-
         // 사용자 정보 조회 (프로필 포함)
         UserMeResponse userInfo = userService.getMe(testUser.getId());
         log.info("✅ 테스트 사용자 정보 조회 완료: userId={}", testUser.getId());
@@ -252,16 +245,5 @@ public class AuthService {
 
     private String buildRefreshTokenKey(Long userId, String deviceId) {
         return userId + ":" + deviceId;
-    }
-
-    private void tryStartMatchingQueue(Long userId) {
-        try {
-            matchingService.start(userId);
-            log.info("✅ 로그인 직후 매칭 큐 자동 진입 완료: userId={}", userId);
-        } catch (MatchingException e) {
-            log.info("ℹ️ 로그인 직후 매칭 큐 자동 진입 스킵: userId={}, reason={}", userId, e.getMessage());
-        } catch (Exception e) {
-            log.error("⚠️ 로그인 직후 매칭 큐 자동 진입 실패(로그인 유지): userId={}", userId, e);
-        }
     }
 }
