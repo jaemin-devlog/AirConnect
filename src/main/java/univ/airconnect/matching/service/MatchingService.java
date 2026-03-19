@@ -32,6 +32,8 @@ import java.util.*;
 @Transactional(readOnly = true)
 public class MatchingService {
 
+    private static final int RECOMMENDATION_LIMIT = 2;
+
     private final MatchingQueueEntryRepository matchingQueueEntryRepository;
     private final MatchingExposureRepository matchingExposureRepository;
     private final MatchingConnectionRepository matchingConnectionRepository;
@@ -56,8 +58,10 @@ public class MatchingService {
             throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
         }
 
-        // 현재 조건에 맞는 후보 전체를 조회한다.
-        List<User> selectedUsers = userRepository.findActiveUsersWithProfileForMatching(userId);
+        // 현재 조건 후보 중 상위 2명만 추천한다.
+        List<User> selectedUsers = userRepository.findActiveUsersWithProfileForMatching(userId).stream()
+                .limit(RECOMMENDATION_LIMIT)
+                .toList();
 
         if (selectedUsers.isEmpty()) {
             log.warn("⚠️ 추천 대상 없음: userId={}, 티켓 소진 안 함", userId);
@@ -69,7 +73,7 @@ public class MatchingService {
                     .build();
         }
 
-        // 새로고침 시 최신 후보 전체가 연결 가능하도록 노출 이력을 재구성한다.
+        // 새로고침 시 응답된 후보(최대 2명)만 연결 가능하도록 노출 이력을 재구성한다.
         matchingExposureRepository.deleteByUserId(userId);
         List<Long> candidateIds = selectedUsers.stream()
                 .map(User::getId)
