@@ -278,17 +278,8 @@ public class UserService {
     }
 
     private boolean tryStartMatchingQueueAfterSignUp(Long userId) {
-        try {
-            matchingQueueEntryRepository.findByUserId(userId)
-                    .ifPresentOrElse(
-                            MatchingQueueEntry::activateAndRequeue,
-                            () -> matchingQueueEntryRepository.save(MatchingQueueEntry.create(userId))
-                    );
-            log.info("✅ 회원가입 직후 매칭 큐 자동 진입 완료: userId={}", userId);
-            return true;
-        } catch (Exception e) {
-            log.error("⚠️ 회원가입 직후 매칭 큐 자동 진입 실패(회원가입 유지): userId={}", userId, e);
-            return false;
-        }
+        // 프로필 기반 추천으로 변경됨 - 프로필이 있으면 자동으로 추천 대상
+        log.info("ℹ️ 회원가입 완료: 프로필이 생성되었으므로 자동으로 추천 대상이 됨 - userId={}", userId);
+        return true;
     }
 }

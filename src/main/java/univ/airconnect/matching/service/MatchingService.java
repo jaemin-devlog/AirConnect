@@ -50,35 +50,10 @@ public class MatchingService {
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void start(Long userId) {
-        validateActiveUser(userId);
-        requireProfileGender(userId);
-
-        matchingQueueEntryRepository.findByUserId(userId)
-                .ifPresentOrElse(
-                        MatchingQueueEntry::activateAndRequeue,
-                        () -> matchingQueueEntryRepository.save(MatchingQueueEntry.create(userId))
-                );
-
-        log.info("✅ 매칭 큐 진입/재진입 완료: userId={}", userId);
-    }
-
-    @Transactional
-    public void stop(Long userId) {
-        matchingQueueEntryRepository.findByUserIdAndActiveTrue(userId)
-                .ifPresent(MatchingQueueEntry::deactivate);
-
-        log.info("✅ 매칭 큐 비활성화 완료: userId={}", userId);
-    }
-
     @Transactional
     public MatchingRecommendationResponse recommend(Long userId) {
         validateActiveUser(userId);
         Gender requesterGender = requireProfileGender(userId);
-
-        matchingQueueEntryRepository.findByUserIdAndActiveTrue(userId)
-                .orElseThrow(() -> new MatchingException(MatchingErrorCode.MATCHING_NOT_STARTED));
 
         // 티켓 검증 (차감은 나중에)
         User user = userRepository.findById(userId)
@@ -89,77 +64,68 @@ public class MatchingService {
             throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
         }
 
-        // 원형큐: 최대 3회까지 리셋 시도
-        List<Long> selectedIds = new ArrayList<>();
+        // 원형큐: 최대 3회까지 리셋 시도 (프로필 기반)
+        List<User> selectedUsers = new ArrayList<>();
         final int MAX_ATTEMPTS = 3;
         
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-            List<MatchingQueueEntry> available = matchingQueueEntryRepository.findAvailableCandidates(
+            // 프로필이 있는 모든 활성 사용자에서 추천 대상 찾기
+            List<User> available = userRepository.findActiveUsersWithProfileForMatching(
                     userId,
-                    requesterGender,
                     PageRequest.of(0, LOOKUP_BATCH_SIZE)
             );
 
-            selectedIds.clear();
-            for (MatchingQueueEntry queueEntry : available) {
-                Long candidateId = queueEntry.getUserId();
-                if (matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, candidateId)) {
+            selectedUsers.clear();
+            for (User candidate : available) {
+                if (matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, candidate.getId())) {
                     continue;
                 }
-                matchingExposureRepository.save(MatchingExposure.create(userId, candidateId));
-                selectedIds.add(candidateId);
-                if (selectedIds.size() == RECOMMEND_LIMIT) {
+                matchingExposureRepository.save(MatchingExposure.create(userId, candidate.getId()));
+                selectedUsers.add(candidate);
+                if (selectedUsers.size() == RECOMMEND_LIMIT) {
                     break;
                 }
             }
 
             // 2명 찾음 → 성공!
-            if (selectedIds.size() >= RECOMMEND_LIMIT) {
-                log.info("✅ 추천 완료: userId={}, 시도 {}회차 성공, 추천 대상 {}명", 
-                        userId, attempt + 1, selectedIds.size());
+            if (selectedUsers.size() >= RECOMMEND_LIMIT) {
+                log.info("✅ 추천 완료: userId={}, 시도 {}회차 성공, 추천 대상 {}명",
+                        userId, attempt + 1, selectedUsers.size());
                 break;
             }
 
             // 2명 미만 → 다시 시도 (원형큐)
             if (attempt < MAX_ATTEMPTS - 1) {
                 log.info("🔄 원형큐 리셋 ({}회차): userId={}, 찾은 대상={}명, 노출 이력 삭제 후 재추천", 
-                        attempt + 1, userId, selectedIds.size());
+                        attempt + 1, userId, selectedUsers.size());
                 matchingExposureRepository.deleteByUserId(userId);
             }
         }
 
         // MAX_ATTEMPTS 후에도 2명 미만이면?
         // → 원형큐 완성: 처음부터 다시 노출 가능하도록 리셋
-        if (selectedIds.size() < RECOMMEND_LIMIT) {
-            log.info("🔄 최종 원형큐 리셋: userId={}, {}회 시도 후에도 2명 미만, 전체 노출 이력 삭제", 
+        if (selectedUsers.size() < RECOMMEND_LIMIT) {
+            log.info("🔄 최종 원형큐 리셋: userId={}, {}회 시도 후에도 2명 미만, 전체 노출 이력 삭제",
                     userId, MAX_ATTEMPTS);
             matchingExposureRepository.deleteByUserId(userId);
-            selectedIds.clear();
+            selectedUsers.clear();
 
             // 마지막 시도: 처음부터 다시
-            List<MatchingQueueEntry> available = matchingQueueEntryRepository.findAvailableCandidates(
+            List<User> available = userRepository.findActiveUsersWithProfileForMatching(
                     userId,
-                    requesterGender,
                     PageRequest.of(0, LOOKUP_BATCH_SIZE)
             );
 
-            for (MatchingQueueEntry queueEntry : available) {
-                Long candidateId = queueEntry.getUserId();
-                matchingExposureRepository.save(MatchingExposure.create(userId, candidateId));
-                selectedIds.add(candidateId);
-                if (selectedIds.size() == RECOMMEND_LIMIT) {
+            for (User candidate : available) {
+                matchingExposureRepository.save(MatchingExposure.create(userId, candidate.getId()));
+                selectedUsers.add(candidate);
+                if (selectedUsers.size() == RECOMMEND_LIMIT) {
                     break;
                 }
             }
         }
 
-        Map<Long, User> userMap = userRepository.findAllByIdWithProfile(selectedIds)
-                .stream()
-                .collect(HashMap::new, (map, candidateUser) -> map.put(candidateUser.getId(), candidateUser), HashMap::putAll);
-
-        List<UserMeResponse> candidates = selectedIds.stream()
-                .map(userMap::get)
-                .filter(Objects::nonNull)
+        List<UserMeResponse> candidates = selectedUsers.stream()
                 .map(this::toUserMeResponse)
                 .toList();
 
