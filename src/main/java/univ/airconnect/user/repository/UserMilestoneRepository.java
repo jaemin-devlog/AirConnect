@@ -11,5 +11,6 @@ public interface UserMilestoneRepository extends JpaRepository<UserMilestone, Lo
     Optional<UserMilestone> findByUserIdAndMilestoneType(Long userId, MilestoneType milestoneType);
 
     boolean existsByUserIdAndMilestoneType(Long userId, MilestoneType milestoneType);
-}
 
+    boolean existsByUserIdAndMilestoneTypeAndGrantedTrue(Long userId, MilestoneType milestoneType);
+}

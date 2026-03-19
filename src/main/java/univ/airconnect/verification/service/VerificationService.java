@@ -152,8 +152,8 @@ public class VerificationService {
             return;
         }
 
-        // 이미 이 마일리스톤이 부여되었는지 확인
-        boolean alreadyGranted = userMilestoneRepository.existsByUserIdAndMilestoneType(
+        // 이미 이 마일리스톤이 부여되었고 granted = true인지 확인
+        boolean alreadyGranted = userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(
                 user.getId(), 
                 MilestoneType.EMAIL_VERIFIED
         );

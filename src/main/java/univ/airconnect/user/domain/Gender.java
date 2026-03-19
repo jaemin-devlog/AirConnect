@@ -1,6 +1,6 @@
 package univ.airconnect.user.domain;
 
-public enum     Gender {
+public enum Gender {
     MALE,
     FEMALE
 }
