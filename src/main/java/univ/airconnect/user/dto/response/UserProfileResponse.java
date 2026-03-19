@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.MilitaryStatus;
 
 import java.time.LocalDateTime;
@@ -18,6 +19,7 @@ public class UserProfileResponse {
     private String mbti;
     private String smoking;
     private MilitaryStatus military;
+    private Gender gender;
     private String religion;
     private String residence;
     private String intro;
@@ -38,6 +40,7 @@ public class UserProfileResponse {
                 .mbti(userProfile.getMbti())
                 .smoking(userProfile.getSmoking())
                 .military(userProfile.getMilitary())
+                .gender(userProfile.getGender())
                 .religion(userProfile.getReligion())
                 .residence(userProfile.getResidence())
                 .intro(userProfile.getIntro())

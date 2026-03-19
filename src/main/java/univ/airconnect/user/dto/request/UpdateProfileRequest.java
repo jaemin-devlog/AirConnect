@@ -3,6 +3,7 @@ package univ.airconnect.user.dto.request;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.MilitaryStatus;
 
 @Getter
@@ -14,6 +15,7 @@ public class UpdateProfileRequest {
     private String mbti;
     private String smoking;
     private MilitaryStatus military;
+    private Gender gender;
     private String religion;
     private String residence;
     private String intro;

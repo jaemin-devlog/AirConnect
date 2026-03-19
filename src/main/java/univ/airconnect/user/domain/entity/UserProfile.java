@@ -7,6 +7,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.MilitaryStatus;
 
 @Entity
@@ -38,6 +39,10 @@ public class UserProfile {
     @Enumerated(EnumType.STRING)
     private MilitaryStatus military;
 
+    @Column(length = 10)
+    @Enumerated(EnumType.STRING)
+    private Gender gender;
+
     @Column(length = 50)
     private String religion;
 
@@ -64,6 +69,7 @@ public class UserProfile {
             String mbti,
             String smoking,
             MilitaryStatus military,
+            Gender gender,
             String religion,
             String residence,
             String intro,
@@ -76,6 +82,7 @@ public class UserProfile {
         this.mbti = mbti;
         this.smoking = smoking;
         this.military = military;
+        this.gender = gender;
         this.religion = religion;
         this.residence = residence;
         this.intro = intro;
@@ -90,6 +97,7 @@ public class UserProfile {
             String mbti,
             String smoking,
             MilitaryStatus military,
+            Gender gender,
             String religion,
             String residence,
             String intro,
@@ -101,6 +109,7 @@ public class UserProfile {
                 .mbti(mbti)
                 .smoking(smoking)
                 .military(military)
+                .gender(gender)
                 .religion(religion)
                 .residence(residence)
                 .intro(intro)
@@ -114,6 +123,7 @@ public class UserProfile {
             String mbti,
             String smoking,
             MilitaryStatus military,
+            Gender gender,
             String religion,
             String residence,
             String intro,
@@ -123,6 +133,7 @@ public class UserProfile {
         this.mbti = mbti;
         this.smoking = smoking;
         this.military = military;
+        this.gender = gender;
         this.religion = religion;
         this.residence = residence;
         this.intro = intro;
@@ -135,6 +146,7 @@ public class UserProfile {
         this.mbti = null;
         this.smoking = null;
         this.military = null;
+        this.gender = null;
         this.religion = null;
         this.residence = null;
         this.intro = null;

@@ -1,0 +1,33 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:airconnect_test;MODE=MYSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  sql:
+    init:
+      mode: never
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+matching:
+  cache:
+    enabled: false
+  lock:
+    enabled: false
+  queue:
+    worker:
+      enabled: false
