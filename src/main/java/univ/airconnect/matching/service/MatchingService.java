@@ -405,5 +405,13 @@ public class MatchingService {
 
         return profile.getGender();
     }
+
+    // ========== 테스트용 메서드 ==========
+    public void testExposeCandidate(Long userId, Long targetUserId) {
+        log.info("🧪 테스트 메서드 호출: userId={}, targetUserId={}", userId, targetUserId);
+        // userId가 targetUserId를 추천받았다는 의미로 exposure 생성
+        matchingExposureRepository.save(MatchingExposure.create(userId, targetUserId));
+        log.info("🧪 테스트 완료: 후보자 노출 추가됨");
+    }
 }
 
