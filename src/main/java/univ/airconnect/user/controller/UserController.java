@@ -56,18 +56,6 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
-    @PostMapping("/profile")
-    public ResponseEntity<ApiResponse<UserProfileResponse>> createProfile(
-            @CurrentUserId Long userId,
-            @RequestBody UpdateProfileRequest request,
-            HttpServletRequest httpRequest
-    ) {
-        log.info("📸 프로필 생성 요청: userId={}", userId);
-        String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
-        UserProfileResponse response = userService.createProfile(userId, request);
-        log.info("✅ 프로필 생성 완료: userId={}", userId);
-        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
-    }
 
     @GetMapping("/profile")
     public ResponseEntity<ApiResponse<UserProfileResponse>> getProfile(

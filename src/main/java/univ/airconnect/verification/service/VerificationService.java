@@ -4,6 +4,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import univ.airconnect.user.domain.MilestoneType;
+import univ.airconnect.user.domain.entity.UserMilestone;
+import univ.airconnect.user.exception.UserErrorCode;
+import univ.airconnect.user.exception.UserException;
+import univ.airconnect.user.repository.UserMilestoneRepository;
+import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.verification.exception.VerificationErrorCode;
 import univ.airconnect.verification.exception.VerificationException;
 
@@ -18,6 +24,8 @@ public class VerificationService {
 
     private final MailService mailService;
     private final StringRedisTemplate redisTemplate;
+    private final UserRepository userRepository;
+    private final UserMilestoneRepository userMilestoneRepository;
 
     private static final String VERIFICATION_PREFIX = "email_verification:";
     private static final String COOLDOWN_PREFIX = "email_verification_cooldown:";
@@ -64,6 +72,10 @@ public class VerificationService {
         }
 
         clearVerificationData(normalizedEmail);
+
+        // 마일리스톤 부여 (email 기반 사용자 찾아서 처리)
+        grantMilestoneIfNotAlreadyGranted(normalizedEmail);
+
         log.info("Email verification succeeded. email={}", normalizedEmail);
     }
 
@@ -124,5 +136,42 @@ public class VerificationService {
     private void clearVerificationData(String email) {
         redisTemplate.delete(VERIFICATION_PREFIX + email);
         redisTemplate.delete(COOLDOWN_PREFIX + email);
+    }
+
+    /**
+     * 이메일 인증 마일리스톤을 부여합니다. 과거에 같은 마일리스톤이 부여된 적이 없으면 티켓 1개를 추가하고 기록합니다.
+     *
+     * @param email 사용자 이메일
+     */
+    private void grantMilestoneIfNotAlreadyGranted(String email) {
+        var user = userRepository.findByEmail(email)
+                .orElse(null);
+
+        if (user == null) {
+            log.warn("⚠️ 이메일에 해당하는 사용자를 찾을 수 없음 (마일리스톤 미부여): email={}", email);
+            return;
+        }
+
+        // 이미 이 마일리스톤이 부여되었고 granted = true인지 확인
+        boolean alreadyGranted = userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(
+                user.getId(), 
+                MilestoneType.EMAIL_VERIFIED
+        );
+
+        if (alreadyGranted) {
+            log.info("ℹ️ 이미 지급된 마일리스톤 (중복 부여 방지): userId={}, email={}, milestoneType=EMAIL_VERIFIED", 
+                    user.getId(), email);
+            return;
+        }
+
+        // 마일리스톤 기록 추가
+        UserMilestone milestone = UserMilestone.create(user.getId(), MilestoneType.EMAIL_VERIFIED);
+        userMilestoneRepository.save(milestone);
+
+        // 사용자 티켓 1개 추가
+        user.addTickets(1);
+
+        log.info("🎫 마일리스톤 지급 완료: userId={}, email={}, milestoneType=EMAIL_VERIFIED, 부여 티켓=1, 총 티켓={}", 
+                user.getId(), email, user.getTickets());
     }
 }

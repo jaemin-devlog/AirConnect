@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
+import univ.airconnect.matching.repository.MatchingQueueEntryRepository;
+import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
@@ -18,6 +20,7 @@ import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
+import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -29,7 +32,9 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
+    private final UserMilestoneRepository userMilestoneRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final MatchingQueueEntryRepository matchingQueueEntryRepository;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -60,13 +65,45 @@ public class UserService {
                 request.getDeptName()
         );
 
-        log.info("✅ 회원가입 완료: userId={}, name={}", userId, request.getName());
+        userProfileRepository.findByUserId(userId)
+                .ifPresentOrElse(
+                        profile -> profile.update(
+                                request.getHeight(),
+                                request.getMbti(),
+                                request.getSmoking(),
+                                request.getGender(),
+                                request.getMilitary(),
+                                request.getReligion(),
+                                request.getResidence(),
+                                request.getIntro(),
+                                request.getInstagram()
+                        ),
+                        () -> userProfileRepository.save(UserProfile.create(
+                                user,
+                                request.getHeight(),
+                                request.getMbti(),
+                                request.getSmoking(),
+                                request.getGender(),
+                                request.getMilitary(),
+                                request.getReligion(),
+                                request.getResidence(),
+                                request.getIntro(),
+                                request.getInstagram()
+                        ))
+                );
+
+        log.info("✅ 회원가입/프로필 생성 완료: userId={}, name={}", userId, request.getName());
+
+        boolean matchingQueueActive = tryStartMatchingQueueAfterSignUp(userId);
 
         return new SignUpResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getName(),
-                user.getStatus().toString()
+                user.getStatus().toString(),
+                user.getOnboardingStatus().toString(),
+                true,
+                matchingQueueActive
         );
     }
 
@@ -86,6 +123,14 @@ public class UserService {
                 })
                 .orElse(null);
 
+        // 마일리스톤 정보 조회
+        boolean profileImageUploaded = userMilestoneRepository.existsByUserIdAndMilestoneType(
+                userId, MilestoneType.PROFILE_IMAGE_UPLOADED
+        );
+        boolean emailVerified = userMilestoneRepository.existsByUserIdAndMilestoneType(
+                userId, MilestoneType.EMAIL_VERIFIED
+        );
+
         return UserMeResponse.builder()
                 .userId(user.getId())
                 .provider(user.getProvider())
@@ -98,6 +143,9 @@ public class UserService {
                 .status(user.getStatus())
                 .onboardingStatus(user.getOnboardingStatus())
                 .profileExists(profile != null)
+                .profileImageUploaded(profileImageUploaded)
+                .emailVerified(emailVerified)
+                .tickets(user.getTickets())
                 .profile(profile)
                 .build();
     }
@@ -124,8 +172,8 @@ public class UserService {
                 request.getHeight(),
                 request.getMbti(),
                 request.getSmoking(),
-                request.getMilitary(),
                 request.getGender(),
+                request.getMilitary(),
                 request.getReligion(),
                 request.getResidence(),
                 request.getIntro(),
@@ -155,8 +203,8 @@ public class UserService {
                 request.getHeight(),
                 request.getMbti(),
                 request.getSmoking(),
-                request.getMilitary(),
                 request.getGender(),
+                request.getMilitary(),
                 request.getReligion(),
                 request.getResidence(),
                 request.getIntro(),
@@ -195,13 +243,8 @@ public class UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
 
-        if (user.getStatus() == UserStatus.DELETED) {
-            log.info("ℹ️ 이미 탈퇴한 사용자: userId={}", userId);
-            purgeRefreshTokens(userId);
-            return;
-        }
-
-        user.markDeleted();
+        // 테스트 환경: 탈퇴 후 재가입 가능하도록 ACTIVE 유지하되, 기본 정보만 리셋
+        user.resetOnboarding();
 
         userProfileRepository.findByUserId(userId)
                 .ifPresent(profile -> {
@@ -210,7 +253,7 @@ public class UserService {
                 });
 
         purgeRefreshTokens(userId);
-        log.info("✅ 회원 탈퇴 완료: userId={}", userId);
+        log.info("✅ 회원 탈퇴 완료 (테스트 환경 - 재가입 가능): userId={}", userId);
     }
 
     private void purgeRefreshTokens(Long userId) {
@@ -231,5 +274,11 @@ public class UserService {
         if (user.getStatus() == UserStatus.DELETED) {
             throw new UserException(UserErrorCode.USER_DELETED);
         }
+    }
+
+    private boolean tryStartMatchingQueueAfterSignUp(Long userId) {
+        // 프로필 기반 추천으로 변경됨 - 프로필이 있으면 자동으로 추천 대상
+        log.info("ℹ️ 회원가입 완료: 프로필이 생성되었으므로 자동으로 추천 대상이 됨 - userId={}", userId);
+        return true;
     }
 }

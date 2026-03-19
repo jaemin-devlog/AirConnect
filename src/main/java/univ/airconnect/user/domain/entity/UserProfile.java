@@ -1,8 +1,15 @@
 package univ.airconnect.user.domain.entity;
 
-import java.time.LocalDateTime;
-
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapsId;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -10,12 +17,13 @@ import lombok.NoArgsConstructor;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.MilitaryStatus;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "user_profiles")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserProfile {
-
 
     @Id
     @Column(name = "user_id")
@@ -37,11 +45,11 @@ public class UserProfile {
 
     @Column(length = 20)
     @Enumerated(EnumType.STRING)
-    private MilitaryStatus military;
-
-    @Column(length = 10)
-    @Enumerated(EnumType.STRING)
     private Gender gender;
+
+    @Column(length = 20)
+    @Enumerated(EnumType.STRING)
+    private MilitaryStatus military;
 
     @Column(length = 50)
     private String religion;
@@ -61,15 +69,14 @@ public class UserProfile {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-
     @Builder
     private UserProfile(
             User user,
             Integer height,
             String mbti,
             String smoking,
-            MilitaryStatus military,
             Gender gender,
+            MilitaryStatus military,
             String religion,
             String residence,
             String intro,
@@ -81,8 +88,8 @@ public class UserProfile {
         this.height = height;
         this.mbti = mbti;
         this.smoking = smoking;
-        this.military = military;
         this.gender = gender;
+        this.military = military;
         this.religion = religion;
         this.residence = residence;
         this.intro = intro;
@@ -96,8 +103,8 @@ public class UserProfile {
             Integer height,
             String mbti,
             String smoking,
-            MilitaryStatus military,
             Gender gender,
+            MilitaryStatus military,
             String religion,
             String residence,
             String intro,
@@ -108,8 +115,8 @@ public class UserProfile {
                 .height(height)
                 .mbti(mbti)
                 .smoking(smoking)
-                .military(military)
                 .gender(gender)
+                .military(military)
                 .religion(religion)
                 .residence(residence)
                 .intro(intro)
@@ -122,8 +129,8 @@ public class UserProfile {
             Integer height,
             String mbti,
             String smoking,
-            MilitaryStatus military,
             Gender gender,
+            MilitaryStatus military,
             String religion,
             String residence,
             String intro,
@@ -132,8 +139,8 @@ public class UserProfile {
         this.height = height;
         this.mbti = mbti;
         this.smoking = smoking;
-        this.military = military;
         this.gender = gender;
+        this.military = military;
         this.religion = religion;
         this.residence = residence;
         this.intro = intro;
@@ -145,8 +152,8 @@ public class UserProfile {
         this.height = null;
         this.mbti = null;
         this.smoking = null;
-        this.military = null;
         this.gender = null;
+        this.military = null;
         this.religion = null;
         this.residence = null;
         this.intro = null;

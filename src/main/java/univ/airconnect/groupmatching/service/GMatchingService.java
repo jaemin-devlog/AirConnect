@@ -718,7 +718,7 @@ public class GMatchingService {
     }
 
     private GTeamGender mapUserGenderToTeamGender(Gender gender) {
-        return gender == Gender.M ? GTeamGender.M : GTeamGender.F;
+        return gender == Gender.MALE ? GTeamGender.M : GTeamGender.F;
     }
 
     private String buildTempRoomName(String teamName, GTeamSize teamSize) {

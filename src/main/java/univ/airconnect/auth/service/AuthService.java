@@ -1,5 +1,8 @@
 package univ.airconnect.auth.service;
 
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -9,6 +12,7 @@ import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
+import univ.airconnect.auth.dto.response.LoginResponse;
 import univ.airconnect.auth.dto.response.TokenPairResponse;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
@@ -19,7 +23,9 @@ import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.repository.UserRepository;
+import univ.airconnect.user.service.UserService;
 
 @Slf4j
 @Service
@@ -32,9 +38,10 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserService userService;
 
     @Transactional
-    public TokenPairResponse socialLogin(SocialLoginRequest request) {
+    public LoginResponse socialLogin(SocialLoginRequest request) {
         log.info("🔐 소셜 로그인 시작: provider={}", request.getProvider());
 
         validateSocialLoginRequest(request);
@@ -74,7 +81,15 @@ public class AuthService {
 
         log.info("💾 RefreshToken 저장 완료: userId={}", user.getId());
 
-        return new TokenPairResponse(accessToken, refreshToken);
+        // 사용자 정보 조회 (프로필 포함)
+        UserMeResponse userInfo = userService.getMe(user.getId());
+        log.info("✅ 사용자 정보 조회 완료: userId={}", user.getId());
+
+        return LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .user(userInfo)
+                .build();
     }
 
     @Transactional
@@ -151,15 +166,15 @@ public class AuthService {
      * 프로덕션 환경에서는 이 메서드를 호출하지 않습니다.
      */
     @Transactional
-    public TokenPairResponse createTestToken(String deviceId) {
+    public LoginResponse createTestToken(String deviceId) {
         log.warn("🧪 테스트 토큰 생성 (개발 환경에서만 사용)");
 
         if (deviceId == null || deviceId.isBlank()) {
             throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
         }
 
-        // 테스트용 사용자 생성 또는 기존 사용자 사용
-        String testSocialId = "test-user-" + System.currentTimeMillis();
+        // 같은 deviceId에서는 동일 테스트 계정을 사용한다.
+        String testSocialId = "test-user-" + UUID.nameUUIDFromBytes(deviceId.trim().getBytes(StandardCharsets.UTF_8));
         User testUser = userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, testSocialId)
                 .orElseGet(() -> {
                     log.info("👤 테스트 사용자 생성: socialId={}", testSocialId);
@@ -181,7 +196,15 @@ public class AuthService {
 
         log.info("💾 테스트 RefreshToken 저장 완료: userId={}", testUser.getId());
 
-        return new TokenPairResponse(accessToken, refreshToken);
+        // 사용자 정보 조회 (프로필 포함)
+        UserMeResponse userInfo = userService.getMe(testUser.getId());
+        log.info("✅ 테스트 사용자 정보 조회 완료: userId={}", testUser.getId());
+
+        return LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .user(userInfo)
+                .build();
     }
 
     private void validateSocialLoginRequest(SocialLoginRequest request) {

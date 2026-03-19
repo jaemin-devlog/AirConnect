@@ -73,7 +73,7 @@ class GMatchingServiceTest {
         GMatchingService service = createService();
         Long leaderId = 10L;
         User leader = createUser(leaderId, "leader");
-        UserProfile profile = createProfile(leader, Gender.F);
+        UserProfile profile = createProfile(leader, Gender.FEMALE);
 
         when(userRepository.findById(leaderId)).thenReturn(Optional.of(leader));
         when(temporaryTeamRoomRepository.findActiveRoomsByUserId(eq(leaderId), anySet())).thenReturn(List.of());
@@ -102,7 +102,7 @@ class GMatchingServiceTest {
         Long userId = 20L;
 
         User joiner = createUser(userId, "joiner");
-        UserProfile profile = createProfile(joiner, Gender.F);
+        UserProfile profile = createProfile(joiner, Gender.FEMALE);
         GTemporaryTeamRoom teamRoom = mock(GTemporaryTeamRoom.class);
 
         when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));

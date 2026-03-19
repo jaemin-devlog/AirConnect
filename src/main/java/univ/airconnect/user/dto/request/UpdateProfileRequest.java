@@ -14,11 +14,10 @@ public class UpdateProfileRequest {
     private Integer height;
     private String mbti;
     private String smoking;
-    private MilitaryStatus military;
     private Gender gender;
+    private MilitaryStatus military;
     private String religion;
     private String residence;
     private String intro;
     private String instagram;
 }
-

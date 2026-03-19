@@ -1,10 +1,8 @@
 package univ.airconnect.global.error;
 
-import univ.airconnect.global.response.ApiResponse;
-import univ.airconnect.global.response.ErrorBody;
-import univ.airconnect.verification.exception.VerificationErrorCode;
-import univ.airconnect.verification.exception.VerificationException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -12,13 +10,16 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.exception.AuthErrorCode;
-import univ.airconnect.user.exception.UserException;
+import univ.airconnect.auth.exception.AuthException;
+import univ.airconnect.global.response.ApiResponse;
+import univ.airconnect.global.response.ErrorBody;
+import univ.airconnect.matching.exception.MatchingErrorCode;
+import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.user.exception.UserErrorCode;
-
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.ConstraintViolationException;
+import univ.airconnect.user.exception.UserException;
+import univ.airconnect.verification.exception.VerificationErrorCode;
+import univ.airconnect.verification.exception.VerificationException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -31,7 +32,10 @@ import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException e, HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<Void>> handleValidation(
+            MethodArgumentNotValidException e,
+            HttpServletRequest request
+    ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.INVALID_REQUEST;
 
@@ -52,7 +56,10 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException e, HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(
+            ConstraintViolationException e,
+            HttpServletRequest request
+    ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.INVALID_REQUEST;
 
@@ -73,14 +80,20 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException e, HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(
+            MethodArgumentTypeMismatchException e,
+            HttpServletRequest request
+    ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.INVALID_REQUEST;
 
         Map<String, Object> details = new HashMap<>();
         details.put("name", e.getName());
         details.put("value", e.getValue());
-        details.put("requiredType", e.getRequiredType() != null ? e.getRequiredType().getSimpleName() : null);
+        details.put(
+                "requiredType",
+                e.getRequiredType() != null ? e.getRequiredType().getSimpleName() : null
+        );
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
@@ -141,12 +154,37 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(body, traceId));
     }
 
+    @ExceptionHandler(MatchingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMatching(
+            MatchingException e,
+            HttpServletRequest request
+    ) {
+        MatchingErrorCode mec = e.getErrorCode();
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+
+        log.warn("MatchingException [{}] - {}", traceId, e.getMessage());
+
+        ErrorBody body = new ErrorBody(
+                mec.getCode(),
+                e.getMessage(),
+                mec.getHttpStatus().value(),
+                traceId,
+                null
+        );
+
+        return ResponseEntity.status(mec.getHttpStatus())
+                .body(ApiResponse.fail(body, traceId));
+    }
+
     @ExceptionHandler(VerificationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleVerification(VerificationException e, HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<Void>> handleVerification(
+            VerificationException e,
+            HttpServletRequest request
+    ) {
         VerificationErrorCode vec = e.getErrorCode();
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
 
-        log.warn("❌ VerificationException [{}] - {}", traceId, e.getMessage());
+        log.warn("VerificationException [{}] - {}", traceId, e.getMessage());
 
         ErrorBody body = new ErrorBody(
                 vec.getCode(),
@@ -161,15 +199,18 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e, HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<Void>> handleBusiness(
+            BusinessException e,
+            HttpServletRequest request
+    ) {
         ErrorCode ec = e.getErrorCode();
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
 
-        log.warn("❌ BusinessException [{}] - {}", traceId, e.getMessage());
+        log.warn("BusinessException [{}] - {}", traceId, e.getMessage());
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
-                e.getMessage(),                 // overrideMessage면 override 반영
+                e.getMessage(),
                 ec.getHttpStatus().value(),
                 traceId,
                 null
@@ -183,10 +224,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception e, HttpServletRequest request) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
 
-        log.error("🔴 Unexpected Exception [{}]", traceId, e);
+        log.error("Unexpected exception [{}]", traceId, e);
 
         ErrorCode ec = ErrorCode.INTERNAL_ERROR;
-
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
                 ec.getMessage(),

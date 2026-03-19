@@ -1,0 +1,27 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: airconnect
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  web:
+    resources:
+      # 정적 리소스 경로를 명시적으로 제한하여 /api/** 경로가 정적 리소스로 처리되지 않도록 함
+      static-locations: classpath:/static/,classpath:/public/,classpath:/resources/,classpath:/templates/
+  jackson:
+    serialization:
+      # null 값도 포함하여 직렬화
+      write-null-map-values: true
+    default-property-inclusion: always
+
+app:
+  upload:
+    profile-image-dir: ${PROFILE_IMAGE_DIR:/tmp/airconnect/profile-images}
+    profile-image-url-base: ${PROFILE_IMAGE_URL_BASE:http://localhost:8080/api/v1/users/profile-images}
+
