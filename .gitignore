@@ -99,5 +99,8 @@ coverage/
 
 # Local deployment
 docker-compose.local.yml
+application-test.yml
+
+.md
 
 

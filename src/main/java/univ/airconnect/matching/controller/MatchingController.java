@@ -9,9 +9,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
-import univ.airconnect.matching.dto.response.MatchingConnectResponse;
-import univ.airconnect.matching.dto.response.MatchingRecommendationResponse;
-import univ.airconnect.matching.dto.response.MatchingStartResponse;
+import univ.airconnect.matching.dto.response.*;
 import univ.airconnect.matching.service.MatchingService;
 
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
@@ -65,5 +63,14 @@ public class MatchingController {
         MatchingConnectResponse response = matchingService.connect(userId, targetUserId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
-}
 
+    @GetMapping("/requests")
+    public ResponseEntity<ApiResponse<MatchingRequestsResponse>> getRequests(
+            @CurrentUserId Long userId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        MatchingRequestsResponse response = matchingService.getRequests(userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+}
