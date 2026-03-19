@@ -142,7 +142,10 @@ public class MatchingService {
 
     @Transactional
     public MatchingConnectResponse connect(Long userId, Long targetUserId) {
+        log.info("📨 매칭 요청 시작: requester={}, target={}", userId, targetUserId);
+        
         if (Objects.equals(userId, targetUserId)) {
+            log.warn("⚠️ 자신에게 요청 불가: userId={}", userId);
             throw new MatchingException(MatchingErrorCode.INVALID_TARGET);
         }
 
@@ -150,6 +153,7 @@ public class MatchingService {
         validateActiveUser(targetUserId);
 
         if (!matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, targetUserId)) {
+            log.warn("⚠️ 노출되지 않은 사용자: userId={}, targetUserId={}", userId, targetUserId);
             throw new MatchingException(MatchingErrorCode.CANDIDATE_NOT_EXPOSED);
         }
 
@@ -207,7 +211,7 @@ public class MatchingService {
         user.consumeTickets(2);
         log.info("🎫 컨택 티켓 사용: userId={}, 사용한 티켓=2, 남은 티켓={}", userId, user.getTickets());
 
-        log.info("✅ 매칭 연결 요청 생성: requesterId={}, targetUserId={}, connectionId={}", userId, targetUserId, connection.getId());
+        log.info("✅ 매칭 요청 생성 완료: requester={}, target={}, connectionId={}", userId, targetUserId, connection.getId());
 
         return new MatchingConnectResponse(null, targetUserId, false);
     }
@@ -221,12 +225,25 @@ public class MatchingService {
         List<MatchingConnection> receivedConnections = matchingConnectionRepository
                 .findReceivedRequestsByStatus(userId, ConnectionStatus.PENDING);
 
+        log.info("📬 요청 목록 조회: userId={}, 보낸요청={}건, 받은요청={}건", 
+                userId, sentConnections.size(), receivedConnections.size());
+
         List<MatchingRequestResponse> sent = sentConnections.stream()
-                .map(conn -> toMatchingRequestResponse(conn, conn.getOtherUserId(userId)))
+                .map(conn -> {
+                    MatchingRequestResponse response = toMatchingRequestResponse(conn, conn.getOtherUserId(userId));
+                    log.debug("  📤 보낸요청: connectionId={}, targetUserId={}, targetName={}", 
+                            conn.getId(), response.getUserId(), response.getNickname());
+                    return response;
+                })
                 .toList();
 
         List<MatchingRequestResponse> received = receivedConnections.stream()
-                .map(conn -> toMatchingRequestResponse(conn, conn.getRequesterId()))
+                .map(conn -> {
+                    MatchingRequestResponse response = toMatchingRequestResponse(conn, conn.getRequesterId());
+                    log.debug("  📥 받은요청: connectionId={}, requesterId={}, requesterName={}", 
+                            conn.getId(), response.getUserId(), response.getNickname());
+                    return response;
+                })
                 .toList();
 
         return MatchingRequestsResponse.builder()
@@ -264,26 +281,32 @@ public class MatchingService {
     public MatchingResponseResponse acceptRequest(Long userId, Long connectionId) {
         validateActiveUser(userId);
 
+        log.info("💬 요청 수락 시작: userId={}, connectionId={}", userId, connectionId);
+
         MatchingConnection connection = matchingConnectionRepository.findById(connectionId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.CONNECTION_NOT_FOUND));
 
         // userId가 요청 받은 사람인지 확인
         Long otherUserId = connection.getOtherUserId(userId);
         if (Objects.equals(userId, connection.getRequesterId())) {
+            log.warn("⚠️ 요청 수락 권한 없음: userId={}, requesterId={}", userId, connection.getRequesterId());
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
         }
 
         if (connection.getStatus() != ConnectionStatus.PENDING) {
+            log.warn("⚠️ 요청 상태 불일치: connectionId={}, status={}", connectionId, connection.getStatus());
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
         }
 
         // 채팅방 생성
         ChatRoomResponse room = chatService.createChatRoom("소개팅 1:1", ChatRoomType.PERSONAL, userId, otherUserId);
-        
+        log.debug("💌 채팅방 생성됨: chatRoomId={}", room.getId());
+
         // 연결 수락
         connection.accept(room.getId());
 
-        log.info("✅ 매칭 연결 수락: userId={}, requesterId={}, connectionId={}", userId, connection.getRequesterId(), connectionId);
+        log.info("✅ 매칭 요청 수락 완료: 수락자userId={}, 요청자userId={}, connectionId={}, chatRoomId={}", 
+                userId, connection.getRequesterId(), connectionId, room.getId());
 
         return MatchingResponseResponse.builder()
                 .connectionId(connection.getId())
@@ -297,15 +320,19 @@ public class MatchingService {
     public MatchingResponseResponse rejectRequest(Long userId, Long connectionId) {
         validateActiveUser(userId);
 
+        log.info("❌ 요청 거절 시작: userId={}, connectionId={}", userId, connectionId);
+
         MatchingConnection connection = matchingConnectionRepository.findById(connectionId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.CONNECTION_NOT_FOUND));
 
         // userId가 요청 받은 사람인지 확인
         if (Objects.equals(userId, connection.getRequesterId())) {
+            log.warn("⚠️ 요청 거절 권한 없음: userId={}, requesterId={}", userId, connection.getRequesterId());
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
         }
 
         if (connection.getStatus() != ConnectionStatus.PENDING) {
+            log.warn("⚠️ 요청 상태 불일치: connectionId={}, status={}", connectionId, connection.getStatus());
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
         }
 
@@ -314,7 +341,8 @@ public class MatchingService {
         // 연결 거절
         connection.reject();
 
-        log.info("✅ 매칭 연결 거절: userId={}, requesterId={}, connectionId={}", userId, connection.getRequesterId(), connectionId);
+        log.info("✅ 매칭 요청 거절 완료: 거절자userId={}, 요청자userId={}, connectionId={}", 
+                userId, connection.getRequesterId(), connectionId);
 
         return MatchingResponseResponse.builder()
                 .connectionId(connection.getId())
