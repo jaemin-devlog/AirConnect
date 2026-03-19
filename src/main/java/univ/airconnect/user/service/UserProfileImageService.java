@@ -178,8 +178,8 @@ public class UserProfileImageService {
      * @param milestoneType 마일리스톤 타입
      */
     private void grantMilestoneIfNotAlreadyGranted(Long userId, MilestoneType milestoneType) {
-        // 이미 이 마일리스톤이 부여되었는지 확인
-        boolean alreadyGranted = userMilestoneRepository.existsByUserIdAndMilestoneType(userId, milestoneType);
+        // 이미 이 마일리스톤이 부여되었고 granted = true인지 확인
+        boolean alreadyGranted = userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, milestoneType);
 
         if (alreadyGranted) {
             log.info("ℹ️ 이미 지급된 마일리스톤 (중복 부여 방지): userId={}, milestoneType={}", userId, milestoneType);

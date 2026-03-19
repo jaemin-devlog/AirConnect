@@ -81,17 +81,17 @@ public class MatchingService {
         matchingQueueEntryRepository.findByUserIdAndActiveTrue(userId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.MATCHING_NOT_STARTED));
 
-        // 티켓 2개 소비
+        // 티켓 1개 소비
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
         
-        if (user.getTickets() < 2) {
+        if (user.getTickets() < 1) {
             log.warn("⚠️ 티켓 부족: userId={}, 현재 티켓={}", userId, user.getTickets());
             throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
         }
 
-        user.consumeTickets(2);
-        log.info("🎫 매칭 티켓 사용: userId={}, 사용한 티켓=2, 남은 티켓={}", userId, user.getTickets());
+        user.consumeTickets(1);
+        log.info("🎫 매칭 티켓 사용: userId={}, 사용한 티켓=1, 남은 티켓={}", userId, user.getTickets());
 
         List<MatchingQueueEntry> available = matchingQueueEntryRepository.findAvailableCandidates(
                 userId,
@@ -172,6 +172,18 @@ public class MatchingService {
         if (!matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, targetUserId)) {
             throw new MatchingException(MatchingErrorCode.CANDIDATE_NOT_EXPOSED);
         }
+
+        // 티켓 2개 소비
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
+        
+        if (user.getTickets() < 2) {
+            log.warn("⚠️ 티켓 부족: userId={}, 현재 티켓={}", userId, user.getTickets());
+            throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
+        }
+
+        user.consumeTickets(2);
+        log.info("🎫 컨택 티켓 사용: userId={}, 사용한 티켓=2, 남은 티켓={}", userId, user.getTickets());
 
         Long user1 = Math.min(userId, targetUserId);
         Long user2 = Math.max(userId, targetUserId);

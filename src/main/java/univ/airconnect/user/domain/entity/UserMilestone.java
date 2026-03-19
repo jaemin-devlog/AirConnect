@@ -33,10 +33,14 @@ public class UserMilestone {
     @Column(nullable = false)
     private LocalDateTime grantedAt;
 
+    @Column(nullable = false)
+    private Boolean granted = true;
+
     private UserMilestone(Long userId, MilestoneType milestoneType, LocalDateTime grantedAt) {
         this.userId = userId;
         this.milestoneType = milestoneType;
         this.grantedAt = grantedAt;
+        this.granted = true;
     }
 
     public static UserMilestone create(Long userId, MilestoneType milestoneType) {
