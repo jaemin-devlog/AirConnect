@@ -4,8 +4,6 @@ server:
 spring:
   application:
     name: airconnect
-  profiles:
-    active: dev
   servlet:
     multipart:
       max-file-size: 10MB
