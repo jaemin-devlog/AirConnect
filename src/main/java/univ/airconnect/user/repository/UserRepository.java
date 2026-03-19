@@ -19,7 +19,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.userProfile WHERE u.id IN :ids")
     List<User> findAllByIdWithProfile(@Param("ids") Collection<Long> ids);
 
-    // 프로필 기반 추천: 프로필이 있고 활성 상태인 사용자들 (본인 제외, 이미 매칭된 사람 제외)
+    // 프로필 기반 추천: 프로필이 있고 활성 상태인 사용자들
+    // - 내가 요청을 보낸 상대만 후보에서 제외
+    // - 그 외(상대가 나에게 보낸 요청/수락 이력)는 후보에 포함
     @Query("""
         SELECT u
         FROM User u
@@ -30,18 +32,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
               SELECT up2.gender FROM UserProfile up2 WHERE up2.userId = :userId
           )
           AND NOT EXISTS (
-              SELECT 1 FROM MatchingExposure me
-              WHERE me.userId = :userId AND me.candidateUserId = u.id
-          )
-          AND NOT EXISTS (
               SELECT 1 FROM MatchingConnection mc
-              WHERE (mc.user1Id = :userId AND mc.user2Id = u.id)
+              WHERE (
+                    (mc.user1Id = :userId AND mc.user2Id = u.id)
                  OR (mc.user1Id = u.id AND mc.user2Id = :userId)
+              )
+                AND mc.requesterId = :userId
           )
         ORDER BY u.createdAt ASC
     """)
-    List<User> findActiveUsersWithProfileForMatching(
-            @Param("userId") Long userId,
-            org.springframework.data.domain.Pageable pageable
-    );
+    List<User> findActiveUsersWithProfileForMatching(@Param("userId") Long userId);
 }

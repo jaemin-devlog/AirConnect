@@ -3,9 +3,7 @@ package univ.airconnect.matching.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
@@ -13,14 +11,12 @@ import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
 import univ.airconnect.matching.domain.entity.MatchingExposure;
-import univ.airconnect.matching.domain.entity.MatchingQueueEntry;
 import univ.airconnect.matching.dto.response.*;
 import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.repository.MatchingExposureRepository;
 import univ.airconnect.matching.repository.MatchingQueueEntryRepository;
-import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
@@ -37,9 +33,6 @@ import java.util.*;
 @Transactional(readOnly = true)
 public class MatchingService {
 
-    private static final int RECOMMEND_LIMIT = 2;
-    private static final int LOOKUP_BATCH_SIZE = 20;
-
     private final MatchingQueueEntryRepository matchingQueueEntryRepository;
     private final MatchingExposureRepository matchingExposureRepository;
     private final MatchingConnectionRepository matchingConnectionRepository;
@@ -53,7 +46,7 @@ public class MatchingService {
     @Transactional
     public MatchingRecommendationResponse recommend(Long userId) {
         validateActiveUser(userId);
-        Gender requesterGender = requireProfileGender(userId);
+        requireProfileGender(userId);
 
         // 티켓 검증 (차감은 나중에)
         User user = userRepository.findById(userId)
@@ -64,72 +57,32 @@ public class MatchingService {
             throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
         }
 
-        // 원형큐: 최대 3회까지 리셋 시도 (프로필 기반)
-        List<User> selectedUsers = new ArrayList<>();
-        final int MAX_ATTEMPTS = 3;
-        
-        for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-            // 프로필이 있는 모든 활성 사용자에서 추천 대상 찾기
-            List<User> available = userRepository.findActiveUsersWithProfileForMatching(
-                    userId,
-                    PageRequest.of(0, LOOKUP_BATCH_SIZE)
-            );
+        // 현재 조건에 맞는 후보 전체를 조회한다.
+        List<User> selectedUsers = userRepository.findActiveUsersWithProfileForMatching(userId);
 
-            selectedUsers.clear();
-            for (User candidate : available) {
-                if (matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, candidate.getId())) {
-                    continue;
-                }
-                matchingExposureRepository.save(MatchingExposure.create(userId, candidate.getId()));
-                selectedUsers.add(candidate);
-                if (selectedUsers.size() == RECOMMEND_LIMIT) {
-                    break;
-                }
-            }
-
-            // 2명 찾음 → 성공!
-            if (selectedUsers.size() >= RECOMMEND_LIMIT) {
-                log.info("✅ 추천 완료: userId={}, 시도 {}회차 성공, 추천 대상 {}명",
-                        userId, attempt + 1, selectedUsers.size());
-                break;
-            }
-
-            // 2명 미만 → 다시 시도 (원형큐)
-            if (attempt < MAX_ATTEMPTS - 1) {
-                log.info("🔄 원형큐 리셋 ({}회차): userId={}, 찾은 대상={}명, 노출 이력 삭제 후 재추천", 
-                        attempt + 1, userId, selectedUsers.size());
-                matchingExposureRepository.deleteByUserId(userId);
-            }
-        }
-
-        // MAX_ATTEMPTS 후에도 2명 미만이면?
-        // → 원형큐 완성: 처음부터 다시 노출 가능하도록 리셋
-        if (selectedUsers.size() < RECOMMEND_LIMIT) {
-            log.info("🔄 최종 원형큐 리셋: userId={}, {}회 시도 후에도 2명 미만, 전체 노출 이력 삭제",
-                    userId, MAX_ATTEMPTS);
+        if (selectedUsers.isEmpty()) {
+            log.warn("⚠️ 추천 대상 없음: userId={}, 티켓 소진 안 함", userId);
             matchingExposureRepository.deleteByUserId(userId);
-            selectedUsers.clear();
-
-            // 마지막 시도: 처음부터 다시
-            List<User> available = userRepository.findActiveUsersWithProfileForMatching(
-                    userId,
-                    PageRequest.of(0, LOOKUP_BATCH_SIZE)
-            );
-
-            for (User candidate : available) {
-                matchingExposureRepository.save(MatchingExposure.create(userId, candidate.getId()));
-                selectedUsers.add(candidate);
-                if (selectedUsers.size() == RECOMMEND_LIMIT) {
-                    break;
-                }
-            }
+            return MatchingRecommendationResponse.builder()
+                    .count(0)
+                    .candidates(Collections.emptyList())
+                    .userTicketsRemaining(user.getTickets())
+                    .build();
         }
+
+        // 새로고침 시 최신 후보 전체가 연결 가능하도록 노출 이력을 재구성한다.
+        matchingExposureRepository.deleteByUserId(userId);
+        for (User candidate : selectedUsers) {
+            matchingExposureRepository.save(MatchingExposure.create(userId, candidate.getId()));
+        }
+
+        log.info("✅ 추천 완료: userId={}, 추천 대상 {}명", userId, selectedUsers.size());
 
         List<UserMeResponse> candidates = selectedUsers.stream()
                 .map(this::toUserMeResponse)
                 .toList();
 
-        // ✅ 모든 검증과 로직이 성공한 후에만 티켓 차감
+        // ✅ 추천 대상이 있을 때만 티켓 차감
         user.consumeTickets(1);
         log.info("🎫 매칭 티켓 사용: userId={}, 사용한 티켓=1, 남은 티켓={}", userId, user.getTickets());
 
@@ -395,15 +348,13 @@ public class MatchingService {
         }
     }
 
-    private Gender requireProfileGender(Long userId) {
+    private void requireProfileGender(Long userId) {
         UserProfile profile = userProfileRepository.findByUserId(userId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.PROFILE_REQUIRED));
 
         if (profile.getGender() == null) {
             throw new MatchingException(MatchingErrorCode.PROFILE_GENDER_REQUIRED);
         }
-
-        return profile.getGender();
     }
 
     // ========== 테스트용 메서드 ==========
