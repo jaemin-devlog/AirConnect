@@ -54,7 +54,7 @@ public class AuthController {
      * 개발/테스트 환경에서만 사용 가능한 임시 토큰 생성 엔드포인트
      * 프로덕션 환경에서는 이 엔드포인트를 사용할 수 없습니다.
      */
-    @PostMapping("/test/token")
+    @PostMapping({"/test/token", "/test-token"})
     public ResponseEntity<TokenPairResponse> createTestToken(@RequestBody TestTokenRequest request) {
         // 개발 환경에서만 허용
         if (!isDevEnvironment()) {
@@ -69,6 +69,6 @@ public class AuthController {
     }
 
     private boolean isDevEnvironment() {
-        return activeProfile.contains("dev") || activeProfile.contains("local") || activeProfile.equals("default");
+        return activeProfile.contains("dev") || activeProfile.contains("local") || activeProfile.contains("test") || activeProfile.equals("default");
     }
 }
