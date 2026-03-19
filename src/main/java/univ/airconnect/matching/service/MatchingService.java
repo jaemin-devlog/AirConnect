@@ -10,7 +10,6 @@ import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
-import univ.airconnect.matching.domain.entity.MatchingExposure;
 import univ.airconnect.matching.dto.response.*;
 import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
@@ -72,8 +71,12 @@ public class MatchingService {
 
         // 새로고침 시 최신 후보 전체가 연결 가능하도록 노출 이력을 재구성한다.
         matchingExposureRepository.deleteByUserId(userId);
-        for (User candidate : selectedUsers) {
-            matchingExposureRepository.save(MatchingExposure.create(userId, candidate.getId()));
+        List<Long> candidateIds = selectedUsers.stream()
+                .map(User::getId)
+                .distinct()
+                .toList();
+        for (Long candidateId : candidateIds) {
+            matchingExposureRepository.insertIgnore(userId, candidateId);
         }
 
         log.info("✅ 추천 완료: userId={}, 추천 대상 {}명", userId, selectedUsers.size());
