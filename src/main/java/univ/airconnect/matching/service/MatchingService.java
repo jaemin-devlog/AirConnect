@@ -18,9 +18,13 @@ import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.repository.MatchingExposureRepository;
+import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.dto.response.UserMeResponse;
+import univ.airconnect.user.dto.response.UserProfileResponse;
+import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -38,6 +42,7 @@ public class MatchingService {
     private final MatchingConnectionRepository matchingConnectionRepository;
     private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final UserRepository userRepository;
+    private final UserMilestoneRepository userMilestoneRepository;
     private final UserProfileRepository userProfileRepository;
     private final ChatService chatService;
 
@@ -106,8 +111,8 @@ public class MatchingService {
 
         log.info("✅ 추천 완료: userId={}, 추천 대상 {}명", userId, selectedUsers.size());
 
-        List<MatchingCandidateResponse> candidates = selectedUsers.stream()
-                .map(this::toMatchingCandidateResponse)
+        List<UserMeResponse> candidates = selectedUsers.stream()
+                .map(this::toUserMeResponse)
                 .toList();
 
         // ✅ 추천 대상이 있을 때만 티켓 차감
@@ -367,17 +372,37 @@ public class MatchingService {
                 .build();
     }
 
-    private MatchingCandidateResponse toMatchingCandidateResponse(User user) {
+    private UserMeResponse toUserMeResponse(User user) {
         UserProfile profile = user.getUserProfile();
 
-        return MatchingCandidateResponse.builder()
+        UserProfileResponse profileResponse = null;
+        if (profile != null) {
+            profileResponse = UserProfileResponse.from(profile, imageUrlBase);
+        }
+
+        boolean profileImageUploaded = userMilestoneRepository.existsByUserIdAndMilestoneType(
+                user.getId(), MilestoneType.PROFILE_IMAGE_UPLOADED
+        );
+        boolean emailVerified = userMilestoneRepository.existsByUserIdAndMilestoneType(
+                user.getId(), MilestoneType.EMAIL_VERIFIED
+        );
+
+        return UserMeResponse.builder()
                 .userId(user.getId())
+                .provider(user.getProvider())
+                .socialId(user.getSocialId())
+                .email(user.getEmail())
+                .name(user.getName())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
-                .intro(profile != null ? profile.getIntro() : null)
-                .profileImagePath(profile != null && profile.getProfileImagePath() != null
-                        ? toFullImageUrl(profile.getProfileImagePath())
-                        : null)
+                .studentNum(user.getStudentNum())
+                .status(user.getStatus())
+                .onboardingStatus(user.getOnboardingStatus())
+                .profileExists(profile != null)
+                .profileImageUploaded(profileImageUploaded)
+                .emailVerified(emailVerified)
+                .tickets(user.getTickets())
+                .profile(profileResponse)
                 .build();
     }
 

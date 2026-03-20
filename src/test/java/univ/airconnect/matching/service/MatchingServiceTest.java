@@ -368,19 +368,19 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("추천 응답에는 민감 필드가 포함되지 않는다")
-    void recommendationDto_hasNoSensitiveFields() throws JsonProcessingException {
+    @DisplayName("추천 응답은 users/me 형태의 주요 필드를 포함한다")
+    void recommendationDto_containsUserMeFields() throws JsonProcessingException {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         saveUserWithProfile("u2", Gender.FEMALE, 100);
 
         MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
         String json = objectMapper.writeValueAsString(response);
 
-        assertThat(json).doesNotContain("email");
-        assertThat(json).doesNotContain("socialId");
-        assertThat(json).doesNotContain("provider");
-        assertThat(json).doesNotContain("tickets");
-        assertThat(json).doesNotContain("onboardingStatus");
+        assertThat(json).contains("email");
+        assertThat(json).contains("socialId");
+        assertThat(json).contains("provider");
+        assertThat(json).contains("tickets");
+        assertThat(json).contains("onboardingStatus");
     }
 
     private User saveUserWithProfile(String socialId, Gender gender, int tickets) {
