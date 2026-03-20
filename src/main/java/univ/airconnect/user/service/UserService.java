@@ -7,8 +7,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
-import univ.airconnect.matching.domain.entity.MatchingQueueEntry;
-import univ.airconnect.matching.repository.MatchingQueueEntryRepository;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
@@ -35,7 +33,6 @@ public class UserService {
     private final UserProfileRepository userProfileRepository;
     private final UserMilestoneRepository userMilestoneRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final MatchingQueueEntryRepository matchingQueueEntryRepository;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -95,8 +92,6 @@ public class UserService {
 
         log.info("✅ 회원가입/프로필 생성 완료: userId={}, name={}", userId, request.getName());
 
-        boolean matchingQueueActive = tryStartMatchingQueueAfterSignUp(userId);
-
         return new SignUpResponse(
                 user.getId(),
                 user.getEmail(),
@@ -104,7 +99,7 @@ public class UserService {
                 user.getStatus().toString(),
                 user.getOnboardingStatus().toString(),
                 true,
-                matchingQueueActive
+                false
         );
     }
 
@@ -277,9 +272,4 @@ public class UserService {
         }
     }
 
-    private boolean tryStartMatchingQueueAfterSignUp(Long userId) {
-        // 프로필 기반 추천으로 변경됨 - 프로필이 있으면 자동으로 추천 대상
-        log.info("ℹ️ 회원가입 완료: 프로필이 생성되었으므로 자동으로 추천 대상이 됨 - userId={}", userId);
-        return true;
-    }
 }

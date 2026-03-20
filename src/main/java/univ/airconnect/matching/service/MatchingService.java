@@ -2,25 +2,25 @@ package univ.airconnect.matching.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.chat.domain.ChatRoomType;
+import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
+import univ.airconnect.matching.domain.entity.MatchingExposure;
 import univ.airconnect.matching.dto.response.*;
 import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.repository.MatchingExposureRepository;
-import univ.airconnect.matching.repository.MatchingQueueEntryRepository;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
-import univ.airconnect.user.dto.response.UserMeResponse;
-import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -34,9 +34,9 @@ public class MatchingService {
 
     private static final int RECOMMENDATION_LIMIT = 2;
 
-    private final MatchingQueueEntryRepository matchingQueueEntryRepository;
     private final MatchingExposureRepository matchingExposureRepository;
     private final MatchingConnectionRepository matchingConnectionRepository;
+    private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final ChatService chatService;
@@ -101,13 +101,13 @@ public class MatchingService {
                 .distinct()
                 .toList();
         for (Long candidateId : candidateIds) {
-            matchingExposureRepository.insertIgnore(userId, candidateId);
+            saveExposureIfAbsent(userId, candidateId);
         }
 
         log.info("✅ 추천 완료: userId={}, 추천 대상 {}명", userId, selectedUsers.size());
 
-        List<UserMeResponse> candidates = selectedUsers.stream()
-                .map(this::toUserMeResponse)
+        List<MatchingCandidateResponse> candidates = selectedUsers.stream()
+                .map(this::toMatchingCandidateResponse)
                 .toList();
 
         // ✅ 추천 대상이 있을 때만 티켓 차감
@@ -155,7 +155,7 @@ public class MatchingService {
             MatchingConnection connection = existing.get();
             
             // ACCEPTED: 이미 연결됨
-            if (connection.getStatus() == ConnectionStatus.ACCEPTED) {
+            if (connection.getStatus() == ConnectionStatus.ACCEPTED && isConnectionChatActive(connection)) {
                 log.info("ℹ️ 이미 수락된 연결: userId={}, targetUserId={}, chatRoomId={}", 
                         userId, targetUserId, connection.getChatRoomId());
                 return new MatchingConnectResponse(connection.getChatRoomId(), targetUserId, true);
@@ -168,12 +168,11 @@ public class MatchingService {
                 throw new MatchingException(MatchingErrorCode.ALREADY_CONNECTED);
             }
             
-            // REJECTED: 기존 거절된 요청을 다시 활성화
-            if (connection.getStatus() == ConnectionStatus.REJECTED) {
+            // REJECTED 또는 종료된 ACCEPTED는 재요청 가능
+            if (connection.getStatus() == ConnectionStatus.REJECTED || connection.getStatus() == ConnectionStatus.ACCEPTED) {
                 log.info("🔄 거절된 요청 재시도: userId={}, targetUserId={}, connectionId={}", 
                         userId, targetUserId, connection.getId());
-                // REJECTED 상태를 PENDING으로 변경
-                connection.resetToPending();
+                connection.reopenAsPending(userId);
                 
                 // ✅ 모든 검증 완료 후 티켓 차감
                 user.consumeTickets(2);
@@ -183,10 +182,18 @@ public class MatchingService {
             }
         }
 
-        // 새로운 요청 생성 (PENDING 상태로 저장)
-        MatchingConnection connection = matchingConnectionRepository.save(
-                MatchingConnection.createPending(userId, targetUserId)
-        );
+        MatchingConnection connection;
+        try {
+            // 새로운 요청 생성 (PENDING 상태로 저장)
+            connection = matchingConnectionRepository.save(
+                    MatchingConnection.createPending(userId, targetUserId)
+            );
+        } catch (DataIntegrityViolationException e) {
+            log.warn("⚠️ 컨택 동시성 충돌 감지: requester={}, target={}", userId, targetUserId);
+            MatchingConnection raced = matchingConnectionRepository.findByUser1IdAndUser2Id(user1, user2)
+                    .orElseThrow(() -> e);
+            return resolveConnectionStateAfterRace(userId, targetUserId, user, raced);
+        }
 
         // ✅ 모든 검증과 로직이 성공한 후에만 티켓 차감
         user.consumeTickets(2);
@@ -194,6 +201,24 @@ public class MatchingService {
 
         log.info("✅ 매칭 요청 생성 완료: requester={}, target={}, connectionId={}", userId, targetUserId, connection.getId());
 
+        return new MatchingConnectResponse(null, targetUserId, false);
+    }
+
+    private MatchingConnectResponse resolveConnectionStateAfterRace(Long userId,
+                                                                    Long targetUserId,
+                                                                    User requester,
+                                                                    MatchingConnection connection) {
+        if (connection.getStatus() == ConnectionStatus.PENDING) {
+            throw new MatchingException(MatchingErrorCode.ALREADY_CONNECTED);
+        }
+
+        if (connection.getStatus() == ConnectionStatus.ACCEPTED && isConnectionChatActive(connection)) {
+            return new MatchingConnectResponse(connection.getChatRoomId(), targetUserId, true);
+        }
+
+        connection.reopenAsPending(userId);
+        requester.consumeTickets(2);
+        log.info("🎫 컨택 티켓 사용(경쟁복구): userId={}, 사용한 티켓=2, 남은 티켓={}", userId, requester.getTickets());
         return new MatchingConnectResponse(null, targetUserId, false);
     }
 
@@ -267,12 +292,17 @@ public class MatchingService {
         MatchingConnection connection = matchingConnectionRepository.findById(connectionId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.CONNECTION_NOT_FOUND));
 
-        // userId가 요청 받은 사람인지 확인
-        Long otherUserId = connection.getOtherUserId(userId);
-        if (Objects.equals(userId, connection.getRequesterId())) {
+        if (!connection.isParticipant(userId)) {
+            log.warn("⚠️ 요청 수락 권한 없음(비당사자): userId={}, connectionId={}", userId, connectionId);
+            throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
+        }
+
+        if (!connection.isReceiver(userId)) {
             log.warn("⚠️ 요청 수락 권한 없음: userId={}, requesterId={}", userId, connection.getRequesterId());
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
         }
+
+        Long otherUserId = connection.getOtherUserId(userId);
 
         if (connection.getStatus() != ConnectionStatus.PENDING) {
             log.warn("⚠️ 요청 상태 불일치: connectionId={}, status={}", connectionId, connection.getStatus());
@@ -306,8 +336,12 @@ public class MatchingService {
         MatchingConnection connection = matchingConnectionRepository.findById(connectionId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.CONNECTION_NOT_FOUND));
 
-        // userId가 요청 받은 사람인지 확인
-        if (Objects.equals(userId, connection.getRequesterId())) {
+        if (!connection.isParticipant(userId)) {
+            log.warn("⚠️ 요청 거절 권한 없음(비당사자): userId={}, connectionId={}", userId, connectionId);
+            throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
+        }
+
+        if (!connection.isReceiver(userId)) {
             log.warn("⚠️ 요청 거절 권한 없음: userId={}, requesterId={}", userId, connection.getRequesterId());
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
         }
@@ -333,28 +367,39 @@ public class MatchingService {
                 .build();
     }
 
-    private UserMeResponse toUserMeResponse(User user) {
+    private MatchingCandidateResponse toMatchingCandidateResponse(User user) {
         UserProfile profile = user.getUserProfile();
-        
-        UserProfileResponse profileResponse = null;
-        if (profile != null) {
-            profileResponse = UserProfileResponse.from(profile, imageUrlBase);
-        }
 
-        return UserMeResponse.builder()
+        return MatchingCandidateResponse.builder()
                 .userId(user.getId())
-                .provider(user.getProvider())
-                .socialId(user.getSocialId())
-                .email(user.getEmail())
-                .name(user.getName())
-                .deptName(user.getDeptName())
                 .nickname(user.getNickname())
-                .studentNum(user.getStudentNum())
-                .status(user.getStatus())
-                .onboardingStatus(user.getOnboardingStatus())
-                .profileExists(profile != null)
-                .profile(profileResponse)
+                .deptName(user.getDeptName())
+                .intro(profile != null ? profile.getIntro() : null)
+                .profileImagePath(profile != null && profile.getProfileImagePath() != null
+                        ? toFullImageUrl(profile.getProfileImagePath())
+                        : null)
                 .build();
+    }
+
+    private boolean isConnectionChatActive(MatchingConnection connection) {
+        Long roomId = connection.getChatRoomId();
+        if (roomId == null) {
+            return false;
+        }
+        return chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, connection.getUser1Id())
+                && chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, connection.getUser2Id());
+    }
+
+    private void saveExposureIfAbsent(Long userId, Long candidateUserId) {
+        if (matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, candidateUserId)) {
+            return;
+        }
+        try {
+            matchingExposureRepository.save(MatchingExposure.create(userId, candidateUserId));
+        } catch (DataIntegrityViolationException e) {
+            // 동시성으로 동일 노출이 이미 기록된 경우 무시
+            log.debug("노출 이력 중복 무시: userId={}, candidateUserId={}", userId, candidateUserId);
+        }
     }
 
     private String toFullImageUrl(String profileImagePath) {

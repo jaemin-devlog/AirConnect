@@ -20,8 +20,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findAllByIdWithProfile(@Param("ids") Collection<Long> ids);
 
     // 프로필 기반 추천: 프로필이 있고 활성 상태인 사용자들
-    // - 내가 요청을 보낸 상대만 후보에서 제외
-    // - 그 외(상대가 나에게 보낸 요청/수락 이력)는 후보에 포함
+    // 제외 조건:
+    // 1) 양방향 PENDING 요청 존재
+    // 2) ACCEPTED 연결 + 두 사용자가 같은 PERSONAL 채팅방에 현재 모두 멤버
     @Query("""
         SELECT u
         FROM User u
@@ -37,7 +38,26 @@ public interface UserRepository extends JpaRepository<User, Long> {
                     (mc.user1Id = :userId AND mc.user2Id = u.id)
                  OR (mc.user1Id = u.id AND mc.user2Id = :userId)
               )
-                AND mc.requesterId = :userId
+                AND mc.status = 'PENDING'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM MatchingConnection mc
+              WHERE (
+                    (mc.user1Id = :userId AND mc.user2Id = u.id)
+                 OR (mc.user1Id = u.id AND mc.user2Id = :userId)
+              )
+                AND mc.status = 'ACCEPTED'
+                AND mc.chatRoomId IS NOT NULL
+                AND EXISTS (
+                    SELECT 1 FROM ChatRoomMember me
+                    WHERE me.chatRoom.id = mc.chatRoomId
+                      AND me.user.id = :userId
+                )
+                AND EXISTS (
+                    SELECT 1 FROM ChatRoomMember other
+                    WHERE other.chatRoom.id = mc.chatRoomId
+                      AND other.user.id = u.id
+                )
           )
         ORDER BY u.createdAt ASC
     """)
