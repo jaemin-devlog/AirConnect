@@ -1,7 +1,5 @@
 package univ.airconnect.matching.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -21,8 +19,11 @@ import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
 import univ.airconnect.matching.domain.entity.MatchingExposure;
+import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 import univ.airconnect.matching.dto.response.MatchingConnectResponse;
+import univ.airconnect.matching.dto.response.MatchingRequestResponse;
 import univ.airconnect.matching.dto.response.MatchingRecommendationResponse;
+import univ.airconnect.matching.dto.response.MatchingRequestsResponse;
 import univ.airconnect.matching.dto.response.MatchingResponseResponse;
 import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
@@ -39,6 +40,7 @@ import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -74,8 +76,6 @@ class MatchingServiceTest {
 
     @MockitoBean
     private ChatService chatService;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     @DisplayName("추천 후보가 2명 있으면 2명 반환되고 티켓이 1 차감된다")
@@ -368,19 +368,43 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("추천 응답은 users/me 형태의 주요 필드를 포함한다")
-    void recommendationDto_containsUserMeFields() throws JsonProcessingException {
+    @DisplayName("요청 목록 응답은 name/email/provider 없이 나머지 사용자 정보를 포함한다")
+    void requestList_excludesOnlyNameEmailProvider() {
+        User me = saveUserWithProfile("u1", Gender.MALE, 100);
+        User requester = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), me.getId()));
+
+        MatchingRequestsResponse response = matchingService.getRequests(me.getId());
+        MatchingRequestResponse received = response.getReceived().get(0);
+
+        assertThat(response.getReceivedCount()).isEqualTo(1);
+        assertThat(received.getSocialId()).isNotBlank();
+        assertThat(received.getOnboardingStatus()).isNotNull();
+        assertThat(received.getStatus()).isEqualTo(ConnectionStatus.PENDING);
+
+        List<String> fields = Arrays.stream(MatchingRequestResponse.class.getDeclaredFields())
+                .map(field -> field.getName())
+                .toList();
+        assertThat(fields).doesNotContain("name", "email", "provider");
+    }
+
+    @Test
+    @DisplayName("추천 응답은 name/email/provider를 제외한 사용자 정보를 포함한다")
+    void recommendationDto_excludesOnlyNameEmailProvider() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         saveUserWithProfile("u2", Gender.FEMALE, 100);
 
         MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
-        String json = objectMapper.writeValueAsString(response);
+        MatchingCandidateResponse candidate = response.getCandidates().get(0);
 
-        assertThat(json).contains("email");
-        assertThat(json).contains("socialId");
-        assertThat(json).contains("provider");
-        assertThat(json).contains("tickets");
-        assertThat(json).contains("onboardingStatus");
+        assertThat(candidate.getSocialId()).isNotBlank();
+        assertThat(candidate.getTickets()).isNotNull();
+        assertThat(candidate.getOnboardingStatus()).isNotNull();
+
+        List<String> fields = Arrays.stream(MatchingCandidateResponse.class.getDeclaredFields())
+                .map(field -> field.getName())
+                .toList();
+        assertThat(fields).doesNotContain("name", "email", "provider");
     }
 
     private User saveUserWithProfile(String socialId, Gender gender, int tickets) {

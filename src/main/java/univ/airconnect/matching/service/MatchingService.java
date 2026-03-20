@@ -22,7 +22,6 @@ import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
-import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
@@ -111,8 +110,8 @@ public class MatchingService {
 
         log.info("✅ 추천 완료: userId={}, 추천 대상 {}명", userId, selectedUsers.size());
 
-        List<UserMeResponse> candidates = selectedUsers.stream()
-                .map(this::toUserMeResponse)
+        List<MatchingCandidateResponse> candidates = selectedUsers.stream()
+                .map(this::toMatchingCandidateResponse)
                 .toList();
 
         // ✅ 추천 대상이 있을 때만 티켓 차감
@@ -269,19 +268,29 @@ public class MatchingService {
         User otherUser = userRepository.findById(otherUserId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
         UserProfile profile = otherUser.getUserProfile();
+        UserProfileResponse profileResponse = (profile != null) ? UserProfileResponse.from(profile, imageUrlBase) : null;
+
+        boolean profileImageUploaded = userMilestoneRepository.existsByUserIdAndMilestoneType(
+                otherUserId, MilestoneType.PROFILE_IMAGE_UPLOADED
+        );
+        boolean emailVerified = userMilestoneRepository.existsByUserIdAndMilestoneType(
+                otherUserId, MilestoneType.EMAIL_VERIFIED
+        );
 
         return MatchingRequestResponse.builder()
                 .connectionId(conn.getId())
                 .userId(otherUserId)
+                .socialId(otherUser.getSocialId())
                 .nickname(otherUser.getNickname())
                 .deptName(otherUser.getDeptName())
                 .studentNum(otherUser.getStudentNum())
-                .intro(profile != null ? profile.getIntro() : null)
-                .mbti(profile != null ? profile.getMbti() : null)
-                .residence(profile != null ? profile.getResidence() : null)
-                .profileImagePath(profile != null && profile.getProfileImagePath() != null
-                        ? toFullImageUrl(profile.getProfileImagePath())
-                        : null)
+                .userStatus(otherUser.getStatus())
+                .onboardingStatus(otherUser.getOnboardingStatus())
+                .profileExists(profile != null)
+                .profileImageUploaded(profileImageUploaded)
+                .emailVerified(emailVerified)
+                .tickets(otherUser.getTickets())
+                .profile(profileResponse)
                 .status(conn.getStatus())
                 .requestedAt(conn.getConnectedAt())
                 .respondedAt(conn.getRespondedAt())
@@ -372,7 +381,7 @@ public class MatchingService {
                 .build();
     }
 
-    private UserMeResponse toUserMeResponse(User user) {
+    private MatchingCandidateResponse toMatchingCandidateResponse(User user) {
         UserProfile profile = user.getUserProfile();
 
         UserProfileResponse profileResponse = null;
@@ -387,12 +396,9 @@ public class MatchingService {
                 user.getId(), MilestoneType.EMAIL_VERIFIED
         );
 
-        return UserMeResponse.builder()
+        return MatchingCandidateResponse.builder()
                 .userId(user.getId())
-                .provider(user.getProvider())
                 .socialId(user.getSocialId())
-                .email(user.getEmail())
-                .name(user.getName())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
                 .studentNum(user.getStudentNum())
