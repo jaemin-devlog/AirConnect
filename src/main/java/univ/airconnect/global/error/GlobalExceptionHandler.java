@@ -6,10 +6,12 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MultipartException;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.global.response.ApiResponse;
@@ -20,15 +22,10 @@ import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
 import univ.airconnect.verification.exception.VerificationErrorCode;
 import univ.airconnect.verification.exception.VerificationException;
-import jakarta.servlet.http.HttpServletRequest;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.HttpMediaTypeNotSupportedException;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.multipart.MultipartException;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 
@@ -225,39 +222,19 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(body, traceId));
     }
 
-    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException e,
-                                                                HttpServletRequest request) {
-        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        ErrorCode ec = ErrorCode.INVALID_REQUEST;
-
-        String message = e.getName() + " 타입이 올바르지 않습니다.";
-
-        log.warn("❌ MethodArgumentTypeMismatchException [{}] - {}", traceId, e.getMessage());
-
-        ErrorBody body = new ErrorBody(
-                ec.getCode(),
-                message,
-                ec.getHttpStatus().value(),
-                traceId,
-                null
-        );
-
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
-    }
-
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException e,
-                                                                        HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<Void>> handleUnsupportedMediaType(
+            HttpMediaTypeNotSupportedException e,
+            HttpServletRequest request
+    ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.INVALID_REQUEST;
 
-        log.warn("❌ HttpMediaTypeNotSupportedException [{}] - {}", traceId, e.getMessage());
+        log.warn("HttpMediaTypeNotSupportedException [{}] - {}", traceId, e.getMessage());
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
-                "지원하지 않는 Content-Type 입니다. multipart/form-data 형식으로 요청해주세요.",
+                "Unsupported Content-Type. Please use multipart/form-data.",
                 e.getStatusCode().value(),
                 traceId,
                 null
@@ -268,16 +245,18 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MultipartException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMultipart(MultipartException e,
-                                                             HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<Void>> handleMultipart(
+            MultipartException e,
+            HttpServletRequest request
+    ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.INVALID_REQUEST;
 
-        log.warn("❌ MultipartException [{}] - {}", traceId, e.getMessage());
+        log.warn("MultipartException [{}] - {}", traceId, e.getMessage());
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
-                "multipart 요청 형식이 올바르지 않습니다.",
+                "Invalid multipart request format.",
                 ec.getHttpStatus().value(),
                 traceId,
                 null
