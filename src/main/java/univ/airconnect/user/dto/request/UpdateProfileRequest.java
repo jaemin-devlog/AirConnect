@@ -21,4 +21,3 @@ public class UpdateProfileRequest {
     private String intro;
     private String instagram;
 }
-

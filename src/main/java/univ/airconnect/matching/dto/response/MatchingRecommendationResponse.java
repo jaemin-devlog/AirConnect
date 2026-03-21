@@ -3,7 +3,6 @@ package univ.airconnect.matching.dto.response;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
-import univ.airconnect.user.dto.response.UserMeResponse;
 
 import java.util.List;
 
@@ -13,7 +12,7 @@ import java.util.List;
 public class MatchingRecommendationResponse {
 
     private int count;
-    private List<UserMeResponse> candidates;
+    private List<MatchingCandidateResponse> candidates;
     private Integer userTicketsRemaining;
 }
 

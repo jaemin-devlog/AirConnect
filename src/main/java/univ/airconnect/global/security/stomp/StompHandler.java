@@ -16,6 +16,7 @@ import org.springframework.util.StringUtils;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
+import univ.airconnect.groupmatching.service.GMatchingService;
 
 import java.security.Principal;
 
@@ -24,13 +25,20 @@ import java.security.Principal;
 public class StompHandler implements ChannelInterceptor {
 
     private static final String CHAT_ROOM_SUB_PREFIX = "/sub/chat/room/";
+    private static final String MATCHING_TEAM_ROOM_SUB_PREFIX = "/sub/matching/team-room/";
 
     private final JwtProvider jwtProvider;
     private final ChatService chatService;
+    private final GMatchingService matchingService;
 
-    public StompHandler(JwtProvider jwtProvider, @Lazy ChatService chatService) {
+    public StompHandler(
+            JwtProvider jwtProvider,
+            @Lazy ChatService chatService,
+            @Lazy GMatchingService matchingService
+    ) {
         this.jwtProvider = jwtProvider;
         this.chatService = chatService;
+        this.matchingService = matchingService;
     }
 
     @Override
@@ -72,33 +80,52 @@ public class StompHandler implements ChannelInterceptor {
 
     private void handleSubscribe(StompHeaderAccessor accessor) {
         String destination = accessor.getDestination();
-
-        if (!StringUtils.hasText(destination) || !destination.startsWith(CHAT_ROOM_SUB_PREFIX)) {
+        if (!StringUtils.hasText(destination)) {
             return;
         }
 
-        Long roomId = extractRoomId(destination);
         Long userId = extractUserId(accessor);
-
         if (userId == null) {
             log.error("STOMP SUBSCRIBE REJECTED: sessionId={}, destination={}, reason=unauthenticated",
                     accessor.getSessionId(), destination);
-            throw new AccessDeniedException("인증된 사용자 정보를 찾을 수 없습니다.");
+            throw new AccessDeniedException("Unable to resolve authenticated user.");
         }
+
+        if (destination.startsWith(CHAT_ROOM_SUB_PREFIX)) {
+            handleChatSubscribe(accessor, destination, userId);
+            return;
+        }
+
+        if (destination.startsWith(MATCHING_TEAM_ROOM_SUB_PREFIX)) {
+            handleMatchingSubscribe(accessor, destination, userId);
+        }
+    }
+
+    private void handleChatSubscribe(StompHeaderAccessor accessor, String destination, Long userId) {
+        Long roomId = extractId(destination, CHAT_ROOM_SUB_PREFIX, "chat room");
 
         if (!chatService.isMember(roomId, userId)) {
             log.error("STOMP SUBSCRIBE REJECTED: roomId={}, userId={}, reason=not_member", roomId, userId);
-            throw new AccessDeniedException("채팅방 참여 권한이 없습니다.");
+            throw new AccessDeniedException("No permission to subscribe this chat room.");
         }
 
         chatService.enterChatRoom(roomId.toString());
         chatService.mapSessionToRoom(accessor.getSessionId(), roomId.toString());
-
-        // 채팅방 입장 시 읽음 처리 업데이트
         chatService.updateLastRead(roomId, userId);
 
-        log.info("STOMP SUBSCRIBE: sessionId={}, userId={}, roomId={}",
+        log.info("STOMP SUBSCRIBE CHAT: sessionId={}, userId={}, roomId={}",
                 accessor.getSessionId(), userId, roomId);
+    }
+
+    private void handleMatchingSubscribe(StompHeaderAccessor accessor, String destination, Long userId) {
+        Long teamRoomId = extractId(destination, MATCHING_TEAM_ROOM_SUB_PREFIX, "team room");
+        if (!matchingService.canSubscribeTeamRoom(teamRoomId, userId)) {
+            log.error("STOMP SUBSCRIBE REJECTED: teamRoomId={}, userId={}, reason=no_access", teamRoomId, userId);
+            throw new AccessDeniedException("No permission to subscribe this matching room.");
+        }
+
+        log.info("STOMP SUBSCRIBE MATCHING: sessionId={}, userId={}, teamRoomId={}",
+                accessor.getSessionId(), userId, teamRoomId);
     }
 
     private void handleDisconnect(StompHeaderAccessor accessor) {
@@ -110,30 +137,30 @@ public class StompHandler implements ChannelInterceptor {
         String bearerToken = accessor.getFirstNativeHeader("Authorization");
 
         if (!StringUtils.hasText(bearerToken)) {
-            throw new IllegalArgumentException("Authorization 헤더가 없습니다.");
+            throw new IllegalArgumentException("Authorization header is required.");
         }
 
         if (!bearerToken.startsWith("Bearer ")) {
-            throw new IllegalArgumentException("Authorization 헤더 형식이 올바르지 않습니다.");
+            throw new IllegalArgumentException("Authorization header must be Bearer token.");
         }
 
         String token = bearerToken.substring(7);
         if (!StringUtils.hasText(token)) {
-            throw new IllegalArgumentException("JWT 토큰이 비어 있습니다.");
+            throw new IllegalArgumentException("JWT token is empty.");
         }
 
         return token;
     }
 
-    private Long extractRoomId(String destination) {
+    private Long extractId(String destination, String prefix, String target) {
         try {
-            Long roomId = Long.valueOf(destination.substring(CHAT_ROOM_SUB_PREFIX.length()));
-            if (roomId <= 0) {
-                throw new IllegalArgumentException("채팅방 ID는 양수여야 합니다.");
+            Long id = Long.valueOf(destination.substring(prefix.length()));
+            if (id <= 0) {
+                throw new IllegalArgumentException(target + " id must be positive");
             }
-            return roomId;
+            return id;
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("잘못된 채팅방 경로입니다.");
+            throw new IllegalArgumentException("Invalid destination for " + target);
         }
     }
 
