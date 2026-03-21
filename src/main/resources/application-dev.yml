@@ -90,3 +90,5 @@ app:
   upload:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/var/lib/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE}
+
+

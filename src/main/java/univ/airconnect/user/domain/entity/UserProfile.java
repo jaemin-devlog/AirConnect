@@ -1,8 +1,15 @@
 package univ.airconnect.user.domain.entity;
 
-import java.time.LocalDateTime;
-
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapsId;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -10,12 +17,13 @@ import lombok.NoArgsConstructor;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.MilitaryStatus;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "user_profiles")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserProfile {
-
 
     @Id
     @Column(name = "user_id")
@@ -60,7 +68,6 @@ public class UserProfile {
 
     @Column(nullable = false)
     private LocalDateTime updatedAt;
-
 
     @Builder
     private UserProfile(

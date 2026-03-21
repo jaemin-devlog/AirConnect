@@ -53,6 +53,7 @@ public class ChatService {
 
     private static final String CHAT_SESSION_KEY = "chat:session:";
     private static final String SESSION_ROOM_KEY = "chat:session-room:";
+    private static final String ROOM_SESSION_SET_KEY = "chat:room-sessions:";
 
     /**
      * 채팅방 생성 후 생성자를 자동 참여시킨다.
@@ -60,12 +61,11 @@ public class ChatService {
      */
     @Transactional
     public ChatRoomResponse createChatRoom(String name, ChatRoomType type, Long creatorUserId, Long targetUserId) {
-        User creator = userRepository.findById(creatorUserId)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+        findUserOrThrow(creatorUserId);
 
         if (type == ChatRoomType.PERSONAL) {
             if (targetUserId == null) {
-                throw new BusinessException(ErrorCode.INTERNAL_ERROR);
+                throw new BusinessException(ErrorCode.INVALID_REQUEST, "1:1 채팅은 대상 사용자가 필요합니다.");
             }
 
             List<Long> existingRoomIds = chatRoomMemberRepository.findCommonPersonalRoomIds(creatorUserId, targetUserId);
@@ -74,20 +74,99 @@ public class ChatService {
                         .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR));
                 return ChatRoomResponse.from(existingRoom);
             }
+
+            ChatRoom personalRoom = createRoomWithMembers(name, ChatRoomType.PERSONAL,
+                    List.of(creatorUserId, targetUserId));
+            return ChatRoomResponse.from(personalRoom);
         }
 
-        ChatRoom chatRoom = ChatRoom.create(name, type);
-        chatRoomRepository.save(chatRoom);
+        ChatRoom groupRoom = createRoomWithMembers(name, ChatRoomType.GROUP, List.of(creatorUserId));
+        return ChatRoomResponse.from(groupRoom);
+    }
 
-        chatRoomMemberRepository.save(ChatRoomMember.create(chatRoom, creator));
+    /**
+     * 매칭/임시팀방 전용 내부 유틸 메서드.
+     * GROUP 채팅방을 생성하고 전달받은 멤버를 한 번에 참여시킨다.
+     */
+    @Transactional
+    public ChatRoom createGroupRoomWithMembers(String roomName, Collection<Long> userIds) {
+        return createRoomWithMembers(roomName, ChatRoomType.GROUP, userIds);
+    }
 
-        if (type == ChatRoomType.PERSONAL && targetUserId != null) {
-            User target = userRepository.findById(targetUserId)
-                    .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
-            chatRoomMemberRepository.save(ChatRoomMember.create(chatRoom, target));
+    /**
+     * 이미 존재하는 GROUP 채팅방에 멤버를 일괄 추가한다.
+     * 중복 멤버는 자동으로 제외한다.
+     */
+    @Transactional
+    public void addMembersToRoom(Long roomId, Collection<Long> userIds) {
+        ChatRoom room = findRoomOrThrow(roomId);
+
+        if (room.getType() != ChatRoomType.GROUP) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "GROUP 채팅방에만 멤버를 추가할 수 있습니다.");
         }
 
-        return ChatRoomResponse.from(chatRoom);
+        LinkedHashSet<Long> candidateUserIds = normalizeUserIds(userIds);
+        if (candidateUserIds.isEmpty()) {
+            return;
+        }
+
+        Set<Long> existingUserIds = chatRoomMemberRepository.findByChatRoomId(roomId).stream()
+                .map(member -> member.getUser().getId())
+                .collect(Collectors.toSet());
+
+        candidateUserIds.removeAll(existingUserIds);
+        if (candidateUserIds.isEmpty()) {
+            return;
+        }
+
+        Map<Long, User> userMap = loadUsersAsMap(candidateUserIds);
+        List<ChatRoomMember> newMembers = candidateUserIds.stream()
+                .map(userId -> ChatRoomMember.create(room, userMap.get(userId)))
+                .collect(Collectors.toList());
+
+        chatRoomMemberRepository.saveAll(newMembers);
+    }
+
+    /**
+     * 매칭 완료/입장/퇴장과 같은 시스템 메시지를 발행한다.
+     * senderId는 반드시 해당 방의 멤버여야 한다.
+     */
+    @Transactional
+    public ChatMessageResponse publishSystemMessage(Long roomId, Long senderId, String message, MessageType type) {
+        if (type == null || type == MessageType.TALK) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "시스템 메시지 타입은 ENTER 또는 EXIT 이어야 합니다.");
+        }
+
+        if (message == null || message.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "메시지 내용은 비어 있을 수 없습니다.");
+        }
+
+        User sender = findUserOrThrow(senderId);
+        validateRoomAccess(roomId, senderId);
+
+        ChatMessage systemMessage = ChatMessage.create(
+                roomId,
+                senderId,
+                sender.getNickname(),
+                message,
+                type
+        );
+        chatMessageRepository.save(systemMessage);
+        updateLastRead(roomId, senderId, systemMessage.getId());
+
+        ChatMessageResponse response = ChatMessageResponse.from(systemMessage, extractProfileImage(sender));
+        publishToRedisSilently(roomId, response);
+        return response;
+    }
+
+    @Transactional
+    public ChatMessageResponse publishEnterMessage(Long roomId, Long senderId, String message) {
+        return publishSystemMessage(roomId, senderId, message, MessageType.ENTER);
+    }
+
+    @Transactional
+    public ChatMessageResponse publishExitMessage(Long roomId, Long senderId, String message) {
+        return publishSystemMessage(roomId, senderId, message, MessageType.EXIT);
     }
 
     /**
@@ -95,15 +174,13 @@ public class ChatService {
      */
     @Transactional
     public void joinRoom(Long roomId, Long userId) {
-        ChatRoom room = chatRoomRepository.findById(roomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR));
+        ChatRoom room = findRoomOrThrow(roomId);
 
         if (room.getType() == ChatRoomType.PERSONAL) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR);
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "1:1 채팅방은 별도 참여가 불가능합니다.");
         }
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+        User user = findUserOrThrow(userId);
 
         if (!chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)) {
             chatRoomMemberRepository.save(ChatRoomMember.create(room, user));
@@ -141,6 +218,7 @@ public class ChatService {
      */
     public void mapSessionToRoom(String sessionId, String roomId) {
         redisTemplate.opsForValue().set(SESSION_ROOM_KEY + sessionId, roomId, 24, TimeUnit.HOURS);
+        redisTemplate.opsForSet().add(ROOM_SESSION_SET_KEY + roomId, sessionId);
     }
 
     /**
@@ -158,8 +236,10 @@ public class ChatService {
      * 세션 정보 삭제
      */
     public void removeSessionInfo(String sessionId) {
+        Object roomIdValue = redisTemplate.opsForValue().get(SESSION_ROOM_KEY + sessionId);
         redisTemplate.delete(CHAT_SESSION_KEY + sessionId);
         redisTemplate.delete(SESSION_ROOM_KEY + sessionId);
+        cleanupRoomTopicIfUnused(sessionId, roomIdValue);
     }
 
     /**
@@ -186,9 +266,7 @@ public class ChatService {
      */
     @Transactional
     public void sendMessage(Long userId, ChatMessageRequest request) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
-
+        User user = findUserOrThrow(userId);
         validateRoomAccess(request.getRoomId(), userId);
 
         ChatMessage chatMessage = ChatMessage.create(
@@ -200,23 +278,10 @@ public class ChatService {
         );
         chatMessageRepository.save(chatMessage);
 
-        // 보낸 사람의 마지막 읽은 메시지 즉시 반영 (재조회하지 않음)
         updateLastRead(request.getRoomId(), userId, chatMessage.getId());
 
-        String profileImage = (user.getUserProfile() != null)
-                ? user.getUserProfile().getProfileImagePath()
-                : null;
-
-        ChatMessageResponse response = ChatMessageResponse.from(chatMessage, profileImage);
-
-        try {
-            String payload = objectMapper.writeValueAsString(response);
-            redisTemplate.convertAndSend(request.getRoomId().toString(), payload);
-            log.info("Message Published: roomId={}, senderId={}", request.getRoomId(), userId);
-        } catch (JsonProcessingException e) {
-            log.error("Redis publish serialization failed. roomId={}, senderId={}", request.getRoomId(), userId, e);
-            throw new RuntimeException("채팅 메시지 직렬화에 실패했습니다.");
-        }
+        ChatMessageResponse response = ChatMessageResponse.from(chatMessage, extractProfileImage(user));
+        publishToRedisSilently(request.getRoomId(), response);
     }
 
     /**
@@ -224,13 +289,10 @@ public class ChatService {
      */
     @Transactional
     public void leaveRoom(Long roomId, Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+        User user = findUserOrThrow(userId);
 
         ChatRoomMember member = chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR));
-
-        chatRoomMemberRepository.delete(member);
+                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "해당 채팅방의 멤버가 아닙니다."));
 
         ChatMessage exitMessage = ChatMessage.create(
                 roomId,
@@ -241,19 +303,10 @@ public class ChatService {
         );
         chatMessageRepository.save(exitMessage);
 
-        String profileImage = (user.getUserProfile() != null)
-                ? user.getUserProfile().getProfileImagePath()
-                : null;
+        ChatMessageResponse response = ChatMessageResponse.from(exitMessage, extractProfileImage(user));
+        publishToRedisSilently(roomId, response);
 
-        ChatMessageResponse response = ChatMessageResponse.from(exitMessage, profileImage);
-
-        try {
-            String payload = objectMapper.writeValueAsString(response);
-            redisTemplate.convertAndSend(roomId.toString(), payload);
-            log.info("Leave Message Published: roomId={}, userId={}", roomId, userId);
-        } catch (JsonProcessingException e) {
-            log.error("Redis publish serialization failed for leave message.", e);
-        }
+        chatRoomMemberRepository.delete(member);
     }
 
     /**
@@ -313,7 +366,6 @@ public class ChatService {
             return Collections.emptyList();
         }
 
-        // 1. 발신자(User) ID 목록 추출 및 일괄 조회 (N+1 방지)
         Set<Long> senderIds = messages.stream()
                 .map(ChatMessage::getSenderId)
                 .collect(Collectors.toSet());
@@ -335,12 +387,119 @@ public class ChatService {
         return response;
     }
 
+    private ChatRoom createRoomWithMembers(String roomName, ChatRoomType roomType, Collection<Long> userIds) {
+        if (roomName == null || roomName.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "채팅방 이름은 비어 있을 수 없습니다.");
+        }
+
+        LinkedHashSet<Long> uniqueUserIds = normalizeUserIds(userIds);
+        if (uniqueUserIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "채팅방 멤버는 최소 1명 이상이어야 합니다.");
+        }
+
+        if (roomType == ChatRoomType.PERSONAL && uniqueUserIds.size() != 2) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "1:1 채팅방은 정확히 2명이 필요합니다.");
+        }
+
+        Map<Long, User> userMap = loadUsersAsMap(uniqueUserIds);
+
+        ChatRoom chatRoom = ChatRoom.create(roomName, roomType);
+        chatRoomRepository.save(chatRoom);
+
+        List<ChatRoomMember> members = uniqueUserIds.stream()
+                .map(userId -> ChatRoomMember.create(chatRoom, userMap.get(userId)))
+                .collect(Collectors.toList());
+        chatRoomMemberRepository.saveAll(members);
+
+        return chatRoom;
+    }
+
+    private Map<Long, User> loadUsersAsMap(Collection<Long> userIds) {
+        List<User> users = userRepository.findAllById(userIds);
+        if (users.size() != new HashSet<>(userIds).size()) {
+            throw new AuthException(AuthErrorCode.USER_NOT_FOUND);
+        }
+
+        return users.stream()
+                .collect(Collectors.toMap(User::getId, user -> user));
+    }
+
+    private LinkedHashSet<Long> normalizeUserIds(Collection<Long> userIds) {
+        if (userIds == null) {
+            return new LinkedHashSet<>();
+        }
+
+        return userIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private User findUserOrThrow(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+    }
+
+    private ChatRoom findRoomOrThrow(Long roomId) {
+        return chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "채팅방을 찾을 수 없습니다."));
+    }
+
+    private String extractProfileImage(User user) {
+        return (user.getUserProfile() != null)
+                ? user.getUserProfile().getProfileImagePath()
+                : null;
+    }
+
+    private void publishToRedis(Long roomId, ChatMessageResponse response) {
+        try {
+            String payload = objectMapper.writeValueAsString(response);
+            redisTemplate.convertAndSend(roomId.toString(), payload);
+            log.info("Message Published: roomId={}", roomId);
+        } catch (JsonProcessingException e) {
+            log.error("Redis publish serialization failed. roomId={}", roomId, e);
+            throw new RuntimeException("채팅 메시지 직렬화에 실패했습니다.");
+        }
+    }
+
+    private void publishToRedisSilently(Long roomId, ChatMessageResponse response) {
+        try {
+            publishToRedis(roomId, response);
+        } catch (RuntimeException e) {
+            log.error("Redis publish skipped after DB save. roomId={}", roomId, e);
+        }
+    }
+
+    private void cleanupRoomTopicIfUnused(String sessionId, Object roomIdValue) {
+        if (roomIdValue == null) {
+            return;
+        }
+
+        String roomId = String.valueOf(roomIdValue);
+        String roomSessionSetKey = ROOM_SESSION_SET_KEY + roomId;
+        redisTemplate.opsForSet().remove(roomSessionSetKey, sessionId);
+
+        Long sessionCount = redisTemplate.opsForSet().size(roomSessionSetKey);
+        if (sessionCount != null && sessionCount == 0L) {
+            redisTemplate.delete(roomSessionSetKey);
+            removeTopic(roomId);
+        }
+    }
+
+    private void removeTopic(String roomId) {
+        ChannelTopic topic = topics.remove(roomId);
+        if (topic == null) {
+            return;
+        }
+        redisMessageListener.removeMessageListener(redisSubscriber, topic);
+        log.info("Redis Topic Unregistered: roomId={}", roomId);
+    }
+
     /**
      * 채팅방 접근 권한 확인
      */
     private void validateRoomAccess(Long roomId, Long userId) {
         if (!chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR);
+            throw new BusinessException(ErrorCode.FORBIDDEN, "해당 채팅방에 접근할 수 없습니다.");
         }
     }
 }
