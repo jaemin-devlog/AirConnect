@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.entity.UserMilestone;
 import univ.airconnect.user.exception.UserErrorCode;
@@ -57,6 +58,7 @@ public class VerificationService {
         }
     }
 
+    @Transactional
     public void verifyCode(Long userId, String email, String code) {
         String normalizedEmail = normalizeEmail(email);
         validateEmailDomain(normalizedEmail);
