@@ -41,7 +41,6 @@ public class VerificationService {
         checkResendCooldown(normalizedEmail);
 
         String code = generateCode();
-
         saveCode(normalizedEmail, code);
         saveCooldown(normalizedEmail);
 
@@ -58,26 +57,22 @@ public class VerificationService {
         }
     }
 
-    public void verifyCode(String email, String code) {
+    public void verifyCode(Long userId, String email, String code) {
         String normalizedEmail = normalizeEmail(email);
         validateEmailDomain(normalizedEmail);
 
         String savedCode = redisTemplate.opsForValue().get(VERIFICATION_PREFIX + normalizedEmail);
-
         if (savedCode == null) {
             throw new VerificationException(VerificationErrorCode.CODE_EXPIRED);
         }
-
         if (!savedCode.equals(code.trim())) {
             throw new VerificationException(VerificationErrorCode.CODE_MISMATCH);
         }
 
         clearVerificationData(normalizedEmail);
+        grantMilestoneIfNotAlreadyGranted(userId, normalizedEmail);
 
-        // 마일리스톤 부여 (email 기반 사용자 찾아서 처리)
-        grantMilestoneIfNotAlreadyGranted(normalizedEmail);
-
-        log.info("Email verification succeeded. email={}", normalizedEmail);
+        log.info("Email verification succeeded. userId={}, email={}", userId, normalizedEmail);
     }
 
     private String normalizeEmail(String email) {
@@ -139,45 +134,38 @@ public class VerificationService {
         redisTemplate.delete(COOLDOWN_PREFIX + email);
     }
 
-    /**
-     * 이메일 인증 마일리스톤을 부여합니다. 과거에 같은 마일리스톤이 부여된 적이 없으면 티켓 1개를 추가하고 기록합니다.
-     *
-     * @param email 사용자 이메일
-     */
-    private void grantMilestoneIfNotAlreadyGranted(String email) {
-        var user = userRepository.findByEmail(email)
-                .orElse(null);
-
-        if (user == null) {
-            log.warn("⚠️ 이메일에 해당하는 사용자를 찾을 수 없음 (마일리스톤 미부여): email={}", email);
+    private void grantMilestoneIfNotAlreadyGranted(Long userId, String verifiedEmail) {
+        if (userId == null) {
+            log.warn("Email verified without authenticated user. milestone skipped. email={}", verifiedEmail);
             return;
         }
 
-        // 이미 이 마일리스톤이 부여되었고 granted = true인지 확인
+        var user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+
         boolean alreadyGranted = userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(
-                user.getId(), 
+                userId,
                 MilestoneType.EMAIL_VERIFIED
         );
-
         if (alreadyGranted) {
-            log.info("ℹ️ 이미 지급된 마일리스톤 (중복 부여 방지): userId={}, email={}, milestoneType=EMAIL_VERIFIED", 
-                    user.getId(), email);
+            log.info("Milestone already granted. userId={}, milestoneType=EMAIL_VERIFIED", userId);
             return;
         }
 
-        // 마일리스톤 기록 추가 (동시 요청 레이스로 unique 충돌 가능)
-        UserMilestone milestone = UserMilestone.create(user.getId(), MilestoneType.EMAIL_VERIFIED);
+        UserMilestone milestone = UserMilestone.create(userId, MilestoneType.EMAIL_VERIFIED);
         try {
             userMilestoneRepository.save(milestone);
         } catch (DataIntegrityViolationException e) {
-            log.info("ℹ️ 동시 요청으로 이미 지급 처리됨: userId={}, milestoneType=EMAIL_VERIFIED", user.getId());
+            log.info("Milestone already granted by concurrent request. userId={}, milestoneType=EMAIL_VERIFIED", userId);
             return;
         }
 
-        // 사용자 티켓 1개 추가
         user.addTickets(1);
-
-        log.info("🎫 마일리스톤 지급 완료: userId={}, email={}, milestoneType=EMAIL_VERIFIED, 부여 티켓=1, 총 티켓={}", 
-                user.getId(), email, user.getTickets());
+        log.info(
+                "Milestone granted. userId={}, verifiedEmail={}, milestoneType=EMAIL_VERIFIED, rewardedTickets=1, totalTickets={}",
+                userId,
+                verifiedEmail,
+                user.getTickets()
+        );
     }
 }

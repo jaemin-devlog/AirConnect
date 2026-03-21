@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import univ.airconnect.global.response.ApiResponse;
+import univ.airconnect.global.security.resolver.CurrentUserId;
 import univ.airconnect.verification.dto.request.EmailVerificationRequest;
 import univ.airconnect.verification.dto.request.EmailVerifyRequest;
 import univ.airconnect.verification.service.VerificationService;
@@ -37,14 +38,15 @@ public class VerificationController {
 
     @PostMapping("/email/verify")
     public ResponseEntity<ApiResponse<Void>> verifyCode(
+            @CurrentUserId Long userId,
             @Valid @RequestBody EmailVerifyRequest request,
             HttpServletRequest httpRequest
     ) {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
 
-        log.info("Email verification requested. email={}", request.getEmail());
-        verificationService.verifyCode(request.getEmail(), request.getCode());
-        log.info("Email verification completed. email={}", request.getEmail());
+        log.info("Email verification requested. userId={}, email={}", userId, request.getEmail());
+        verificationService.verifyCode(userId, request.getEmail(), request.getCode());
+        log.info("Email verification completed. userId={}, email={}", userId, request.getEmail());
 
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }
