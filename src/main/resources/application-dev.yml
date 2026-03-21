@@ -39,10 +39,6 @@ spring:
     redis:
       url: ${REDIS_URL}
 
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
-
   mail:
     host: smtp.gmail.com
     port: 587
@@ -95,8 +91,4 @@ app:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/var/lib/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE}
 
-matching:
-  queue:
-    worker:
-      enabled: true
-      delay-ms: 1000
+

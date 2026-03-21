@@ -54,8 +54,7 @@ launch.json
 
 # Application config (민감한 정보)
 src/main/resources/application.yml
-src/main/resources/application-prod.yml
-src/main/resources/application-*.yml
+src/main/resources/application-local.yml
 
 # Apple/Kakao API Keys (⭐ 중요!)
 src/main/resources/key/

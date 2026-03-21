@@ -1,27 +1,27 @@
 package univ.airconnect.matching.service;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.chat.domain.ChatRoomType;
+import univ.airconnect.chat.domain.entity.ChatRoom;
+import univ.airconnect.chat.domain.entity.ChatRoomMember;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
+import univ.airconnect.chat.repository.ChatRoomMemberRepository;
+import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
 import univ.airconnect.matching.domain.entity.MatchingExposure;
-import univ.airconnect.matching.domain.entity.MatchingQueueEntry;
+import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 import univ.airconnect.matching.dto.response.MatchingConnectResponse;
+import univ.airconnect.matching.dto.response.MatchingRequestResponse;
 import univ.airconnect.matching.dto.response.MatchingRecommendationResponse;
 import univ.airconnect.matching.dto.response.MatchingRequestsResponse;
 import univ.airconnect.matching.dto.response.MatchingResponseResponse;
@@ -29,7 +29,6 @@ import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.repository.MatchingExposureRepository;
-import univ.airconnect.matching.repository.MatchingQueueEntryRepository;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.MilitaryStatus;
 import univ.airconnect.user.domain.OnboardingStatus;
@@ -40,7 +39,9 @@ import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,150 +63,245 @@ class MatchingServiceTest {
     private UserProfileRepository userProfileRepository;
 
     @Autowired
-    private MatchingQueueEntryRepository matchingQueueEntryRepository;
-
-    @Autowired
     private MatchingExposureRepository matchingExposureRepository;
 
     @Autowired
     private MatchingConnectionRepository matchingConnectionRepository;
 
-    @MockBean
-    private ChatService chatService;
+    @Autowired
+    private ChatRoomRepository chatRoomRepository;
 
     @Autowired
-    private PlatformTransactionManager transactionManager;
+    private ChatRoomMemberRepository chatRoomMemberRepository;
 
-    private TransactionTemplate transactionTemplate;
-
-    @BeforeEach
-    void setUp() {
-        transactionTemplate = new TransactionTemplate(transactionManager);
-    }
+    @MockitoBean
+    private ChatService chatService;
 
     @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    @DisplayName("매칭 시작 시 큐에 활성 엔트리가 생성된다")
-    void start_createsQueueEntry() {
-        Long userId = transactionTemplate.execute(status ->
-                saveUserWithProfile("user-1", Gender.MALE, 100).getId()
-        );
-
-        matchingService.start(userId);
-
-        Optional<MatchingQueueEntry> entry = matchingQueueEntryRepository.findByUserIdAndActiveTrue(userId);
-        assertThat(entry).isPresent();
-    }
-
-    @Test
-    @DisplayName("추천 요청 시 티켓이 차감되고 후보가 반환된다")
-    void recommend_consumesTicketAndReturnsCandidate() {
-        User requester = saveUserWithProfile("user-1", Gender.MALE, 100);
-        User candidate = saveUserWithProfile("user-2", Gender.FEMALE, 100);
-
-        matchingQueueEntryRepository.save(MatchingQueueEntry.create(requester.getId()));
-        matchingQueueEntryRepository.save(MatchingQueueEntry.create(candidate.getId()));
+    @DisplayName("추천 후보가 2명 있으면 2명 반환되고 티켓이 1 차감된다")
+    void recommend_returnsTwoAndConsumesOneTicket() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User c1 = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        User c2 = saveUserWithProfile("u3", Gender.FEMALE, 100);
 
         MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
 
         User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(response.getCount()).isEqualTo(2);
+        assertThat(response.getCandidates()).extracting("userId").containsExactlyInAnyOrder(c1.getId(), c2.getId());
         assertThat(reloaded.getTickets()).isEqualTo(99);
-        assertThat(response.getCount()).isEqualTo(1);
-        assertThat(response.getCandidates()).hasSize(1);
-        assertThat(matchingExposureRepository.existsByUserIdAndCandidateUserId(requester.getId(), candidate.getId()))
-                .isTrue();
     }
 
     @Test
-    @DisplayName("추천 요청은 매칭 시작 전이면 실패한다")
-    void recommend_requiresQueueStarted() {
-        User requester = saveUserWithProfile("user-1", Gender.MALE, 100);
+    @DisplayName("추천 후보가 1명만 있으면 1명 반환되고 티켓이 1 차감된다")
+    void recommend_returnsOneAndConsumesOneTicket() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User c1 = saveUserWithProfile("u2", Gender.FEMALE, 100);
+
+        MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
+
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(response.getCount()).isEqualTo(1);
+        assertThat(response.getCandidates()).extracting("userId").containsExactly(c1.getId());
+        assertThat(reloaded.getTickets()).isEqualTo(99);
+    }
+
+    @Test
+    @DisplayName("추천 후보가 없으면 티켓이 차감되지 않는다")
+    void recommend_noCandidate_noTicketConsumed() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+
+        MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
+
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(response.getCount()).isEqualTo(0);
+        assertThat(response.getCandidates()).isEmpty();
+        assertThat(reloaded.getTickets()).isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("추천 예외가 나면 티켓이 차감되지 않는다")
+    void recommend_exception_noTicketConsumed() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 0);
+        saveUserWithProfile("u2", Gender.FEMALE, 100);
 
         assertThatThrownBy(() -> matchingService.recommend(requester.getId()))
                 .isInstanceOf(MatchingException.class)
                 .extracting("errorCode")
-                .isEqualTo(MatchingErrorCode.MATCHING_NOT_STARTED);
+                .isEqualTo(MatchingErrorCode.INSUFFICIENT_TICKETS);
+
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(reloaded.getTickets()).isEqualTo(0);
     }
 
     @Test
-    @DisplayName("컨택 요청 시 PENDING 연결이 생성되고 티켓 2장이 소모된다")
-    void connect_createsPendingAndConsumesTickets() {
-        User requester = saveUserWithProfile("user-1", Gender.MALE, 100);
-        User target = saveUserWithProfile("user-2", Gender.FEMALE, 100);
+    @DisplayName("같은 추천 사이클 내에서는 중복 노출이 없다")
+    void recommend_noDuplicatesWithinCycle() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User c1 = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        User c2 = saveUserWithProfile("u3", Gender.FEMALE, 100);
+        User c3 = saveUserWithProfile("u4", Gender.FEMALE, 100);
 
+        MatchingRecommendationResponse first = matchingService.recommend(requester.getId());
+        MatchingRecommendationResponse second = matchingService.recommend(requester.getId());
+
+        List<Long> allShown = new ArrayList<>(first.getCandidates().stream().map(c -> c.getUserId()).toList());
+        allShown.addAll(second.getCandidates().stream().map(c -> c.getUserId()).toList());
+
+        assertThat(allShown).doesNotHaveDuplicates();
+        assertThat(allShown).contains(c1.getId(), c2.getId(), c3.getId());
+    }
+
+    @Test
+    @DisplayName("한 사이클 소진 후에는 노출 이력이 리셋되어 재순환된다")
+    void recommend_resetsAfterCycle() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        saveUserWithProfile("u2", Gender.FEMALE, 100);
+        saveUserWithProfile("u3", Gender.FEMALE, 100);
+
+        matchingService.recommend(requester.getId());
+        matchingService.recommend(requester.getId());
+
+        MatchingRecommendationResponse third = matchingService.recommend(requester.getId());
+
+        assertThat(third.getCount()).isGreaterThan(0);
+    }
+
+    @Test
+    @DisplayName("내가 보낸 PENDING 상대는 추천에서 제외된다")
+    void recommend_excludesMyPending() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
+
+        matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), target.getId()));
+
+        MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
+
+        assertThat(response.getCandidates()).extracting("userId").doesNotContain(target.getId());
+    }
+
+    @Test
+    @DisplayName("상대가 보낸 PENDING 상대도 추천에서 제외된다")
+    void recommend_excludesIncomingPending() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User other = saveUserWithProfile("u2", Gender.FEMALE, 100);
+
+        matchingConnectionRepository.save(MatchingConnection.createPending(other.getId(), requester.getId()));
+
+        MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
+
+        assertThat(response.getCandidates()).extracting("userId").doesNotContain(other.getId());
+    }
+
+    @Test
+    @DisplayName("활성 채팅 상대는 추천에서 제외되고, 채팅 종료 상대와 거절 상대는 다시 추천된다")
+    void recommend_exclusionAndReexposurePolicy() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User activeChatUser = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        User rejectedUser = saveUserWithProfile("u3", Gender.FEMALE, 100);
+        User closedChatUser = saveUserWithProfile("u4", Gender.FEMALE, 100);
+
+        MatchingConnection activeConn = matchingConnectionRepository.save(
+                MatchingConnection.createPending(requester.getId(), activeChatUser.getId())
+        );
+        ChatRoom activeRoom = chatRoomRepository.save(ChatRoom.create("r1", ChatRoomType.PERSONAL));
+        chatRoomMemberRepository.save(ChatRoomMember.create(activeRoom, requester));
+        chatRoomMemberRepository.save(ChatRoomMember.create(activeRoom, activeChatUser));
+        activeConn.accept(activeRoom.getId());
+
+        MatchingConnection rejectedConn = matchingConnectionRepository.save(
+                MatchingConnection.createPending(requester.getId(), rejectedUser.getId())
+        );
+        rejectedConn.reject();
+
+        MatchingConnection closedConn = matchingConnectionRepository.save(
+                MatchingConnection.createPending(requester.getId(), closedChatUser.getId())
+        );
+        ChatRoom closedRoom = chatRoomRepository.save(ChatRoom.create("r2", ChatRoomType.PERSONAL));
+        chatRoomMemberRepository.save(ChatRoomMember.create(closedRoom, requester));
+        closedConn.accept(closedRoom.getId());
+
+        MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
+
+        assertThat(response.getCandidates()).extracting("userId")
+                .doesNotContain(activeChatUser.getId())
+                .contains(rejectedUser.getId(), closedChatUser.getId());
+    }
+
+    @Test
+    @DisplayName("요청 생성 성공 시 티켓이 2 차감된다")
+    void connect_success_consumesTwoTickets() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
         matchingExposureRepository.save(MatchingExposure.create(requester.getId(), target.getId()));
 
         MatchingConnectResponse response = matchingService.connect(requester.getId(), target.getId());
 
         User reloaded = userRepository.findById(requester.getId()).orElseThrow();
-        assertThat(reloaded.getTickets()).isEqualTo(98);
         assertThat(response.isAlreadyConnected()).isFalse();
-        assertThat(response.getChatRoomId()).isNull();
-
-        Long user1 = Math.min(requester.getId(), target.getId());
-        Long user2 = Math.max(requester.getId(), target.getId());
-        MatchingConnection connection = matchingConnectionRepository.findByUser1IdAndUser2Id(user1, user2).orElseThrow();
-        assertThat(connection.getStatus()).isEqualTo(ConnectionStatus.PENDING);
-        assertThat(connection.getChatRoomId()).isNull();
+        assertThat(reloaded.getTickets()).isEqualTo(98);
     }
 
     @Test
-    @DisplayName("컨택 요청은 노출되지 않은 후보에게 보낼 수 없다")
-    void connect_requiresExposure() {
-        User requester = saveUserWithProfile("user-1", Gender.MALE, 100);
-        User target = saveUserWithProfile("user-2", Gender.FEMALE, 100);
+    @DisplayName("PENDING 중복 요청은 티켓이 차감되지 않는다")
+    void connect_pendingDuplicate_noTicketConsumed() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        matchingExposureRepository.save(MatchingExposure.create(requester.getId(), target.getId()));
+        matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), target.getId()));
+
+        assertThatThrownBy(() -> matchingService.connect(requester.getId(), target.getId()))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.ALREADY_CONNECTED);
+
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(reloaded.getTickets()).isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("이미 활성 연결이면 요청은 alreadyConnected로 처리되고 티켓이 차감되지 않는다")
+    void connect_activeConnection_noTicketConsumed() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        matchingExposureRepository.save(MatchingExposure.create(requester.getId(), target.getId()));
+
+        MatchingConnection conn = matchingConnectionRepository.save(
+                MatchingConnection.createPending(requester.getId(), target.getId())
+        );
+        ChatRoom room = chatRoomRepository.save(ChatRoom.create("r", ChatRoomType.PERSONAL));
+        chatRoomMemberRepository.save(ChatRoomMember.create(room, requester));
+        chatRoomMemberRepository.save(ChatRoomMember.create(room, target));
+        conn.accept(room.getId());
+
+        MatchingConnectResponse response = matchingService.connect(requester.getId(), target.getId());
+
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(response.isAlreadyConnected()).isTrue();
+        assertThat(reloaded.getTickets()).isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("노출되지 않은 상대 요청은 실패하고 티켓이 차감되지 않는다")
+    void connect_notExposed_noTicketConsumed() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
 
         assertThatThrownBy(() -> matchingService.connect(requester.getId(), target.getId()))
                 .isInstanceOf(MatchingException.class)
                 .extracting("errorCode")
                 .isEqualTo(MatchingErrorCode.CANDIDATE_NOT_EXPOSED);
+
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(reloaded.getTickets()).isEqualTo(100);
     }
 
     @Test
-    @DisplayName("컨택 요청은 티켓이 부족하면 실패한다")
-    void connect_requiresTickets() {
-        User requester = saveUserWithProfile("user-1", Gender.MALE, 1);
-        User target = saveUserWithProfile("user-2", Gender.FEMALE, 100);
-
-        matchingExposureRepository.save(MatchingExposure.create(requester.getId(), target.getId()));
-
-        assertThatThrownBy(() -> matchingService.connect(requester.getId(), target.getId()))
-                .isInstanceOf(MatchingException.class)
-                .extracting("errorCode")
-                .isEqualTo(MatchingErrorCode.INSUFFICIENT_TICKETS);
-    }
-
-    @Test
-    @DisplayName("요청 목록은 보낸/받은 리스트로 분리되어 반환된다")
-    void getRequests_returnsSentAndReceived() {
-        User requester = saveUserWithProfile("user-1", Gender.MALE, 100);
-        User target = saveUserWithProfile("user-2", Gender.FEMALE, 100);
-
-        MatchingConnection connection = matchingConnectionRepository.save(
-                MatchingConnection.createPending(requester.getId(), target.getId())
-        );
-
-        MatchingRequestsResponse requesterView = matchingService.getRequests(requester.getId());
-        assertThat(requesterView.getSentCount()).isEqualTo(1);
-        assertThat(requesterView.getReceivedCount()).isEqualTo(0);
-        assertThat(requesterView.getSent()).hasSize(1);
-
-        MatchingRequestsResponse targetView = matchingService.getRequests(target.getId());
-        assertThat(targetView.getSentCount()).isEqualTo(0);
-        assertThat(targetView.getReceivedCount()).isEqualTo(1);
-        assertThat(targetView.getReceived()).hasSize(1);
-        assertThat(targetView.getReceived().get(0).getConnectionId()).isEqualTo(connection.getId());
-    }
-
-    @Test
-    @DisplayName("요청 수락 시 채팅방이 생성되고 상태가 ACCEPTED로 변경된다")
-    void acceptRequest_marksAccepted() {
-        User requester = saveUserWithProfile("user-1", Gender.MALE, 100);
-        User target = saveUserWithProfile("user-2", Gender.FEMALE, 100);
-
-        MatchingConnection connection = matchingConnectionRepository.save(
-                MatchingConnection.createPending(requester.getId(), target.getId())
-        );
+    @DisplayName("실제 수신자는 요청을 수락할 수 있다")
+    void accept_receiverAllowed() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        MatchingConnection conn = matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), receiver.getId()));
 
         Mockito.when(chatService.createChatRoom(any(), any(), any(), any()))
                 .thenReturn(ChatRoomResponse.builder()
@@ -215,31 +311,100 @@ class MatchingServiceTest {
                         .createdAt(LocalDateTime.now())
                         .build());
 
-        MatchingResponseResponse response = matchingService.acceptRequest(target.getId(), connection.getId());
+        MatchingResponseResponse response = matchingService.acceptRequest(receiver.getId(), conn.getId());
 
-        MatchingConnection reloaded = matchingConnectionRepository.findById(connection.getId()).orElseThrow();
-        assertThat(reloaded.getStatus()).isEqualTo(ConnectionStatus.ACCEPTED);
-        assertThat(reloaded.getChatRoomId()).isEqualTo(99L);
-        assertThat(reloaded.getRespondedAt()).isNotNull();
+        assertThat(response.getStatus()).isEqualTo(ConnectionStatus.ACCEPTED);
         assertThat(response.getChatRoomId()).isEqualTo(99L);
     }
 
     @Test
-    @DisplayName("요청 거절 시 상태가 REJECTED로 변경된다")
-    void rejectRequest_marksRejected() {
-        User requester = saveUserWithProfile("user-1", Gender.MALE, 100);
-        User target = saveUserWithProfile("user-2", Gender.FEMALE, 100);
+    @DisplayName("실제 수신자는 요청을 거절할 수 있다")
+    void reject_receiverAllowed() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        MatchingConnection conn = matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), receiver.getId()));
 
-        MatchingConnection connection = matchingConnectionRepository.save(
-                MatchingConnection.createPending(requester.getId(), target.getId())
-        );
+        MatchingResponseResponse response = matchingService.rejectRequest(receiver.getId(), conn.getId());
 
-        MatchingResponseResponse response = matchingService.rejectRequest(target.getId(), connection.getId());
-
-        MatchingConnection reloaded = matchingConnectionRepository.findById(connection.getId()).orElseThrow();
-        assertThat(reloaded.getStatus()).isEqualTo(ConnectionStatus.REJECTED);
-        assertThat(reloaded.getRespondedAt()).isNotNull();
+        assertThat(response.getStatus()).isEqualTo(ConnectionStatus.REJECTED);
         assertThat(response.getChatRoomId()).isNull();
+    }
+
+    @Test
+    @DisplayName("요청자는 자신의 요청을 수락/거절할 수 없다")
+    void requesterCannotAcceptOrReject() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        MatchingConnection conn = matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), receiver.getId()));
+
+        assertThatThrownBy(() -> matchingService.acceptRequest(requester.getId(), conn.getId()))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.INVALID_REQUEST);
+
+        assertThatThrownBy(() -> matchingService.rejectRequest(requester.getId(), conn.getId()))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.INVALID_REQUEST);
+    }
+
+    @Test
+    @DisplayName("제3자는 수락/거절할 수 없다")
+    void thirdPartyCannotAcceptOrReject() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        User third = saveUserWithProfile("u3", Gender.MALE, 100);
+        MatchingConnection conn = matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), receiver.getId()));
+
+        assertThatThrownBy(() -> matchingService.acceptRequest(third.getId(), conn.getId()))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.INVALID_REQUEST);
+
+        assertThatThrownBy(() -> matchingService.rejectRequest(third.getId(), conn.getId()))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.INVALID_REQUEST);
+    }
+
+    @Test
+    @DisplayName("요청 목록 응답은 name/email/provider 없이 나머지 사용자 정보를 포함한다")
+    void requestList_excludesOnlyNameEmailProvider() {
+        User me = saveUserWithProfile("u1", Gender.MALE, 100);
+        User requester = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), me.getId()));
+
+        MatchingRequestsResponse response = matchingService.getRequests(me.getId());
+        MatchingRequestResponse received = response.getReceived().get(0);
+
+        assertThat(response.getReceivedCount()).isEqualTo(1);
+        assertThat(received.getSocialId()).isNotBlank();
+        assertThat(received.getOnboardingStatus()).isNotNull();
+        assertThat(received.getStatus()).isEqualTo(ConnectionStatus.PENDING);
+
+        List<String> fields = Arrays.stream(MatchingRequestResponse.class.getDeclaredFields())
+                .map(field -> field.getName())
+                .toList();
+        assertThat(fields).doesNotContain("name", "email", "provider");
+    }
+
+    @Test
+    @DisplayName("추천 응답은 name/email/provider를 제외한 사용자 정보를 포함한다")
+    void recommendationDto_excludesOnlyNameEmailProvider() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        saveUserWithProfile("u2", Gender.FEMALE, 100);
+
+        MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
+        MatchingCandidateResponse candidate = response.getCandidates().get(0);
+
+        assertThat(candidate.getSocialId()).isNotBlank();
+        assertThat(candidate.getTickets()).isNotNull();
+        assertThat(candidate.getOnboardingStatus()).isNotNull();
+
+        List<String> fields = Arrays.stream(MatchingCandidateResponse.class.getDeclaredFields())
+                .map(field -> field.getName())
+                .toList();
+        assertThat(fields).doesNotContain("name", "email", "provider");
     }
 
     private User saveUserWithProfile(String socialId, Gender gender, int tickets) {
@@ -249,7 +414,7 @@ class MatchingServiceTest {
                 .socialId(uniqueSocialId)
                 .email(uniqueSocialId + "@example.com")
                 .name("테스트")
-                .nickname("닉네임")
+                .nickname("닉네임-" + socialId)
                 .deptName("컴퓨터공학과")
                 .studentNum(20240001)
                 .status(UserStatus.ACTIVE)

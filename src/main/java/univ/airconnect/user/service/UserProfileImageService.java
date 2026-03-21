@@ -2,6 +2,7 @@ package univ.airconnect.user.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -186,9 +187,14 @@ public class UserProfileImageService {
             return;
         }
 
-        // 마일리스톤 기록 추가
+        // 마일리스톤 기록 추가 (동시 요청 레이스로 unique 충돌 가능)
         UserMilestone milestone = UserMilestone.create(userId, milestoneType);
-        userMilestoneRepository.save(milestone);
+        try {
+            userMilestoneRepository.save(milestone);
+        } catch (DataIntegrityViolationException e) {
+            log.info("ℹ️ 동시 요청으로 이미 지급 처리됨: userId={}, milestoneType={}", userId, milestoneType);
+            return;
+        }
 
         // 사용자 티켓 1개 추가
         var user = userRepository.findById(userId)

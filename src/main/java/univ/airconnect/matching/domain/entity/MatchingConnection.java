@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import univ.airconnect.matching.domain.ConnectionStatus;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Entity
 @Table(
@@ -75,6 +76,26 @@ public class MatchingConnection {
         this.status = ConnectionStatus.PENDING;
         this.respondedAt = null;
         this.connectedAt = LocalDateTime.now();
+    }
+
+    public void reopenAsPending(Long requesterUserId) {
+        this.status = ConnectionStatus.PENDING;
+        this.requesterId = requesterUserId;
+        this.chatRoomId = null;
+        this.respondedAt = null;
+        this.connectedAt = LocalDateTime.now();
+    }
+
+    public boolean isParticipant(Long userId) {
+        return Objects.equals(this.user1Id, userId) || Objects.equals(this.user2Id, userId);
+    }
+
+    public boolean isRequester(Long userId) {
+        return Objects.equals(this.requesterId, userId);
+    }
+
+    public boolean isReceiver(Long userId) {
+        return isParticipant(userId) && !isRequester(userId);
     }
 
     public Long getOtherUserId(Long userId) {
