@@ -19,6 +19,8 @@ import univ.airconnect.global.security.principal.CustomUserPrincipal;
 import univ.airconnect.groupmatching.service.GMatchingService;
 
 import java.security.Principal;
+import java.util.Base64;
+import java.nio.charset.StandardCharsets;
 
 @Slf4j
 @Component
@@ -52,7 +54,7 @@ public class StompHandler implements ChannelInterceptor {
         StompCommand command = accessor.getCommand();
 
         if (StompCommand.CONNECT.equals(command)) {
-            handleConnect(accessor);
+            handleConnectWithLogging(accessor);
         } else if (StompCommand.SUBSCRIBE.equals(command)) {
             handleSubscribe(accessor);
         } else if (StompCommand.DISCONNECT.equals(command)) {
@@ -62,20 +64,31 @@ public class StompHandler implements ChannelInterceptor {
         return message;
     }
 
-    private void handleConnect(StompHeaderAccessor accessor) {
+    private void handleConnectWithLogging(StompHeaderAccessor accessor) {
         String token = extractToken(accessor);
+        String tokenSubject = extractSubjectForLog(token);
 
-        jwtProvider.validateAccessToken(token);
-        Long userId = jwtProvider.getUserId(token);
+        log.info("STOMP CONNECT INBOUND: sessionId={}, subject={}, headerKey={}",
+                accessor.getSessionId(), tokenSubject, resolveAuthHeaderKey(accessor));
 
-        CustomUserPrincipal principal = new CustomUserPrincipal(userId);
-        Authentication authentication =
-                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+        try {
+            jwtProvider.validateAccessToken(token);
+            Long userId = jwtProvider.getUserId(token);
 
-        accessor.setUser(authentication);
-        chatService.saveSessionInfo(accessor.getSessionId(), userId);
+            CustomUserPrincipal principal = new CustomUserPrincipal(userId);
+            Authentication authentication =
+                    new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 
-        log.info("STOMP CONNECT: sessionId={}, userId={}", accessor.getSessionId(), userId);
+            accessor.setUser(authentication);
+            chatService.saveSessionInfo(accessor.getSessionId(), userId);
+
+            log.info("STOMP CONNECT SUCCESS: sessionId={}, subject={}, userId={}",
+                    accessor.getSessionId(), tokenSubject, userId);
+        } catch (Exception e) {
+            log.warn("STOMP CONNECT FAIL: sessionId={}, subject={}, exceptionType={}, message={}",
+                    accessor.getSessionId(), tokenSubject, e.getClass().getSimpleName(), e.getMessage());
+            throw e;
+        }
     }
 
     private void handleSubscribe(StompHeaderAccessor accessor) {
@@ -135,6 +148,9 @@ public class StompHandler implements ChannelInterceptor {
 
     private String extractToken(StompHeaderAccessor accessor) {
         String bearerToken = accessor.getFirstNativeHeader("Authorization");
+        if (!StringUtils.hasText(bearerToken)) {
+            bearerToken = accessor.getFirstNativeHeader("authorization");
+        }
 
         if (!StringUtils.hasText(bearerToken)) {
             throw new IllegalArgumentException("Authorization header is required.");
@@ -150,6 +166,43 @@ public class StompHandler implements ChannelInterceptor {
         }
 
         return token;
+    }
+
+    private String resolveAuthHeaderKey(StompHeaderAccessor accessor) {
+        if (StringUtils.hasText(accessor.getFirstNativeHeader("Authorization"))) {
+            return "Authorization";
+        }
+        if (StringUtils.hasText(accessor.getFirstNativeHeader("authorization"))) {
+            return "authorization";
+        }
+        return "missing";
+    }
+
+    private String extractSubjectForLog(String token) {
+        try {
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) {
+                return "unknown";
+            }
+
+            byte[] decoded = Base64.getUrlDecoder().decode(parts[1]);
+            String payload = new String(decoded, StandardCharsets.UTF_8);
+            String marker = "\"sub\":\"";
+            int start = payload.indexOf(marker);
+            if (start < 0) {
+                return "unknown";
+            }
+
+            int valueStart = start + marker.length();
+            int valueEnd = payload.indexOf('"', valueStart);
+            if (valueEnd < 0) {
+                return "unknown";
+            }
+
+            return payload.substring(valueStart, valueEnd);
+        } catch (Exception ignored) {
+            return "unknown";
+        }
     }
 
     private Long extractId(String destination, String prefix, String target) {
