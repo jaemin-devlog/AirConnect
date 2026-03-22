@@ -13,20 +13,47 @@ public class ChatRoomResponse {
     private Long id;
     private String name;
     private ChatRoomType type;
+    private Long connectionId;
     private LocalDateTime createdAt;
     private String latestMessage;
     private LocalDateTime latestMessageTime;
     private int unreadCount;
+    private Long targetUserId;
+    private String targetNickname;
+    private String targetProfileImage;
 
     public static ChatRoomResponse from(ChatRoom entity, String latestMessage, LocalDateTime latestMessageTime, int unreadCount) {
         return ChatRoomResponse.builder()
                 .id(entity.getId())
                 .name(entity.getName())
                 .type(entity.getType())
+                .connectionId(entity.getConnectionId())
                 .createdAt(entity.getCreatedAt())
                 .latestMessage(latestMessage)
                 .latestMessageTime(latestMessageTime)
                 .unreadCount(unreadCount)
+                .build();
+    }
+
+    public static ChatRoomResponse from(ChatRoom entity,
+                                        String latestMessage,
+                                        LocalDateTime latestMessageTime,
+                                        int unreadCount,
+                                        Long targetUserId,
+                                        String targetNickname,
+                                        String targetProfileImage) {
+        return ChatRoomResponse.builder()
+                .id(entity.getId())
+                .name(entity.getName())
+                .type(entity.getType())
+                .connectionId(entity.getConnectionId())
+                .createdAt(entity.getCreatedAt())
+                .latestMessage(latestMessage)
+                .latestMessageTime(latestMessageTime)
+                .unreadCount(unreadCount)
+                .targetUserId(targetUserId)
+                .targetNickname(targetNickname)
+                .targetProfileImage(targetProfileImage)
                 .build();
     }
 

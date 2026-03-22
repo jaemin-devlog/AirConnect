@@ -6,7 +6,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.service.ChatService;
@@ -317,15 +316,20 @@ public class MatchingService {
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
         }
 
-        Long otherUserId = connection.getOtherUserId(userId);
-
         if (connection.getStatus() != ConnectionStatus.PENDING) {
             log.warn("⚠️ 요청 상태 불일치: connectionId={}, status={}", connectionId, connection.getStatus());
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
         }
 
-        // 채팅방 생성
-        ChatRoomResponse room = chatService.createChatRoom("소개팅 1:1", ChatRoomType.PERSONAL, userId, otherUserId);
+        Long otherUserId = connection.getOtherUserId(userId);
+
+        // ACCEPT 시점에는 connection 기반으로 PERSONAL 방을 1개만 유지한다.
+        ChatRoomResponse room = chatService.createOrGetPersonalRoomForConnection(
+                connection.getId(),
+                connection.getUser1Id(),
+                connection.getUser2Id(),
+                "소개팅 1:1"
+        );
         log.debug("💌 채팅방 생성됨: chatRoomId={}", room.getId());
 
         // 연결 수락

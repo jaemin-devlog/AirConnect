@@ -13,6 +13,8 @@ import org.springframework.data.redis.listener.Topic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.chat.domain.ChatRoomType;
+import univ.airconnect.chat.domain.entity.ChatRoom;
 import univ.airconnect.chat.dto.request.ChatMessageRequest;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
@@ -67,6 +69,7 @@ class ChatServiceTest {
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)).thenReturn(true);
+        when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(ChatRoom.create("r-99", ChatRoomType.PERSONAL)));
         when(objectMapper.writeValueAsString(any())).thenThrow(new JsonProcessingException("boom") {
         });
 

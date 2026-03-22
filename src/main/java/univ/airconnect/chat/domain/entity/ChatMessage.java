@@ -28,8 +28,8 @@ public class ChatMessage {
     @Column(nullable = false, length = 100)
     private String senderNickname;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    private String message;
+    @Column(name = "content", columnDefinition = "TEXT", nullable = false)
+    private String content;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -38,23 +38,62 @@ public class ChatMessage {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "is_deleted", nullable = false)
+    private boolean deleted;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @Column(name = "read_at")
+    private LocalDateTime readAt;
+
     @Builder
-    private ChatMessage(Long roomId, Long senderId, String senderNickname, String message, MessageType type) {
+    private ChatMessage(Long roomId,
+                        Long senderId,
+                        String senderNickname,
+                        String content,
+                        MessageType type,
+                        boolean deleted,
+                        LocalDateTime deletedAt,
+                        LocalDateTime readAt) {
         this.roomId = roomId;
         this.senderId = senderId;
         this.senderNickname = senderNickname;
-        this.message = message;
+        this.content = content;
         this.type = type;
+        this.deleted = deleted;
+        this.deletedAt = deletedAt;
+        this.readAt = readAt;
         this.createdAt = LocalDateTime.now();
     }
 
-    public static ChatMessage create(Long roomId, Long senderId, String senderNickname, String message, MessageType type) {
+    public static ChatMessage create(Long roomId, Long senderId, String senderNickname, String content, MessageType type) {
         return ChatMessage.builder()
                 .roomId(roomId)
                 .senderId(senderId)
                 .senderNickname(senderNickname)
-                .message(message)
+                .content(content)
                 .type(type)
+                .deleted(false)
                 .build();
+    }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public void softDelete() {
+        if (this.deleted) {
+            return;
+        }
+        this.deleted = true;
+        this.deletedAt = LocalDateTime.now();
+    }
+
+    public void markRead() {
+        if (this.readAt != null) {
+            return;
+        }
+        this.readAt = LocalDateTime.now();
     }
 }

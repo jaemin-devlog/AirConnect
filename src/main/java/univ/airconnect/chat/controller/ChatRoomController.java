@@ -4,15 +4,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.dto.request.ChatRoomCreateRequest;
+import univ.airconnect.chat.dto.request.SendMessageRequest;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.service.ChatService;
@@ -108,6 +107,30 @@ public class ChatRoomController {
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         List<ChatMessageResponse> response = chatService.findMessagesByRoomId(roomId, userId, lastMessageId, size);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    @PostMapping("/rooms/{roomId}/messages")
+    public ResponseEntity<ApiResponse<ChatMessageResponse>> sendMessage(
+            @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
+            @CurrentUserId Long userId,
+            @RequestBody @Valid SendMessageRequest requestBody,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        ChatMessageResponse response = chatService.sendMessage(userId, roomId, requestBody);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    @DeleteMapping("/rooms/{roomId}/messages/{messageId}")
+    public ResponseEntity<ApiResponse<ChatMessageResponse>> deleteMessage(
+            @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
+            @PathVariable @Positive(message = "메시지 ID는 양수여야 합니다.") Long messageId,
+            @CurrentUserId Long userId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        ChatMessageResponse response = chatService.deleteMessage(userId, roomId, messageId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 

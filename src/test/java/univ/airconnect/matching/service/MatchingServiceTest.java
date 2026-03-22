@@ -303,7 +303,7 @@ class MatchingServiceTest {
         User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
         MatchingConnection conn = matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), receiver.getId()));
 
-        Mockito.when(chatService.createChatRoom(any(), any(), any(), any()))
+        Mockito.when(chatService.createOrGetPersonalRoomForConnection(any(), any(), any(), any()))
                 .thenReturn(ChatRoomResponse.builder()
                         .id(99L)
                         .name("소개팅 1:1")
