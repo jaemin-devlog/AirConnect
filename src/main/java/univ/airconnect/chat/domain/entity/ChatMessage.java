@@ -31,6 +31,10 @@ public class ChatMessage {
     @Column(name = "content", columnDefinition = "TEXT", nullable = false)
     private String content;
 
+    // legacy 스키마 호환: 일부 환경에서 message 컬럼이 NOT NULL로 남아 있다.
+    @Column(name = "message", columnDefinition = "TEXT", nullable = false)
+    private String legacyMessage;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private MessageType type;
@@ -60,6 +64,7 @@ public class ChatMessage {
         this.senderId = senderId;
         this.senderNickname = senderNickname;
         this.content = content;
+        this.legacyMessage = content;
         this.type = type;
         this.deleted = deleted;
         this.deletedAt = deletedAt;
@@ -95,5 +100,16 @@ public class ChatMessage {
             return;
         }
         this.readAt = LocalDateTime.now();
+    }
+
+    @PrePersist
+    @PreUpdate
+    private void syncLegacyMessageColumn() {
+        if (this.content == null && this.legacyMessage != null) {
+            this.content = this.legacyMessage;
+        }
+        if (this.legacyMessage == null && this.content != null) {
+            this.legacyMessage = this.content;
+        }
     }
 }
