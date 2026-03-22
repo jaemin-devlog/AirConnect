@@ -1,14 +1,19 @@
-# 1:1 채팅 API 명세서 (최신)
+# 채팅 API 명세서 (사용 API만)
 
-현재 코드 기준으로 `matching` 수락과 `chat` 동작이 연결된 스펙입니다.
+현재 실제 사용 흐름 기준으로 정리한 채팅 스펙입니다.
 
-## 0. 공통 규약
+## 0. 전제
 
-- REST Base Path: `/api/v1`
-- Auth: 모든 API `Authorization: Bearer {accessToken}` 필요
+- 1:1 채팅방 생성은 채팅 API에서 직접 만들지 않고, `matching` 수락 시 생성/연결됩니다.
+  - `POST /api/v1/matching/accept/{connectionId}` 응답의 `chatRoomId`를 사용
+- 아래 문서는 채팅 도메인에서 실제 사용하는 API만 포함합니다.
+
+## 1. 공통
+
+- REST Base Path: `/api/v1/chat`
+- 인증: `Authorization: Bearer {accessToken}`
 - 응답 래퍼: `ApiResponse<T>`
-- traceId: 응답의 최상위 `traceId`로 반환
-- 시간 포맷: `yyyy-MM-dd'T'HH:mm:ss` 또는 LocalDateTime ISO-8601
+- 추적: 응답의 `traceId`
 
 ### 성공 응답 예시
 
@@ -17,11 +22,11 @@
   "success": true,
   "data": {},
   "error": null,
-  "traceId": "4a3f1bf8-6d33-40af-bae8-f490fc811eaf"
+  "traceId": "trace-001"
 }
 ```
 
-### ���패 응답 예시
+### 실패 응답 예시
 
 ```json
 {
@@ -31,62 +36,22 @@
     "code": "AUTH-002",
     "message": "권한이 없습니다.",
     "httpStatus": 403,
-    "traceId": "cb9d9ad5-869e-4140-9952-7a7406338d14",
+    "traceId": "trace-err-001",
     "details": null
   },
-  "traceId": "cb9d9ad5-869e-4140-9952-7a7406338d14"
+  "traceId": "trace-err-001"
 }
 ```
 
 ---
 
-## 1. 매칭 수락과 채팅방 생성
+## 2. REST API
 
-### 1-1) 요청 수락
-
-- `POST /api/v1/matching/accept/{connectionId}`
-- 설명: 수신자(상대방)가 요청 수락 시, 1:1 채팅방을 생성(또는 재사용)하고 `chatRoomId`를 반환
-- 권한: 해당 `connection`의 실제 수신자만 가능
-
-#### Response (`MatchingResponseResponse`)
-
-```json
-{
-  "success": true,
-  "data": {
-    "connectionId": 14,
-    "targetUserId": 1,
-    "chatRoomId": 99,
-    "status": "ACCEPTED"
-  },
-  "traceId": "a5fa3a2f-fb77-4363-9ec7-6aa5dc5ca6aa"
-}
-```
-
----
-
-## 2. 채팅방 API (REST)
-
-### 2-1) 채팅방 생성
-
-- `POST /api/v1/chat/rooms`
-- 설명: 일반 채팅방 생성. `PERSONAL`은 대상 유저 기준으로 기존 방이 있으면 재사용 가능
-
-#### Request
-
-```json
-{
-  "name": "소개팅 1:1",
-  "type": "PERSONAL",
-  "targetUserId": 42
-}
-```
-
-### 2-2) 내 채���방 목록
+### 2-1) 내 채팅방 목록 조회
 
 - `GET /api/v1/chat/rooms`
 
-#### Response (`List<ChatRoomResponse>`)
+#### Response
 
 ```json
 {
@@ -106,17 +71,17 @@
       "targetProfileImage": "/api/v1/users/profile-images/1.png"
     }
   ],
+  "error": null,
   "traceId": "trace-001"
 }
 ```
 
-### 2-3) 채팅방 메시지 조회
+### 2-2) 채팅 메시지 조회 (커서)
 
 - `GET /api/v1/chat/rooms/{roomId}/messages?lastMessageId={optional}&size={default:20,max:100}`
-- 설명: 커서 기반 과거 메시지 조회
 - 권한: 해당 room 멤버만
 
-#### Response (`List<ChatMessageResponse>`)
+#### Response
 
 ```json
 {
@@ -138,16 +103,16 @@
       "createdAt": "2026-03-22T19:31:55"
     }
   ],
-  "traceId": "trace-001"
+  "error": null,
+  "traceId": "trace-002"
 }
 ```
 
-> 참고: `message`/`type`은 하위 호환을 위해 유지되며, 신규 클라이언트는 `content`/`messageType` 사용 권장
+> 하위 호환: `message`/`type` 유지, 신규 클라이언트는 `content`/`messageType` 사용 권장
 
-### 2-4) 메시지 전송 (REST)
+### 2-3) 메시지 전송
 
 - `POST /api/v1/chat/rooms/{roomId}/messages`
-- 설명: 메시지를 DB 저장 후 Redis broadcast
 
 #### Request (`SendMessageRequest`)
 
@@ -158,7 +123,7 @@
 }
 ```
 
-- `messageType` 미전달 시 기본값 `TEXT`
+- `messageType` 생략 시 `TEXT`
 - `TEXT`는 빈 문자열 불가
 
 #### Response
@@ -181,14 +146,15 @@
     "readAt": null,
     "createdAt": "2026-03-22T19:33:00"
   },
-  "traceId": "trace-002"
+  "error": null,
+  "traceId": "trace-003"
 }
 ```
 
-### 2-5) 메시지 소프트 삭제
+### 2-4) 메시지 삭제 (소프트 삭제)
 
 - `DELETE /api/v1/chat/rooms/{roomId}/messages/{messageId}`
-- 설명: 발신자 본인 메시지만 소프트 삭제
+- 권한: 본인이 보낸 메시지만
 
 #### Response
 
@@ -208,18 +174,19 @@
     "deleted": true,
     "createdAt": "2026-03-22T19:33:00"
   },
-  "traceId": "trace-003"
+  "error": null,
+  "traceId": "trace-004"
 }
 ```
 
-### 2-6) 읽음 갱신
+### 2-5) 읽음 상태 갱신
 
 - `PATCH /api/v1/chat/rooms/{roomId}/read`
-- 설명: 현재 room의 마지막 메시지 기준으로 읽음 포인터 갱신
+- 설명: 해당 room의 마지막 메시지까지 읽음 포인터 갱신
 
 ---
 
-## 3. 채팅 메시지 전송 (WebSocket / STOMP)
+## 3. WebSocket (STOMP)
 
 ### 3-1) 연결/구독
 
@@ -240,30 +207,23 @@
 }
 ```
 
-> `content` 키도 허용(`@JsonAlias`)되며 내부적으로 `message`와 동일하게 처리됨
+> `content` 키도 허용되며 내부적으로 `message`와 동일하게 처리됨
 
-### 3-3) 브로드캐스트 페이로드
+### 3-3) 수신 페이로드
 
-- 구독자에게 `ChatMessageResponse` 구조로 전송
+- 브로드캐스트는 `ChatMessageResponse` 구조
 
 ---
 
-## 4. 에러 코드 가이드 (주요)
+## 4. 주요 에러 코드
 
 - `COMMON-001` (400): 잘못된 요청
-- `AUTH-002` (403): 권한 없음 (room 멤버 아님, 제3자 접근 등)
-- `COMMON-999` (500): 내부 서버 오류
-
-매칭 도메인 관련 에러는 `MatchingErrorCode`를 따릅니다.
+- `AUTH-002` (403): 권한 없음 (room 멤버 아님, 제3자 접근)
+- `COMMON-999` (500): 서버 내부 오류
 
 ---
 
-## 5. 타입 정의
-
-### ChatRoomType
-
-- `PERSONAL`
-- `GROUP`
+## 5. 타입
 
 ### MessageType
 
@@ -275,9 +235,13 @@
 
 ---
 
-## 6. 보안/운영 메모
+## 6. 문서에서 제외한 미사용 API
 
-- 채팅 본문(content/message)은 로그 출력 금지 정책 유지
-- 최종 저장소는 RDB(`chat_messages`)
-- Redis publish 실패 시에도 DB 저장 성공이면 요청은 성공 처리
+현재 채팅 기능 문서에서 아래 API는 제외했습니다.
+
+- `POST /api/v1/chat/rooms` (채팅방 직접 생성)
+- `POST /api/v1/chat/rooms/{roomId}/join`
+- `POST /api/v1/chat/rooms/{roomId}/leave`
+
+필요 시 운영/관리자용 별도 문서로 분리하는 것을 권장합니다.
 

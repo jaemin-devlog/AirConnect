@@ -409,8 +409,12 @@ public class ChatService {
                     Long targetUserId = targetUser != null ? targetUser.getId() : null;
                     String targetNickname = targetUser != null ? targetUser.getNickname() : null;
                     String targetProfileImage = extractProfileImage(targetUser);
+                    String displayName = room.getName();
+                    if (room.getType() == ChatRoomType.PERSONAL && targetNickname != null && !targetNickname.isBlank()) {
+                        displayName = targetNickname;
+                    }
 
-                    return ChatRoomResponse.from(room, content, time, unreadCount,
+                    return ChatRoomResponse.from(room, displayName, content, time, unreadCount,
                             targetUserId, targetNickname, targetProfileImage);
                 })
                 .sorted((r1, r2) -> {

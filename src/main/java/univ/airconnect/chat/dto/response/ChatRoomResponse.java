@@ -42,9 +42,21 @@ public class ChatRoomResponse {
                                         Long targetUserId,
                                         String targetNickname,
                                         String targetProfileImage) {
+        return from(entity, entity.getName(), latestMessage, latestMessageTime, unreadCount,
+                targetUserId, targetNickname, targetProfileImage);
+    }
+
+    public static ChatRoomResponse from(ChatRoom entity,
+                                        String displayName,
+                                        String latestMessage,
+                                        LocalDateTime latestMessageTime,
+                                        int unreadCount,
+                                        Long targetUserId,
+                                        String targetNickname,
+                                        String targetProfileImage) {
         return ChatRoomResponse.builder()
                 .id(entity.getId())
-                .name(entity.getName())
+                .name(displayName)
                 .type(entity.getType())
                 .connectionId(entity.getConnectionId())
                 .createdAt(entity.getCreatedAt())
