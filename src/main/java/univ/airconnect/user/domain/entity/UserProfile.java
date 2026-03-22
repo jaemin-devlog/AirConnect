@@ -37,8 +37,13 @@ public class UserProfile {
     @Column
     private Integer height;
 
+    @Column
+    private Integer age;
+
     @Column(length = 10)
     private String mbti;
+    
+    
 
     @Column(length = 20)
     private String smoking;
@@ -73,6 +78,7 @@ public class UserProfile {
     private UserProfile(
             User user,
             Integer height,
+            Integer age,
             String mbti,
             String smoking,
             Gender gender,
@@ -86,6 +92,7 @@ public class UserProfile {
     ) {
         this.user = user;
         this.height = height;
+        this.age = age;
         this.mbti = mbti;
         this.smoking = smoking;
         this.gender = gender;
@@ -101,6 +108,7 @@ public class UserProfile {
     public static UserProfile create(
             User user,
             Integer height,
+            Integer age,
             String mbti,
             String smoking,
             Gender gender,
@@ -113,6 +121,7 @@ public class UserProfile {
         return UserProfile.builder()
                 .user(user)
                 .height(height)
+                .age(age)
                 .mbti(mbti)
                 .smoking(smoking)
                 .gender(gender)
@@ -127,6 +136,7 @@ public class UserProfile {
 
     public void update(
             Integer height,
+            Integer age,
             String mbti,
             String smoking,
             Gender gender,
@@ -137,6 +147,7 @@ public class UserProfile {
             String instagram
     ) {
         this.height = height;
+        this.age = age;
         this.mbti = mbti;
         this.smoking = smoking;
         this.gender = gender;
@@ -150,6 +161,7 @@ public class UserProfile {
 
     public void anonymize() {
         this.height = null;
+        this.age = null;
         this.mbti = null;
         this.smoking = null;
         this.gender = null;

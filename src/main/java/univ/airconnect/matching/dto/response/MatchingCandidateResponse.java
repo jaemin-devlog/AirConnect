@@ -15,6 +15,7 @@ public class MatchingCandidateResponse {
     private Long userId;
     private String socialId;
     private Integer studentNum;
+    private Integer age;
     private UserStatus status;
     private OnboardingStatus onboardingStatus;
     private boolean profileExists;

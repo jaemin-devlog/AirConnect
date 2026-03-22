@@ -1,8 +1,6 @@
 package univ.airconnect.chat.dto.request;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -10,15 +8,13 @@ import univ.airconnect.chat.domain.MessageType;
 
 @Getter
 @NoArgsConstructor
-public class ChatMessageRequest {
+public class SendMessageRequest {
 
-    @NotNull(message = "채팅방 ID는 필수입니다.")
-    private Long roomId;
-
-    @JsonAlias("content")
     @NotBlank(message = "메시지 내용은 비어있을 수 없습니다.")
     @Size(max = 2000, message = "메시지는 2000자 이내여야 합니다.")
-    private String message;
+    private String content;
 
+    // 기본값은 TEXT로 처리한다.
     private MessageType messageType;
 }
+

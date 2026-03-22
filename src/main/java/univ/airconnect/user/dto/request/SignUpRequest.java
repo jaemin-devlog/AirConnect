@@ -25,6 +25,7 @@ public class SignUpRequest {
 
     // 프로필 정보
     private Integer height;
+    private Integer age;
     private String mbti;
     private String smoking;
     private Gender gender;

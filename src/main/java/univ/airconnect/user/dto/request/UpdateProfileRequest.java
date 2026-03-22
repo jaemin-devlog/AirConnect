@@ -12,6 +12,7 @@ import univ.airconnect.user.domain.MilitaryStatus;
 public class UpdateProfileRequest {
 
     private Integer height;
+    private Integer age;
     private String mbti;
     private String smoking;
     private Gender gender;
