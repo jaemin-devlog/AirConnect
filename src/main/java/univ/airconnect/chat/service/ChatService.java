@@ -393,9 +393,9 @@ public class ChatService {
                     ChatRoom room = member.getChatRoom();
                     ChatMessage latestMsg = latestMessageMap.get(room.getId());
 
-                    String content = room.getLastMessage() != null
+                    String content = (room.getLastMessage() != null && !room.getLastMessage().isBlank())
                             ? room.getLastMessage()
-                            : (latestMsg != null ? latestMsg.getContent() : null);
+                            : (latestMsg != null ? latestMsg.getDisplayContent() : null);
                     LocalDateTime time = room.getLastMessageAt() != null
                             ? room.getLastMessageAt()
                             : (latestMsg != null ? latestMsg.getCreatedAt() : null);

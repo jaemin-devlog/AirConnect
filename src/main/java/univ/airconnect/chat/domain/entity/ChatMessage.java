@@ -102,6 +102,13 @@ public class ChatMessage {
         this.readAt = LocalDateTime.now();
     }
 
+    public String getDisplayContent() {
+        if (this.content != null && !this.content.isBlank()) {
+            return this.content;
+        }
+        return this.legacyMessage;
+    }
+
     @PrePersist
     @PreUpdate
     private void syncLegacyMessageColumn() {
