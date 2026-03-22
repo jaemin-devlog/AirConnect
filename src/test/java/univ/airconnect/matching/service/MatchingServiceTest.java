@@ -428,6 +428,7 @@ class MatchingServiceTest {
         UserProfile profile = UserProfile.create(
                 savedUser,
                 170,
+                24,
                 "INTJ",
                 "NO",
                 gender,

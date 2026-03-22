@@ -21,6 +21,9 @@ public class UserProfileResponse {
     @JsonProperty("height")
     private Integer height;
 
+    @JsonProperty("age")
+    private Integer age;
+
     @JsonProperty("mbti")
     private String mbti;
 
@@ -60,6 +63,7 @@ public class UserProfileResponse {
         return UserProfileResponse.builder()
                 .userId(userProfile.getUserId())
                 .height(userProfile.getHeight())
+                .age(userProfile.getAge())
                 .mbti(userProfile.getMbti())
                 .smoking(userProfile.getSmoking())
                 .gender(userProfile.getGender())

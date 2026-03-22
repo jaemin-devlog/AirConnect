@@ -34,6 +34,9 @@ public class UserMeResponse {
     
     @JsonProperty("studentNum")
     private Integer studentNum;
+
+    @JsonProperty("age")
+    private Integer age;
     
     @JsonProperty("status")
     private UserStatus status;

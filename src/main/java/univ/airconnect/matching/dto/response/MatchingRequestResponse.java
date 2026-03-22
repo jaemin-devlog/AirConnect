@@ -21,6 +21,7 @@ public class MatchingRequestResponse {
     private String nickname;
     private String deptName;
     private Integer studentNum;
+    private Integer age;
     private UserStatus userStatus;
     private OnboardingStatus onboardingStatus;
     private boolean profileExists;

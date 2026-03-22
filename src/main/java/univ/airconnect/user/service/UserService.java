@@ -67,6 +67,7 @@ public class UserService {
                 .ifPresentOrElse(
                         profile -> profile.update(
                                 request.getHeight(),
+                                request.getAge(),
                                 request.getMbti(),
                                 request.getSmoking(),
                                 request.getGender(),
@@ -79,6 +80,7 @@ public class UserService {
                         () -> userProfileRepository.save(UserProfile.create(
                                 user,
                                 request.getHeight(),
+                                request.getAge(),
                                 request.getMbti(),
                                 request.getSmoking(),
                                 request.getGender(),
@@ -136,6 +138,7 @@ public class UserService {
                 .deptName(user.getDeptName())
                 .nickname(user.getNickname())
                 .studentNum(user.getStudentNum())
+                .age(profile != null ? profile.getAge() : null)
                 .status(user.getStatus())
                 .onboardingStatus(user.getOnboardingStatus())
                 .profileExists(profile != null)
@@ -166,6 +169,7 @@ public class UserService {
         UserProfile userProfile = UserProfile.create(
                 user,
                 request.getHeight(),
+                request.getAge(),
                 request.getMbti(),
                 request.getSmoking(),
                 request.getGender(),
@@ -197,6 +201,7 @@ public class UserService {
 
         userProfile.update(
                 request.getHeight(),
+                request.getAge(),
                 request.getMbti(),
                 request.getSmoking(),
                 request.getGender(),
