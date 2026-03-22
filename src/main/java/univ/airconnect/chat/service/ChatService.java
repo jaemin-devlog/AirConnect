@@ -95,7 +95,9 @@ public class ChatService {
         if (connectionId != null) {
             Optional<ChatRoom> byConnection = chatRoomRepository.findByConnectionId(connectionId);
             if (byConnection.isPresent()) {
-                return ChatRoomResponse.from(byConnection.get());
+                ChatRoom existingRoom = byConnection.get();
+                ensurePersonalRoomMembers(existingRoom, userAId, userBId);
+                return ChatRoomResponse.from(existingRoom);
             }
         }
 
@@ -107,11 +109,53 @@ public class ChatService {
         if (existingByUsers.isPresent()) {
             ChatRoom existingRoom = existingByUsers.get();
             existingRoom.bindConnectionIfMissing(connectionId);
+            ensurePersonalRoomMembers(existingRoom, userAId, userBId);
             return ChatRoomResponse.from(existingRoom);
         }
 
         ChatRoom room = createPersonalRoom(roomName, userAId, userBId, connectionId);
         return ChatRoomResponse.from(room);
+    }
+
+    @Transactional
+    public ChatRoomResponse createNewPersonalRoomForConnection(Long connectionId,
+                                                               Long userAId,
+                                                               Long userBId,
+                                                               String roomName) {
+        findUserOrThrow(userAId);
+        findUserOrThrow(userBId);
+
+        if (connectionId != null) {
+            chatRoomRepository.findByConnectionId(connectionId)
+                    .ifPresent(ChatRoom::unbindConnection);
+        }
+
+        ChatRoom room = createPersonalRoom(roomName, userAId, userBId, connectionId);
+        return ChatRoomResponse.from(room);
+    }
+
+    private void ensurePersonalRoomMembers(ChatRoom room, Long userAId, Long userBId) {
+        if (room.getType() != ChatRoomType.PERSONAL) {
+            return;
+        }
+
+        List<Long> missingUserIds = new ArrayList<>();
+        if (!chatRoomMemberRepository.existsByChatRoomIdAndUserId(room.getId(), userAId)) {
+            missingUserIds.add(userAId);
+        }
+        if (!chatRoomMemberRepository.existsByChatRoomIdAndUserId(room.getId(), userBId)) {
+            missingUserIds.add(userBId);
+        }
+
+        if (missingUserIds.isEmpty()) {
+            return;
+        }
+
+        Map<Long, User> userMap = loadUsersAsMap(missingUserIds);
+        List<ChatRoomMember> membersToRestore = missingUserIds.stream()
+                .map(userId -> ChatRoomMember.create(room, userMap.get(userId)))
+                .collect(Collectors.toList());
+        chatRoomMemberRepository.saveAll(membersToRestore);
     }
 
     /**

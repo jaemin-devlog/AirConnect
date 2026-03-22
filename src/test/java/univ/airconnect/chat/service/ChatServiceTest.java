@@ -16,6 +16,7 @@ import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.domain.entity.ChatRoom;
 import univ.airconnect.chat.dto.request.ChatMessageRequest;
+import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
@@ -23,7 +24,9 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.util.Optional;
+import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -97,6 +100,33 @@ class ChatServiceTest {
                 org.mockito.ArgumentMatchers.eq(redisSubscriber),
                 org.mockito.ArgumentMatchers.any(Topic.class)
         );
+    }
+
+    @Test
+    void createOrGetPersonalRoomForConnection_restoresMissingMemberWhenReusingExistingRoom() {
+        ChatService service = createService();
+
+        Long connectionId = 77L;
+        Long userA = 1L;
+        Long userB = 2L;
+        User a = createUser(userA, "a");
+        User b = createUser(userB, "b");
+        ChatRoom room = ChatRoom.createPersonal("소개팅 1:1", userA, userB, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(room, "id", 555L);
+
+        when(userRepository.findById(userA)).thenReturn(Optional.of(a));
+        when(userRepository.findById(userB)).thenReturn(Optional.of(b));
+        when(chatRoomRepository.findByConnectionId(connectionId)).thenReturn(Optional.empty());
+        when(chatRoomRepository.findByTypeAndUser1IdAndUser2Id(ChatRoomType.PERSONAL, 1L, 2L))
+                .thenReturn(Optional.of(room));
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(555L, userA)).thenReturn(true);
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(555L, userB)).thenReturn(false);
+        when(userRepository.findAllById(List.of(userB))).thenReturn(List.of(b));
+
+        ChatRoomResponse response = service.createOrGetPersonalRoomForConnection(connectionId, userA, userB, "소개팅 1:1");
+
+        verify(chatRoomMemberRepository).saveAll(any());
+        assertThat(response.getId()).isEqualTo(555L);
     }
 
     private ChatService createService() {

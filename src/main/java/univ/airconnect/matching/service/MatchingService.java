@@ -323,8 +323,8 @@ public class MatchingService {
 
         Long otherUserId = connection.getOtherUserId(userId);
 
-        // ACCEPT 시점에는 connection 기반으로 PERSONAL 방을 1개만 유지한다.
-        ChatRoomResponse room = chatService.createOrGetPersonalRoomForConnection(
+        // ACCEPT 시점마다 새로운 PERSONAL 방을 생성한다.
+        ChatRoomResponse room = chatService.createNewPersonalRoomForConnection(
                 connection.getId(),
                 connection.getUser1Id(),
                 connection.getUser2Id(),
