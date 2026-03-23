@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -27,7 +28,12 @@ import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
+import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
+import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.dto.response.UserProfileResponse;
+import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
@@ -45,12 +51,16 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final UserRepository userRepository;
+    private final UserMilestoneRepository userMilestoneRepository;
     private final RedisMessageListenerContainer redisMessageListener;
     private final RedisSubscriber redisSubscriber;
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
 
     private final Map<String, ChannelTopic> topics = new ConcurrentHashMap<>();
+
+    @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
+    private String imageUrlBase;
 
     private static final String CHAT_SESSION_KEY = "chat:session:";
     private static final String SESSION_ROOM_KEY = "chat:session-room:";
@@ -507,6 +517,22 @@ public class ChatService {
         return response;
     }
 
+    @Transactional(readOnly = true)
+    public MatchingCandidateResponse getCounterpartProfile(Long roomId, Long requesterUserId) {
+        ChatRoom room = findRoomOrThrow(roomId);
+        validateRoomAccess(roomId, requesterUserId);
+
+        if (room.getType() != ChatRoomType.PERSONAL) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "1:1 채팅방에서만 상대 프로필 조회가 가능합니다.");
+        }
+
+        Long counterpartUserId = resolveCounterpartUserId(room, requesterUserId);
+        User counterpart = userRepository.findByIdWithProfile(counterpartUserId)
+                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+
+        return toMatchingLikeCandidateResponse(counterpart);
+    }
+
     private Map<Long, User> buildCounterpartMap(List<Long> roomIds, Long myUserId) {
         if (roomIds == null || roomIds.isEmpty()) {
             return Collections.emptyMap();
@@ -524,6 +550,51 @@ public class ChatService {
             result.putIfAbsent(roomId, user);
         }
         return result;
+    }
+
+    private Long resolveCounterpartUserId(ChatRoom room, Long requesterUserId) {
+        if (room.getUser1Id() != null && room.getUser2Id() != null) {
+            if (Objects.equals(room.getUser1Id(), requesterUserId)) {
+                return room.getUser2Id();
+            }
+            if (Objects.equals(room.getUser2Id(), requesterUserId)) {
+                return room.getUser1Id();
+            }
+        }
+
+        return chatRoomMemberRepository.findByChatRoomId(room.getId()).stream()
+                .map(member -> member.getUser().getId())
+                .filter(userId -> !Objects.equals(userId, requesterUserId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "상대 사용자를 찾을 수 없습니다."));
+    }
+
+    private MatchingCandidateResponse toMatchingLikeCandidateResponse(User user) {
+        UserProfile profile = user.getUserProfile();
+        UserProfileResponse profileResponse = profile != null ? UserProfileResponse.from(profile, imageUrlBase) : null;
+
+        boolean profileImageUploaded = userMilestoneRepository.existsByUserIdAndMilestoneType(
+                user.getId(), MilestoneType.PROFILE_IMAGE_UPLOADED
+        );
+        boolean emailVerified = userMilestoneRepository.existsByUserIdAndMilestoneType(
+                user.getId(), MilestoneType.EMAIL_VERIFIED
+        );
+
+        return MatchingCandidateResponse.builder()
+                .userId(user.getId())
+                .socialId(user.getSocialId())
+                .nickname(user.getNickname())
+                .deptName(user.getDeptName())
+                .studentNum(user.getStudentNum())
+                .age(profile != null ? profile.getAge() : null)
+                .status(user.getStatus())
+                .onboardingStatus(user.getOnboardingStatus())
+                .profileExists(profile != null)
+                .profileImageUploaded(profileImageUploaded)
+                .emailVerified(emailVerified)
+                .tickets(user.getTickets())
+                .profile(profileResponse)
+                .build();
     }
 
     private ChatRoom createPersonalRoom(String roomName, Long creatorUserId, Long targetUserId, Long connectionId) {
