@@ -39,6 +39,7 @@ import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -308,7 +309,7 @@ class MatchingServiceTest {
                         .id(99L)
                         .name("소개팅 1:1")
                         .type(ChatRoomType.PERSONAL)
-                        .createdAt(LocalDateTime.now())
+                        .createdAt(OffsetDateTime.now())
                         .build());
 
         MatchingResponseResponse response = matchingService.acceptRequest(receiver.getId(), conn.getId());

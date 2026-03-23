@@ -43,6 +43,17 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     int countByRoomIdAndIdGreaterThan(Long roomId, Long lastReadMessageId);
 
+    @Query("SELECT COUNT(m.id) " +
+            "FROM ChatMessage m, ChatRoomMember crm " +
+            "WHERE m.roomId = crm.chatRoom.id " +
+            "AND crm.chatRoom.id = :roomId " +
+            "AND crm.user.id = :userId " +
+            "AND m.senderId <> :userId " +
+            "AND m.deleted = false " +
+            "AND (crm.lastReadMessageId IS NULL OR m.id > crm.lastReadMessageId)")
+    int countUnreadByRoomIdAndUserId(@Param("roomId") Long roomId,
+                                     @Param("userId") Long userId);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE ChatMessage m SET m.readAt = :readAt " +
             "WHERE m.roomId = :roomId AND m.senderId <> :userId AND m.readAt IS NULL")

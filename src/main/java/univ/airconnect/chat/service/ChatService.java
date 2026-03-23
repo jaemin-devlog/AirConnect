@@ -37,6 +37,7 @@ import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -363,7 +364,12 @@ public class ChatService {
         }
 
         message.softDelete();
-        ChatMessageResponse response = ChatMessageResponse.from(message, extractProfileImage(findUserOrThrow(userId)));
+        int unreadCount = countUnreadInRoomForUser(roomId, userId);
+        ChatMessageResponse response = ChatMessageResponse.from(
+                message,
+                extractProfileImage(findUserOrThrow(userId)),
+                unreadCount
+        );
         publishToRedisSilently(roomId, response);
         return response;
     }
@@ -385,8 +391,9 @@ public class ChatService {
         findRoomOrThrow(roomId).updateLastMessage(summarizeForRoomList(content, messageType), chatMessage.getCreatedAt());
 
         updateLastRead(roomId, sender.getId(), chatMessage.getId());
+        int unreadCount = countUnreadInRoomForUser(roomId, sender.getId());
 
-        ChatMessageResponse response = ChatMessageResponse.from(chatMessage, extractProfileImage(sender));
+        ChatMessageResponse response = ChatMessageResponse.from(chatMessage, extractProfileImage(sender), unreadCount);
         publishToRedisSilently(roomId, response);
         return response;
     }
@@ -472,8 +479,8 @@ public class ChatService {
                             targetUserId, targetNickname, targetProfileImage);
                 })
                 .sorted((r1, r2) -> {
-                    LocalDateTime t1 = (r1.getLatestMessageTime() != null) ? r1.getLatestMessageTime() : r1.getCreatedAt();
-                    LocalDateTime t2 = (r2.getLatestMessageTime() != null) ? r2.getLatestMessageTime() : r2.getCreatedAt();
+                    OffsetDateTime t1 = (r1.getLatestMessageTime() != null) ? r1.getLatestMessageTime() : r1.getCreatedAt();
+                    OffsetDateTime t2 = (r2.getLatestMessageTime() != null) ? r2.getLatestMessageTime() : r2.getCreatedAt();
                     return t2.compareTo(t1);
                 })
                 .collect(Collectors.toList());
@@ -500,18 +507,19 @@ public class ChatService {
         Map<Long, User> userMap = userRepository.findAllByIdWithProfile(senderIds).stream()
                 .collect(Collectors.toMap(User::getId, user -> user));
 
+        markIncomingMessagesRead(roomId, userId);
+        updateLastRead(roomId, userId);
+        int unreadCount = countUnreadInRoomForUser(roomId, userId);
+
         List<ChatMessageResponse> response = messages.stream()
                 .map(msg -> {
                     User sender = userMap.get(msg.getSenderId());
                     String profileImage = (sender != null && sender.getUserProfile() != null)
                             ? sender.getUserProfile().getProfileImagePath()
                             : null;
-                    return ChatMessageResponse.from(msg, profileImage);
+                    return ChatMessageResponse.from(msg, profileImage, unreadCount);
                 })
                 .collect(Collectors.toList());
-
-        markIncomingMessagesRead(roomId, userId);
-        updateLastRead(roomId, userId);
 
         Collections.reverse(response);
         return response;
@@ -768,5 +776,9 @@ public class ChatService {
 
     private void validateNotBlocked(Long roomId, Long userId) {
         // TODO: 차단 엔티티/테이블 도입 시 room 참여자 간 block 관계 검증을 연결한다.
+    }
+
+    private int countUnreadInRoomForUser(Long roomId, Long userId) {
+        return chatMessageRepository.countUnreadByRoomIdAndUserId(roomId, userId);
     }
 }
