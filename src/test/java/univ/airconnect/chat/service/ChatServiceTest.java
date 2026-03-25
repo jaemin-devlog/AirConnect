@@ -17,12 +17,10 @@ import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.domain.entity.ChatRoom;
 import univ.airconnect.chat.dto.request.ChatMessageRequest;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
-import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.user.domain.entity.User;
-import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.util.Optional;
@@ -48,8 +46,6 @@ class ChatServiceTest {
     private ChatRoomMemberRepository chatRoomMemberRepository;
     @Mock
     private UserRepository userRepository;
-    @Mock
-    private UserMilestoneRepository userMilestoneRepository;
     @Mock
     private RedisMessageListenerContainer redisMessageListenerContainer;
     @Mock
@@ -133,29 +129,6 @@ class ChatServiceTest {
         assertThat(response.getId()).isEqualTo(555L);
     }
 
-    @Test
-    void getCounterpartProfile_returnsOtherUserForPersonalRoom() {
-        ChatService service = createService();
-
-        Long roomId = 11L;
-        Long myUserId = 1L;
-        Long otherUserId = 2L;
-
-        ChatRoom room = ChatRoom.createPersonal("소개팅 1:1", myUserId, otherUserId, null);
-        ReflectionTestUtils.setField(room, "id", roomId);
-        User other = createUser(otherUserId, "other");
-
-        when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, myUserId)).thenReturn(true);
-        when(userRepository.findByIdWithProfile(otherUserId)).thenReturn(Optional.of(other));
-        when(userMilestoneRepository.existsByUserIdAndMilestoneType(any(), any())).thenReturn(false);
-
-        MatchingCandidateResponse response = service.getCounterpartProfile(roomId, myUserId);
-
-        assertThat(response.getUserId()).isEqualTo(otherUserId);
-        assertThat(response.getNickname()).isEqualTo("other");
-    }
-
     private ChatService createService() {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(redisTemplate.opsForSet()).thenReturn(setOperations);
@@ -164,7 +137,6 @@ class ChatServiceTest {
                 chatMessageRepository,
                 chatRoomMemberRepository,
                 userRepository,
-                userMilestoneRepository,
                 redisMessageListenerContainer,
                 redisSubscriber,
                 redisTemplate,
@@ -174,7 +146,6 @@ class ChatServiceTest {
 
     private User createUser(Long userId, String nickname) {
         User user = User.create(SocialProvider.KAKAO, "social-" + userId, "u" + userId + "@test.dev");
-        ReflectionTestUtils.setField(user, "id", userId);
         user.completeSignUp("name-" + userId, nickname, 20230000 + userId.intValue(), "dept");
         return user;
     }
