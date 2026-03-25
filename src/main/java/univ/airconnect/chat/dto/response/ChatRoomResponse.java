@@ -6,21 +6,17 @@ import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.domain.entity.ChatRoom;
 
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
 
 @Getter
 @Builder
 public class ChatRoomResponse {
-    private static final ZoneId RESPONSE_ZONE = ZoneId.of("Asia/Seoul");
-
     private Long id;
     private String name;
     private ChatRoomType type;
     private Long connectionId;
-    private OffsetDateTime createdAt;
+    private LocalDateTime createdAt;
     private String latestMessage;
-    private OffsetDateTime latestMessageTime;
+    private LocalDateTime latestMessageTime;
     private int unreadCount;
     private Long targetUserId;
     private String targetNickname;
@@ -32,9 +28,9 @@ public class ChatRoomResponse {
                 .name(entity.getName())
                 .type(entity.getType())
                 .connectionId(entity.getConnectionId())
-                .createdAt(toOffset(entity.getCreatedAt()))
+                .createdAt(entity.getCreatedAt())
                 .latestMessage(latestMessage)
-                .latestMessageTime(toOffset(latestMessageTime))
+                .latestMessageTime(latestMessageTime)
                 .unreadCount(unreadCount)
                 .build();
     }
@@ -63,9 +59,9 @@ public class ChatRoomResponse {
                 .name(displayName)
                 .type(entity.getType())
                 .connectionId(entity.getConnectionId())
-                .createdAt(toOffset(entity.getCreatedAt()))
+                .createdAt(entity.getCreatedAt())
                 .latestMessage(latestMessage)
-                .latestMessageTime(toOffset(latestMessageTime))
+                .latestMessageTime(latestMessageTime)
                 .unreadCount(unreadCount)
                 .targetUserId(targetUserId)
                 .targetNickname(targetNickname)
@@ -76,12 +72,5 @@ public class ChatRoomResponse {
     // 기존 호환성을 위해 유지
     public static ChatRoomResponse from(ChatRoom entity) {
         return from(entity, null, null, 0);
-    }
-
-    private static OffsetDateTime toOffset(LocalDateTime value) {
-        if (value == null) {
-            return null;
-        }
-        return value.atZone(RESPONSE_ZONE).toOffsetDateTime();
     }
 }

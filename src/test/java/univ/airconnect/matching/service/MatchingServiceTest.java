@@ -39,7 +39,6 @@ import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -304,12 +303,12 @@ class MatchingServiceTest {
         User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
         MatchingConnection conn = matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), receiver.getId()));
 
-        Mockito.when(chatService.createNewPersonalRoomForConnection(any(), any(), any(), any()))
+        Mockito.when(chatService.createOrGetPersonalRoomForConnection(any(), any(), any(), any()))
                 .thenReturn(ChatRoomResponse.builder()
                         .id(99L)
                         .name("소개팅 1:1")
                         .type(ChatRoomType.PERSONAL)
-                        .createdAt(OffsetDateTime.now())
+                        .createdAt(LocalDateTime.now())
                         .build());
 
         MatchingResponseResponse response = matchingService.acceptRequest(receiver.getId(), conn.getId());

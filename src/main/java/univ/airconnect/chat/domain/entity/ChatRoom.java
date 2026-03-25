@@ -101,12 +101,4 @@ public class ChatRoom {
         this.connectionId = connectionId;
         this.updatedAt = LocalDateTime.now();
     }
-
-    public void unbindConnection() {
-        if (this.connectionId == null) {
-            return;
-        }
-        this.connectionId = null;
-        this.updatedAt = LocalDateTime.now();
-    }
 }
