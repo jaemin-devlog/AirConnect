@@ -1,13 +1,9 @@
 package univ.airconnect.auth.service;
 
-import java.nio.charset.StandardCharsets;
-import java.util.UUID;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
@@ -42,48 +38,32 @@ public class AuthService {
 
     @Transactional
     public LoginResponse socialLogin(SocialLoginRequest request) {
-        log.info("🔐 소셜 로그인 시작: provider={}", request.getProvider());
+        log.info("Social login started: provider={}", request.getProvider());
 
         validateSocialLoginRequest(request);
 
         SocialAuthClient client = socialAuthResolver.getClient(request.getProvider());
         String socialId = client.getSocialId(request.getSocialToken());
-        log.debug("✅ Social ID 획득: {}", socialId);
-
-        // Apple 로그인인 경우 email 정보 추출
-        final String email;
-        if (request.getProvider() == SocialProvider.APPLE) {
-            email = appleAuthClient.getEmail(request.getSocialToken());
-            log.debug("✅ Apple 이메일 획득: {}", email);
-        } else {
-            email = null;
-        }
+        String email = resolveEmail(request);
 
         User user = userRepository.findByProviderAndSocialId(request.getProvider(), socialId)
                 .orElseGet(() -> {
-                    log.info("👤 신규 사용자 생성: provider={}, socialId={}",
+                    log.info("Creating new user for social login: provider={}, socialId={}",
                             request.getProvider(), socialId);
                     return userRepository.save(User.create(request.getProvider(), socialId, email));
                 });
-
-        log.info("✅ 사용자 조회/생성 완료: userId={}", user.getId());
 
         validateUserStatus(user);
 
         String accessToken = jwtProvider.createAccessToken(user.getId());
         String refreshToken = jwtProvider.createRefreshToken(user.getId(), request.getDeviceId());
 
-        log.debug("🎫 토큰 생성 완료: userId={}, deviceId={}", user.getId(), request.getDeviceId());
-
         refreshTokenRepository.save(
                 RefreshToken.create(user.getId(), request.getDeviceId(), refreshToken)
         );
 
-        log.info("💾 RefreshToken 저장 완료: userId={}", user.getId());
-
-        // 사용자 정보 조회 (프로필 포함)
         UserMeResponse userInfo = userService.getMe(user.getId());
-        log.info("✅ 사용자 정보 조회 완료: userId={}", user.getId());
+        log.info("Social login completed: userId={}", user.getId());
 
         return LoginResponse.builder()
                 .accessToken(accessToken)
@@ -94,45 +74,32 @@ public class AuthService {
 
     @Transactional
     public TokenPairResponse refresh(TokenRefreshRequest request) {
-        log.info("🔄 토큰 갱신 시작: deviceId={}", request.getDeviceId());
+        log.info("Token refresh started: deviceId={}", request.getDeviceId());
 
         validateRefreshRequest(request);
-
         jwtProvider.validateRefreshToken(request.getRefreshToken());
 
         if (!jwtProvider.isRefreshToken(request.getRefreshToken())) {
-            log.warn("⚠️ RefreshToken이 아님");
             throw new AuthException(AuthErrorCode.NOT_REFRESH_TOKEN);
         }
 
         Long userId = jwtProvider.getUserId(request.getRefreshToken());
         String deviceIdFromToken = jwtProvider.getDeviceId(request.getRefreshToken());
 
-        log.debug("📍 토큰에서 정보 추출: userId={}, deviceId={}", userId, deviceIdFromToken);
-
         if (!request.getDeviceId().equals(deviceIdFromToken)) {
-            log.warn("⚠️ DeviceId 불일치: 요청={}, 토큰={}", request.getDeviceId(), deviceIdFromToken);
             throw new AuthException(AuthErrorCode.DEVICE_MISMATCH);
         }
 
         String refreshTokenKey = buildRefreshTokenKey(userId, request.getDeviceId());
-
         RefreshToken savedToken = refreshTokenRepository.findById(refreshTokenKey)
-                .orElseThrow(() -> {
-                    log.error("❌ RefreshToken 찾을 수 없음: key={}", refreshTokenKey);
-                    return new AuthException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND);
-                });
+                .orElseThrow(() -> new AuthException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND));
 
         if (!savedToken.getToken().equals(request.getRefreshToken())) {
-            log.error("❌ RefreshToken 불일치");
             throw new AuthException(AuthErrorCode.REFRESH_TOKEN_MISMATCH);
         }
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> {
-                    log.error("❌ 사용자 찾을 수 없음: userId={}", userId);
-                    return new AuthException(AuthErrorCode.USER_NOT_FOUND);
-                });
+                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
 
         validateUserStatus(user);
 
@@ -143,68 +110,27 @@ public class AuthService {
                 RefreshToken.create(user.getId(), request.getDeviceId(), newRefreshToken)
         );
 
-        log.info("✅ 토큰 갱신 완료: userId={}", userId);
-
+        log.info("Token refresh completed: userId={}", userId);
         return new TokenPairResponse(newAccessToken, newRefreshToken);
     }
 
     @Transactional
     public void logout(Long userId, String deviceId) {
-        log.info("🚪 로그아웃: userId={}, deviceId={}", userId, deviceId);
+        log.info("Logout requested: userId={}, deviceId={}", userId, deviceId);
 
         if (userId == null || deviceId == null || deviceId.isBlank()) {
-            log.warn("⚠️ 로그아웃 요청 유효하지 않음");
             throw new AuthException(AuthErrorCode.INVALID_LOGOUT_REQUEST);
         }
 
         refreshTokenRepository.deleteById(buildRefreshTokenKey(userId, deviceId));
-        log.info("✅ RefreshToken 삭제 완료: userId={}", userId);
+        log.info("Logout completed: userId={}", userId);
     }
 
-    /**
-     * 개발/테스트 환경에서만 사용 가능한 임시 토큰 생성
-     * 프로덕션 환경에서는 이 메서드를 호출하지 않습니다.
-     */
-    @Transactional
-    public LoginResponse createTestToken(String deviceId) {
-        log.warn("🧪 테스트 토큰 생성 (개발 환경에서만 사용)");
-
-        if (deviceId == null || deviceId.isBlank()) {
-            throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
+    private String resolveEmail(SocialLoginRequest request) {
+        if (request.getProvider() != SocialProvider.APPLE) {
+            return null;
         }
-
-        // 같은 deviceId에서는 동일 테스트 계정을 사용한다.
-        String testSocialId = "test-user-" + UUID.nameUUIDFromBytes(deviceId.trim().getBytes(StandardCharsets.UTF_8));
-        User testUser = userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, testSocialId)
-                .orElseGet(() -> {
-                    log.info("👤 테스트 사용자 생성: socialId={}", testSocialId);
-                    return userRepository.save(User.create(SocialProvider.KAKAO, testSocialId, "test@example.com"));
-                });
-
-        log.info("✅ 테스트 사용자 조회/생성 완료: userId={}", testUser.getId());
-
-        validateUserStatus(testUser);
-
-        String accessToken = jwtProvider.createAccessToken(testUser.getId());
-        String refreshToken = jwtProvider.createRefreshToken(testUser.getId(), deviceId);
-
-        log.debug("🎫 테스트 토큰 생성 완료: userId={}, deviceId={}", testUser.getId(), deviceId);
-
-        refreshTokenRepository.save(
-                RefreshToken.create(testUser.getId(), deviceId, refreshToken)
-        );
-
-        log.info("💾 테스트 RefreshToken 저장 완료: userId={}", testUser.getId());
-
-        // 사용자 정보 조회 (프로필 포함)
-        UserMeResponse userInfo = userService.getMe(testUser.getId());
-        log.info("✅ 테스트 사용자 정보 조회 완료: userId={}", testUser.getId());
-
-        return LoginResponse.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .user(userInfo)
-                .build();
+        return appleAuthClient.getEmail(request.getSocialToken());
     }
 
     private void validateSocialLoginRequest(SocialLoginRequest request) {

@@ -15,7 +15,7 @@ import org.springframework.data.redis.core.TimeToLive;
 @RedisHash("refreshToken")
 public class RefreshToken {
 
-    /** RefreshToken TTL (30일) */
+    /** RefreshToken 만료 시간(30일) */
     public static final long TTL_SECONDS = 60 * 60 * 24 * 30;
 
     /**
@@ -25,7 +25,7 @@ public class RefreshToken {
     @Id
     private String id;
 
-    /** AirConnect User PK */
+    /** AirConnect 사용자 PK */
     private Long userId;
 
     /** 클라이언트 기기 식별자 */

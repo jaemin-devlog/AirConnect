@@ -8,7 +8,7 @@ import univ.airconnect.auth.domain.entity.SocialProvider;
  */
 public interface SocialAuthClient {
 
-    /** 이 구현체가 담당하는 provider */
+    /** 이 구현체가 담당하는 소셜 로그인 제공자 */
     SocialProvider supports();
 
     /**

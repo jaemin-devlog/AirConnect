@@ -24,7 +24,7 @@ public class AppleAuthClient implements SocialAuthClient {
 
     @Override
     public String getSocialId(String identityToken) {
-        // identityToken = Apple에서 받은 JWT
+        // identityToken은 Apple에서 받은 JWT이다.
         Claims claims = appleJwtVerifier.verify(identityToken);
         return claims.getSubject();
     }
