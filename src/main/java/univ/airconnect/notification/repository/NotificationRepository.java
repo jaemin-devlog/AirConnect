@@ -20,9 +20,23 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     long countByUserIdAndReadAtIsNullAndDeletedAtIsNull(Long userId);
 
+    long countByUserIdAndTypeNotAndReadAtIsNullAndDeletedAtIsNull(Long userId, NotificationType excludedType);
+
     List<Notification> findByUserIdAndDeletedAtIsNullOrderByIdDesc(Long userId, Pageable pageable);
 
     List<Notification> findByUserIdAndReadAtIsNullAndDeletedAtIsNullOrderByIdDesc(Long userId, Pageable pageable);
+
+    List<Notification> findByUserIdAndTypeNotAndDeletedAtIsNullOrderByIdDesc(
+            Long userId,
+            NotificationType excludedType,
+            Pageable pageable
+    );
+
+    List<Notification> findByUserIdAndTypeNotAndReadAtIsNullAndDeletedAtIsNullOrderByIdDesc(
+            Long userId,
+            NotificationType excludedType,
+            Pageable pageable
+    );
 
     List<Notification> findByUserIdAndTypeAndDeletedAtIsNullOrderByIdDesc(
             Long userId,
@@ -42,8 +56,22 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             Pageable pageable
     );
 
+    List<Notification> findByUserIdAndTypeNotAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
+            Long userId,
+            NotificationType excludedType,
+            Long cursorId,
+            Pageable pageable
+    );
+
     List<Notification> findByUserIdAndReadAtIsNullAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
             Long userId,
+            Long cursorId,
+            Pageable pageable
+    );
+
+    List<Notification> findByUserIdAndTypeNotAndReadAtIsNullAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
+            Long userId,
+            NotificationType excludedType,
             Long cursorId,
             Pageable pageable
     );
@@ -69,6 +97,11 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             where n.userId = :userId
               and n.readAt is null
               and n.deletedAt is null
+              and n.type <> :excludedType
             """)
-    int markAllRead(@Param("userId") Long userId, @Param("readAt") LocalDateTime readAt);
+    int markAllReadExcludingType(
+            @Param("userId") Long userId,
+            @Param("excludedType") NotificationType excludedType,
+            @Param("readAt") LocalDateTime readAt
+    );
 }

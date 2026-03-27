@@ -25,6 +25,7 @@ public class NotificationInboxService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final NotificationType EXCLUDED_INBOX_TYPE = NotificationType.CHAT_MESSAGE_RECEIVED;
 
     private final NotificationRepository notificationRepository;
 
@@ -33,6 +34,16 @@ public class NotificationInboxService {
      */
     public NotificationSlice getNotifications(Long userId, Long cursorId, Integer size, Boolean unreadOnly, NotificationType type) {
         int pageSize = normalizePageSize(size);
+        if (isExcludedFromInbox(type)) {
+            return new NotificationSlice(
+                    List.of(),
+                    getUnreadCount(userId),
+                    false,
+                    null,
+                    pageSize
+            );
+        }
+
         Pageable pageable = PageRequest.of(0, pageSize + 1);
         boolean unread = Boolean.TRUE.equals(unreadOnly);
 
@@ -45,7 +56,7 @@ public class NotificationInboxService {
 
         return new NotificationSlice(
                 items,
-                notificationRepository.countByUserIdAndReadAtIsNullAndDeletedAtIsNull(userId),
+                getUnreadCount(userId),
                 hasNext,
                 nextCursorId,
                 pageSize
@@ -56,7 +67,10 @@ public class NotificationInboxService {
      * 사용자의 미읽음 알림 개수를 반환한다.
      */
     public long getUnreadCount(Long userId) {
-        return notificationRepository.countByUserIdAndReadAtIsNullAndDeletedAtIsNull(userId);
+        return notificationRepository.countByUserIdAndTypeNotAndReadAtIsNullAndDeletedAtIsNull(
+                userId,
+                EXCLUDED_INBOX_TYPE
+        );
     }
 
     /**
@@ -74,7 +88,7 @@ public class NotificationInboxService {
      */
     @Transactional
     public int markAllRead(Long userId) {
-        return notificationRepository.markAllRead(userId, LocalDateTime.now());
+        return notificationRepository.markAllReadExcludingType(userId, EXCLUDED_INBOX_TYPE, LocalDateTime.now());
     }
 
     /**
@@ -107,12 +121,17 @@ public class NotificationInboxService {
                 );
             }
             if (unreadOnly) {
-                return notificationRepository.findByUserIdAndReadAtIsNullAndDeletedAtIsNullOrderByIdDesc(
+                return notificationRepository.findByUserIdAndTypeNotAndReadAtIsNullAndDeletedAtIsNullOrderByIdDesc(
                         userId,
+                        EXCLUDED_INBOX_TYPE,
                         pageable
                 );
             }
-            return notificationRepository.findByUserIdAndDeletedAtIsNullOrderByIdDesc(userId, pageable);
+            return notificationRepository.findByUserIdAndTypeNotAndDeletedAtIsNullOrderByIdDesc(
+                    userId,
+                    EXCLUDED_INBOX_TYPE,
+                    pageable
+            );
         }
 
         if (type != null && unreadOnly) {
@@ -132,17 +151,23 @@ public class NotificationInboxService {
             );
         }
         if (unreadOnly) {
-            return notificationRepository.findByUserIdAndReadAtIsNullAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
+            return notificationRepository.findByUserIdAndTypeNotAndReadAtIsNullAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
                     userId,
+                    EXCLUDED_INBOX_TYPE,
                     cursorId,
                     pageable
             );
         }
-        return notificationRepository.findByUserIdAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
+        return notificationRepository.findByUserIdAndTypeNotAndDeletedAtIsNullAndIdLessThanOrderByIdDesc(
                 userId,
+                EXCLUDED_INBOX_TYPE,
                 cursorId,
                 pageable
         );
+    }
+
+    private boolean isExcludedFromInbox(NotificationType type) {
+        return type == EXCLUDED_INBOX_TYPE;
     }
 
     private Notification getRequiredNotification(Long userId, Long notificationId) {
