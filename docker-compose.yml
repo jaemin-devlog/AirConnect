@@ -20,6 +20,8 @@ services:
 
       REDIS_URL: redis://redis:6379
 
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
 
@@ -31,11 +33,18 @@ services:
       KEY_PATH: ${KEY_PATH}
 
       PROFILE_IMAGE_URL_BASE: ${PROFILE_IMAGE_URL_BASE}
-      PROFILE_IMAGE_DIR: ${APP_UPLOAD_PROFILE_IMAGE_DIR}
+      PROFILE_IMAGE_DIR: ${PROFILE_IMAGE_DIR}
+
+      NOTIFICATION_PUSH_FCM_ENABLED: ${NOTIFICATION_PUSH_FCM_ENABLED}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH}
+      FIREBASE_APP_NAME: ${FIREBASE_APP_NAME}
+      NOTIFICATION_OUTBOX_WORKER_ENABLED: ${NOTIFICATION_OUTBOX_WORKER_ENABLED}
     volumes:
-      - "./profile-images:${APP_UPLOAD_PROFILE_IMAGE_DIR}"
+      - "./profile-images:${PROFILE_IMAGE_DIR}"
       - "./logs:/app/logs"
       - "./src/main/resources/key:/app/key"
+      - "./secrets/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro"
     depends_on:
       mysql:
         condition: service_healthy

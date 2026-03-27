@@ -21,7 +21,7 @@ public class KakaoAuthClient implements SocialAuthClient {
 
     @Override
     public String getSocialId(String socialToken) {
-        // socialToken = 카카오 accessToken
+        // socialToken은 카카오 accessToken이다.
         return kakaoApiClient.getKakaoUserId(socialToken);
     }
 }

@@ -1,5 +1,6 @@
 package univ.airconnect.matching.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -17,6 +18,8 @@ import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.repository.MatchingExposureRepository;
+import univ.airconnect.notification.domain.NotificationType;
+import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
@@ -43,6 +46,8 @@ public class MatchingService {
     private final UserMilestoneRepository userMilestoneRepository;
     private final UserProfileRepository userProfileRepository;
     private final ChatService chatService;
+    private final NotificationService notificationService;
+    private final ObjectMapper objectMapper;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -180,6 +185,7 @@ public class MatchingService {
                 // ✅ 모든 검증 완료 후 티켓 차감
                 user.consumeTickets(2);
                 log.info("🎫 컨택 티켓 사용: userId={}, 사용한 티켓=2, 남은 티켓={}", userId, user.getTickets());
+                sendMatchRequestReceivedNotification(userId, targetUserId, connection);
                 
                 return new MatchingConnectResponse(null, targetUserId, false);
             }
@@ -203,6 +209,7 @@ public class MatchingService {
         log.info("🎫 컨택 티켓 사용: userId={}, 사용한 티켓=2, 남은 티켓={}", userId, user.getTickets());
 
         log.info("✅ 매칭 요청 생성 완료: requester={}, target={}, connectionId={}", userId, targetUserId, connection.getId());
+        sendMatchRequestReceivedNotification(userId, targetUserId, connection);
 
         return new MatchingConnectResponse(null, targetUserId, false);
     }
@@ -222,6 +229,7 @@ public class MatchingService {
         connection.reopenAsPending(userId);
         requester.consumeTickets(2);
         log.info("🎫 컨택 티켓 사용(경쟁복구): userId={}, 사용한 티켓=2, 남은 티켓={}", userId, requester.getTickets());
+        sendMatchRequestReceivedNotification(userId, targetUserId, connection);
         return new MatchingConnectResponse(null, targetUserId, false);
     }
 
@@ -324,7 +332,7 @@ public class MatchingService {
         Long otherUserId = connection.getOtherUserId(userId);
 
         // ACCEPT 시점마다 새로운 PERSONAL 방을 생성한다.
-        ChatRoomResponse room = chatService.createNewPersonalRoomForConnection(
+        ChatRoomResponse room = chatService.createOrGetPersonalRoomForConnection(
                 connection.getId(),
                 connection.getUser1Id(),
                 connection.getUser2Id(),
@@ -334,6 +342,7 @@ public class MatchingService {
 
         // 연결 수락
         connection.accept(room.getId());
+        sendMatchRequestAcceptedNotification(connection, userId, room.getId());
 
         log.info("✅ 매칭 요청 수락 완료: 수락자userId={}, 요청자userId={}, connectionId={}, chatRoomId={}", 
                 userId, connection.getRequesterId(), connectionId, room.getId());
@@ -374,6 +383,7 @@ public class MatchingService {
         
         // 연결 거절
         connection.reject();
+        sendMatchRequestRejectedNotification(connection, userId);
 
         log.info("✅ 매칭 요청 거절 완료: 거절자userId={}, 요청자userId={}, connectionId={}", 
                 userId, connection.getRequesterId(), connectionId);
@@ -437,6 +447,114 @@ public class MatchingService {
             // 동시성으로 동일 노출이 이미 기록된 경우 무시
             log.debug("노출 이력 중복 무시: userId={}, candidateUserId={}", userId, candidateUserId);
         }
+    }
+
+    private void sendMatchRequestReceivedNotification(Long requesterUserId,
+                                                      Long targetUserId,
+                                                      MatchingConnection connection) {
+        try {
+            User requester = getRequiredUser(requesterUserId);
+            String requesterNickname = requester.getNickname() != null && !requester.getNickname().isBlank()
+                    ? requester.getNickname()
+                    : "상대방";
+
+            var payload = objectMapper.createObjectNode();
+            payload.put("connectionId", connection.getId());
+            payload.put("requesterUserId", requesterUserId);
+            payload.put("requesterNickname", requesterNickname);
+
+            notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+                    targetUserId,
+                    NotificationType.MATCH_REQUEST_RECEIVED,
+                    "새 매칭 요청",
+                    requesterNickname + "님이 연결 요청을 보냈어요.",
+                    "airconnect://matching/requests",
+                    requesterUserId,
+                    toFullImageUrl(extractProfileImagePath(requester)),
+                    payload.toString(),
+                    buildMatchDedupeKey(connection, "received", connection.getConnectedAt())
+            ));
+        } catch (Exception e) {
+            log.error("매칭 요청 수신 알림 저장에 실패했습니다. requesterUserId={}, targetUserId={}, connectionId={}",
+                    requesterUserId, targetUserId, connection.getId(), e);
+        }
+    }
+
+    private void sendMatchRequestAcceptedNotification(MatchingConnection connection,
+                                                      Long acceptedUserId,
+                                                      Long chatRoomId) {
+        try {
+            User acceptedUser = getRequiredUser(acceptedUserId);
+            String acceptedNickname = acceptedUser.getNickname() != null && !acceptedUser.getNickname().isBlank()
+                    ? acceptedUser.getNickname()
+                    : "상대방";
+
+            var payload = objectMapper.createObjectNode();
+            payload.put("connectionId", connection.getId());
+            payload.put("chatRoomId", chatRoomId);
+            payload.put("partnerUserId", acceptedUserId);
+            payload.put("partnerNickname", acceptedNickname);
+
+            notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+                    connection.getRequesterId(),
+                    NotificationType.MATCH_REQUEST_ACCEPTED,
+                    "매칭이 수락되었어요",
+                    acceptedNickname + "님이 요청을 수락했어요. 지금 바로 대화를 시작해보세요.",
+                    "airconnect://chat/rooms/" + chatRoomId,
+                    acceptedUserId,
+                    toFullImageUrl(extractProfileImagePath(acceptedUser)),
+                    payload.toString(),
+                    buildMatchDedupeKey(connection, "accepted", connection.getRespondedAt())
+            ));
+        } catch (Exception e) {
+            log.error("매칭 수락 알림 저장에 실패했습니다. connectionId={}, requesterUserId={}, acceptedUserId={}",
+                    connection.getId(), connection.getRequesterId(), acceptedUserId, e);
+        }
+    }
+
+    private void sendMatchRequestRejectedNotification(MatchingConnection connection, Long rejectedUserId) {
+        try {
+            User rejectedUser = getRequiredUser(rejectedUserId);
+            String rejectedNickname = rejectedUser.getNickname() != null && !rejectedUser.getNickname().isBlank()
+                    ? rejectedUser.getNickname()
+                    : "상대방";
+
+            var payload = objectMapper.createObjectNode();
+            payload.put("connectionId", connection.getId());
+            payload.put("rejectedUserId", rejectedUserId);
+            payload.put("rejectedNickname", rejectedNickname);
+
+            notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+                    connection.getRequesterId(),
+                    NotificationType.MATCH_REQUEST_REJECTED,
+                    "매칭 요청이 거절되었어요",
+                    rejectedNickname + "님이 이번 요청을 거절했어요.",
+                    "airconnect://matching/requests",
+                    rejectedUserId,
+                    toFullImageUrl(extractProfileImagePath(rejectedUser)),
+                    payload.toString(),
+                    buildMatchDedupeKey(connection, "rejected", connection.getRespondedAt())
+            ));
+        } catch (Exception e) {
+            log.error("매칭 거절 알림 저장에 실패했습니다. connectionId={}, requesterUserId={}, rejectedUserId={}",
+                    connection.getId(), connection.getRequesterId(), rejectedUserId, e);
+        }
+    }
+
+    private String buildMatchDedupeKey(MatchingConnection connection, String action, Object timestamp) {
+        return "match-request:" + connection.getId() + ":" + action + ":" + String.valueOf(timestamp);
+    }
+
+    private User getRequiredUser(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
+    }
+
+    private String extractProfileImagePath(User user) {
+        if (user == null || user.getUserProfile() == null) {
+            return null;
+        }
+        return user.getUserProfile().getProfileImagePath();
     }
 
     private String toFullImageUrl(String profileImagePath) {

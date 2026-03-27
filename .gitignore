@@ -103,4 +103,7 @@ application-test.yml
 
 .md
 
+# Firebase service account (local)
+config/firebase-service-account.json
+
 

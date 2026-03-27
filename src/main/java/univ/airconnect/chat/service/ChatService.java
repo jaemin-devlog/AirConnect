@@ -27,6 +27,8 @@ import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
+import univ.airconnect.notification.domain.NotificationType;
+import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -49,6 +51,7 @@ public class ChatService {
     private final RedisSubscriber redisSubscriber;
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
+    private final NotificationService notificationService;
 
     private final Map<String, ChannelTopic> topics = new ConcurrentHashMap<>();
 
@@ -262,8 +265,51 @@ public class ChatService {
      * 세션-채팅방 매핑 저장
      */
     public void mapSessionToRoom(String sessionId, String roomId) {
+        Object previousRoomIdValue = redisTemplate.opsForValue().get(SESSION_ROOM_KEY + sessionId);
+        if (previousRoomIdValue != null && !Objects.equals(String.valueOf(previousRoomIdValue), roomId)) {
+            cleanupRoomTopicIfUnused(sessionId, previousRoomIdValue);
+        }
+
         redisTemplate.opsForValue().set(SESSION_ROOM_KEY + sessionId, roomId, 24, TimeUnit.HOURS);
         redisTemplate.opsForSet().add(ROOM_SESSION_SET_KEY + roomId, sessionId);
+    }
+
+    /**
+     * 사용자가 현재 특정 채팅방을 보고 있는지 Redis 세션 정보를 기준으로 확인한다.
+     */
+    public boolean isUserViewingRoom(Long userId, Long roomId) {
+        if (userId == null || roomId == null) {
+            return false;
+        }
+
+        String roomSessionSetKey = ROOM_SESSION_SET_KEY + roomId;
+        try {
+            Set<Object> sessionIds = redisTemplate.opsForSet().members(roomSessionSetKey);
+            if (sessionIds == null || sessionIds.isEmpty()) {
+                return false;
+            }
+
+            for (Object sessionIdValue : sessionIds) {
+                if (sessionIdValue == null) {
+                    continue;
+                }
+
+                String sessionId = String.valueOf(sessionIdValue);
+                Object mappedUserId = redisTemplate.opsForValue().get(CHAT_SESSION_KEY + sessionId);
+                if (mappedUserId == null) {
+                    redisTemplate.opsForSet().remove(roomSessionSetKey, sessionId);
+                    continue;
+                }
+
+                if (Objects.equals(String.valueOf(userId), String.valueOf(mappedUserId))) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (RuntimeException e) {
+            log.warn("채팅방 열람 상태 확인에 실패했습니다. userId={}, roomId={}", userId, roomId, e);
+            return false;
+        }
     }
 
     /**
@@ -361,6 +407,7 @@ public class ChatService {
 
         ChatMessageResponse response = ChatMessageResponse.from(chatMessage, extractProfileImage(sender));
         publishToRedisSilently(roomId, response);
+        publishChatMessageNotifications(roomId, sender, chatMessage);
         return response;
     }
 
@@ -632,6 +679,60 @@ public class ChatService {
         }
     }
 
+    private void publishChatMessageNotifications(Long roomId, User sender, ChatMessage chatMessage) {
+        if (!isPushEligibleMessage(chatMessage.getType())) {
+            return;
+        }
+
+        List<ChatRoomMember> members = chatRoomMemberRepository.findByChatRoomId(roomId);
+        if (members.isEmpty()) {
+            return;
+        }
+
+        String senderNickname = sender.getNickname() != null && !sender.getNickname().isBlank()
+                ? sender.getNickname()
+                : "상대방";
+        String preview = summarizeChatPushPreview(chatMessage);
+        String deeplink = "airconnect://chat/rooms/" + roomId;
+
+        for (ChatRoomMember member : members) {
+            Long recipientUserId = member.getUser().getId();
+            if (Objects.equals(recipientUserId, sender.getId())) {
+                continue;
+            }
+            if (isUserViewingRoom(recipientUserId, roomId)) {
+                log.debug("같은 채팅방을 보고 있어 OS push를 생략합니다. roomId={}, recipientUserId={}",
+                        roomId, recipientUserId);
+                continue;
+            }
+
+            try {
+                var payload = objectMapper.createObjectNode();
+                payload.put("chatRoomId", roomId);
+                payload.put("messageId", chatMessage.getId());
+                payload.put("senderUserId", sender.getId());
+                payload.put("senderNickname", senderNickname);
+                payload.put("messagePreview", preview);
+                payload.put("messageType", chatMessage.getType().name());
+
+                notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+                        recipientUserId,
+                        NotificationType.CHAT_MESSAGE_RECEIVED,
+                        senderNickname + "님이 메시지를 보냈어요",
+                        preview,
+                        deeplink,
+                        sender.getId(),
+                        extractProfileImage(sender),
+                        payload.toString(),
+                        "chat-message:" + chatMessage.getId() + ":received"
+                ));
+            } catch (Exception e) {
+                log.error("채팅 메시지 알림 저장에 실패했습니다. roomId={}, messageId={}, recipientUserId={}",
+                        roomId, chatMessage.getId(), recipientUserId, e);
+            }
+        }
+    }
+
     private void removeTopic(String roomId) {
         ChannelTopic topic = topics.remove(roomId);
         if (topic == null) {
@@ -657,6 +758,10 @@ public class ChatService {
         return messageType;
     }
 
+    private boolean isPushEligibleMessage(MessageType messageType) {
+        return messageType == MessageType.TEXT || messageType == MessageType.IMAGE;
+    }
+
     private void validateMessagePayload(String content, MessageType messageType) {
         if (content == null || content.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "메시지 내용은 비어 있을 수 없습니다.");
@@ -671,6 +776,20 @@ public class ChatService {
             return "[이미지]";
         }
         String normalized = content == null ? "" : content.trim();
+        return normalized.length() > 100 ? normalized.substring(0, 100) : normalized;
+    }
+
+    private String summarizeChatPushPreview(ChatMessage chatMessage) {
+        if (chatMessage.getType() == MessageType.IMAGE) {
+            return "[이미지]";
+        }
+
+        String content = chatMessage.getDisplayContent();
+        if (content == null || content.isBlank()) {
+            return "새 메시지가 도착했어요.";
+        }
+
+        String normalized = content.trim();
         return normalized.length() > 100 ? normalized.substring(0, 100) : normalized;
     }
 

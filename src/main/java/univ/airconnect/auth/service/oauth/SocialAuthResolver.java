@@ -33,7 +33,7 @@ public class SocialAuthResolver {
     public SocialAuthClient getClient(SocialProvider provider) {
         SocialAuthClient client = clientMap.get(provider);
         if (client == null) {
-            // AuthException을 쓰고 있지만, 원하면 별도 UnsupportedProviderException으로 분리해도 됨
+            // 현재는 AuthException을 사용하지만, 필요하면 UnsupportedProviderException으로 분리할 수 있다.
             throw new AuthException("Unsupported social provider: " + provider);
         }
         return client;
