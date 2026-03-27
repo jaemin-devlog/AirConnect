@@ -14,9 +14,10 @@ spring:
       static-locations: classpath:/static/,classpath:/public/,classpath:/resources/,classpath:/templates/
 
   jackson:
-    default-property-inclusion: non_null
+    default-property-inclusion: always
     serialization:
       write-dates-as-timestamps: false
+      write-null-map-values: true
     time-zone: Asia/Seoul
 
   datasource:
@@ -40,8 +41,8 @@ spring:
       url: ${REDIS_URL}
 
   mail:
-    host: smtp.gmail.com
-    port: 587
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME}
     password: ${MAIL_PASSWORD}
     properties:
@@ -59,17 +60,11 @@ logging:
   level:
     root: INFO
     org.springframework.web: INFO
-    univ.airconnect: DEBUG
-    univ.airconnect.auth: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.orm.jdbc.bind: TRACE
+    org.hibernate.SQL: INFO
+    org.hibernate.orm.jdbc.bind: INFO
+    univ.airconnect: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-  file:
-    name: logs/airconnect.log
-    max-size: 10MB
-    max-history: 30
-    total-size-cap: 1GB
 
 kakao:
   base-url: https://kapi.kakao.com
@@ -77,8 +72,8 @@ kakao:
 
 jwt:
   secret: ${JWT_SECRET}
-  access-token-expiration-seconds: 3600
-  refresh-token-expiration-seconds: 2592000
+  access-token-expiration-seconds: ${JWT_ACCESS_TOKEN_EXPIRATION_SECONDS:3600}
+  refresh-token-expiration-seconds: ${JWT_REFRESH_TOKEN_EXPIRATION_SECONDS:2592000}
 
 apple:
   team-id: ${TEAM_ID}
@@ -90,5 +85,18 @@ app:
   upload:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/var/lib/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE}
+
+notification:
+  outbox:
+    worker:
+      enabled: ${NOTIFICATION_OUTBOX_WORKER_ENABLED:true}
+      delay-ms: ${NOTIFICATION_OUTBOX_WORKER_DELAY_MS:1000}
+      recovery-delay-ms: ${NOTIFICATION_OUTBOX_WORKER_RECOVERY_DELAY_MS:60000}
+  push:
+    fcm:
+      enabled: ${NOTIFICATION_PUSH_FCM_ENABLED:true}
+      app-name: ${FIREBASE_APP_NAME:airconnect-notification}
+      project-id: ${FIREBASE_PROJECT_ID:}
+      credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
 
 
