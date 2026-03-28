@@ -13,7 +13,9 @@ import java.time.ZoneOffset;
 @Getter
 @Builder
 public class ChatMessageResponse {
+    private String eventType;
     private Long id;
+    private Long messageId;
     private Long roomId;
     private Long chatRoomId;
     private Long senderId;
@@ -38,13 +40,15 @@ public class ChatMessageResponse {
     private static final ZoneOffset RESPONSE_OFFSET = ZoneOffset.UTC;
 
     public static ChatMessageResponse from(ChatMessage entity, String profileImage) {
-        return from(entity, profileImage, null);
+        return from(entity, profileImage, 0);
     }
 
     public static ChatMessageResponse from(ChatMessage entity, String profileImage, Integer unreadCount) {
         String renderedContent = entity.isDeleted() ? DELETED_CONTENT : entity.getContent();
         return ChatMessageResponse.builder()
+                .eventType("MESSAGE")
                 .id(entity.getId())
+                .messageId(entity.getId())
                 .roomId(entity.getRoomId())
                 .chatRoomId(entity.getRoomId())
                 .senderId(entity.getSenderId())
@@ -55,10 +59,25 @@ public class ChatMessageResponse {
                 .messageType(entity.getType())
                 .type(entity.getType())
                 .deleted(entity.isDeleted())
-                .unreadCount(unreadCount)
+                .unreadCount(unreadCount != null ? unreadCount : 0)
                 .readAt(toOffset(entity.getReadAt()))
                 .sentAt(toOffset(entity.getCreatedAt()))
                 .createdAt(toOffset(entity.getCreatedAt()))
+                .build();
+    }
+
+    public static ChatMessageResponse readReceipt(Long roomId, Long messageId, LocalDateTime readAt) {
+        OffsetDateTime offsetReadAt = toOffset(readAt);
+        return ChatMessageResponse.builder()
+                .eventType("READ_RECEIPT")
+                .id(messageId)
+                .messageId(messageId)
+                .roomId(roomId)
+                .chatRoomId(roomId)
+                .unreadCount(0)
+                .readAt(offsetReadAt)
+                .sentAt(offsetReadAt)
+                .createdAt(offsetReadAt)
                 .build();
     }
 

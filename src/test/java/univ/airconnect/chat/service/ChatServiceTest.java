@@ -14,8 +14,13 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.chat.domain.ChatRoomType;
+import univ.airconnect.chat.domain.MessageType;
+import univ.airconnect.chat.domain.entity.ChatMessage;
 import univ.airconnect.chat.domain.entity.ChatRoom;
+import univ.airconnect.chat.domain.entity.ChatRoomMember;
 import univ.airconnect.chat.dto.request.ChatMessageRequest;
+import univ.airconnect.chat.dto.request.SendMessageRequest;
+import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
@@ -33,6 +38,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -130,6 +136,47 @@ class ChatServiceTest {
 
         verify(chatRoomMemberRepository).saveAll(any());
         assertThat(response.getId()).isEqualTo(555L);
+    }
+
+    @Test
+    void sendMessage_setsUnreadCountOneForNewTextMessage() {
+        ChatService service = createService();
+        Long userId = 1L;
+        Long roomId = 99L;
+
+        User user = createUser(userId, "sender");
+        SendMessageRequest request = new SendMessageRequest();
+        ReflectionTestUtils.setField(request, "content", "hello");
+        ReflectionTestUtils.setField(request, "messageType", MessageType.TEXT);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)).thenReturn(true);
+        when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(ChatRoom.create("r-99", ChatRoomType.PERSONAL)));
+
+        ChatMessageResponse response = service.sendMessage(userId, roomId, request);
+
+        assertThat(response.getUnreadCount()).isEqualTo(1);
+    }
+
+    @Test
+    void updateLastRead_marksIncomingMessagesAndPublishesReadReceiptEvents() {
+        ChatService service = createService();
+        Long roomId = 10L;
+        Long userId = 2L;
+
+        ChatRoomMember member = org.mockito.Mockito.mock(ChatRoomMember.class);
+        ChatMessage lastMessage = ChatMessage.create(roomId, 1L, "sender", "msg", MessageType.TEXT);
+        ReflectionTestUtils.setField(lastMessage, "id", 200L);
+
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(member));
+        when(chatMessageRepository.findUnreadIncomingMessageIds(roomId, userId)).thenReturn(List.of(101L, 102L));
+        when(chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)).thenReturn(Optional.of(lastMessage));
+
+        service.updateLastRead(roomId, userId);
+
+        verify(chatMessageRepository).markIncomingMessagesRead(org.mockito.ArgumentMatchers.eq(roomId), org.mockito.ArgumentMatchers.eq(userId), any());
+        verify(member).updateLastReadMessageId(200L);
+        verify(redisTemplate, times(2)).convertAndSend(org.mockito.ArgumentMatchers.eq(roomId.toString()), any());
     }
 
     private ChatService createService() {
