@@ -120,6 +120,31 @@ public class ChatService {
         return ChatRoomResponse.from(room);
     }
 
+    /**
+     * 수락된 1:1 연결에 대해 PERSONAL 채팅방을 새로 만든다.
+     * 단, 같은 connectionId로 이미 방이 만들어진 경우에는 중복 생성을 막기 위해 기존 방을 반환한다.
+     */
+    @Transactional
+    public ChatRoomResponse createNewPersonalRoomForConnection(Long connectionId,
+                                                               Long userAId,
+                                                               Long userBId,
+                                                               String roomName) {
+        findUserOrThrow(userAId);
+        findUserOrThrow(userBId);
+
+        if (connectionId != null) {
+            Optional<ChatRoom> byConnection = chatRoomRepository.findByConnectionId(connectionId);
+            if (byConnection.isPresent()) {
+                ChatRoom existingRoom = byConnection.get();
+                ensurePersonalRoomMembers(existingRoom, userAId, userBId);
+                return ChatRoomResponse.from(existingRoom);
+            }
+        }
+
+        ChatRoom room = createPersonalRoom(roomName, userAId, userBId, connectionId);
+        return ChatRoomResponse.from(room);
+    }
+
     private void ensurePersonalRoomMembers(ChatRoom room, Long userAId, Long userBId) {
         if (room.getType() != ChatRoomType.PERSONAL) {
             return;

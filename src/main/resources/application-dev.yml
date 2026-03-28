@@ -85,6 +85,21 @@ app:
   upload:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/var/lib/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE}
+  websocket:
+    inbound:
+      core-pool-size: ${WS_INBOUND_CORE_POOL_SIZE:16}
+      max-pool-size: ${WS_INBOUND_MAX_POOL_SIZE:64}
+      queue-capacity: ${WS_INBOUND_QUEUE_CAPACITY:5000}
+      keep-alive-seconds: ${WS_INBOUND_KEEP_ALIVE_SECONDS:60}
+    outbound:
+      core-pool-size: ${WS_OUTBOUND_CORE_POOL_SIZE:16}
+      max-pool-size: ${WS_OUTBOUND_MAX_POOL_SIZE:64}
+      queue-capacity: ${WS_OUTBOUND_QUEUE_CAPACITY:5000}
+      keep-alive-seconds: ${WS_OUTBOUND_KEEP_ALIVE_SECONDS:60}
+    transport:
+      send-time-limit-ms: ${WS_SEND_TIME_LIMIT_MS:15000}
+      send-buffer-size-limit-bytes: ${WS_SEND_BUFFER_SIZE_LIMIT_BYTES:1048576}
+      message-size-limit-bytes: ${WS_MESSAGE_SIZE_LIMIT_BYTES:131072}
 
 notification:
   outbox:
