@@ -1,5 +1,6 @@
 package univ.airconnect.chat.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Builder;
 import lombok.Getter;
 import univ.airconnect.chat.domain.MessageType;
@@ -7,7 +8,7 @@ import univ.airconnect.chat.domain.entity.ChatMessage;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 
 @Getter
 @Builder
@@ -24,12 +25,17 @@ public class ChatMessageResponse {
     private MessageType type;
     private boolean deleted;
     private Integer unreadCount;
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX", timezone = "UTC")
     private OffsetDateTime readAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX", timezone = "UTC")
     private OffsetDateTime sentAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX", timezone = "UTC")
     private OffsetDateTime createdAt;
 
     private static final String DELETED_CONTENT = "삭제된 메시지입니다.";
-    private static final ZoneId RESPONSE_ZONE = ZoneId.of("Asia/Seoul");
+    private static final ZoneOffset RESPONSE_OFFSET = ZoneOffset.UTC;
 
     public static ChatMessageResponse from(ChatMessage entity, String profileImage) {
         return from(entity, profileImage, null);
@@ -60,6 +66,7 @@ public class ChatMessageResponse {
         if (value == null) {
             return null;
         }
-        return value.atZone(RESPONSE_ZONE).toOffsetDateTime();
+        // DB/서버 기준 시간을 UTC로 간주하여 OffsetDateTime(오프셋 포함)으로 통일한다.
+        return value.atOffset(RESPONSE_OFFSET);
     }
 }

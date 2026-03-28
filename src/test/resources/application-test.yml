@@ -23,6 +23,12 @@ spring:
       host: localhost
       port: 6379
 
+  mail:
+    host: localhost
+    port: 25
+    username: test
+    password: test
+
   main:
     allow-bean-definition-overriding: true
 
@@ -34,4 +40,10 @@ matching:
   queue:
     worker:
       enabled: false
+
+jwt:
+  # test 전용 더미 시크릿(HS256 최소 256-bit 이상 필요)
+  secret: "testtesttesttesttesttesttesttesttesttest"
+  access-token-expiration-seconds: 3600
+  refresh-token-expiration-seconds: 2592000
 

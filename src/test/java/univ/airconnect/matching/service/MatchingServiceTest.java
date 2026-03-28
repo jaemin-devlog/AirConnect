@@ -39,6 +39,8 @@ import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -50,7 +52,7 @@ import static org.mockito.ArgumentMatchers.any;
 
 @DataJpaTest
 @ActiveProfiles("test")
-@Import(MatchingService.class)
+@Import({MatchingService.class, TestNotificationConfig.class})
 class MatchingServiceTest {
 
     @Autowired
@@ -308,7 +310,7 @@ class MatchingServiceTest {
                         .id(99L)
                         .name("소개팅 1:1")
                         .type(ChatRoomType.PERSONAL)
-                        .createdAt(LocalDateTime.now())
+                        .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
                         .build());
 
         MatchingResponseResponse response = matchingService.acceptRequest(receiver.getId(), conn.getId());
@@ -419,7 +421,7 @@ class MatchingServiceTest {
                 .studentNum(20240001)
                 .status(UserStatus.ACTIVE)
                 .onboardingStatus(OnboardingStatus.FULL)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(java.time.Clock.systemUTC()))
                 .tickets(tickets)
                 .build();
 

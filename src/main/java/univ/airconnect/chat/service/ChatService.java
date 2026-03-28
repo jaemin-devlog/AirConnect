@@ -517,8 +517,8 @@ public class ChatService {
                             targetUserId, targetNickname, targetProfileImage);
                 })
                 .sorted((r1, r2) -> {
-                    LocalDateTime t1 = (r1.getLatestMessageTime() != null) ? r1.getLatestMessageTime() : r1.getCreatedAt();
-                    LocalDateTime t2 = (r2.getLatestMessageTime() != null) ? r2.getLatestMessageTime() : r2.getCreatedAt();
+                    java.time.OffsetDateTime t1 = (r1.getLatestMessageTime() != null) ? r1.getLatestMessageTime() : r1.getCreatedAt();
+                    java.time.OffsetDateTime t2 = (r2.getLatestMessageTime() != null) ? r2.getLatestMessageTime() : r2.getCreatedAt();
                     return t2.compareTo(t1);
                 })
                 .collect(Collectors.toList());
@@ -819,7 +819,7 @@ public class ChatService {
     }
 
     private void markIncomingMessagesRead(Long roomId, Long userId) {
-        chatMessageRepository.markIncomingMessagesRead(roomId, userId, LocalDateTime.now());
+        chatMessageRepository.markIncomingMessagesRead(roomId, userId, LocalDateTime.now(java.time.Clock.systemUTC()));
     }
 
     private void validateNotBlocked(Long roomId, Long userId) {

@@ -69,7 +69,7 @@ public class ChatMessage {
         this.deleted = deleted;
         this.deletedAt = deletedAt;
         this.readAt = readAt;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = LocalDateTime.now(java.time.Clock.systemUTC());
     }
 
     public static ChatMessage create(Long roomId, Long senderId, String senderNickname, String content, MessageType type) {
@@ -92,14 +92,14 @@ public class ChatMessage {
             return;
         }
         this.deleted = true;
-        this.deletedAt = LocalDateTime.now();
+        this.deletedAt = LocalDateTime.now(java.time.Clock.systemUTC());
     }
 
     public void markRead() {
         if (this.readAt != null) {
             return;
         }
-        this.readAt = LocalDateTime.now();
+        this.readAt = LocalDateTime.now(java.time.Clock.systemUTC());
     }
 
     public String getDisplayContent() {
