@@ -1,11 +1,14 @@
 package univ.airconnect.chat.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Builder;
 import lombok.Getter;
 import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.domain.entity.ChatRoom;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Getter
 @Builder
@@ -14,9 +17,11 @@ public class ChatRoomResponse {
     private String name;
     private ChatRoomType type;
     private Long connectionId;
-    private LocalDateTime createdAt;
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX", timezone = "UTC")
+    private OffsetDateTime createdAt;
     private String latestMessage;
-    private LocalDateTime latestMessageTime;
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX", timezone = "UTC")
+    private OffsetDateTime latestMessageTime;
     private int unreadCount;
     private Long targetUserId;
     private String targetNickname;
@@ -28,9 +33,9 @@ public class ChatRoomResponse {
                 .name(entity.getName())
                 .type(entity.getType())
                 .connectionId(entity.getConnectionId())
-                .createdAt(entity.getCreatedAt())
+                .createdAt(toOffset(entity.getCreatedAt()))
                 .latestMessage(latestMessage)
-                .latestMessageTime(latestMessageTime)
+                .latestMessageTime(toOffset(latestMessageTime))
                 .unreadCount(unreadCount)
                 .build();
     }
@@ -59,14 +64,22 @@ public class ChatRoomResponse {
                 .name(displayName)
                 .type(entity.getType())
                 .connectionId(entity.getConnectionId())
-                .createdAt(entity.getCreatedAt())
+                .createdAt(toOffset(entity.getCreatedAt()))
                 .latestMessage(latestMessage)
-                .latestMessageTime(latestMessageTime)
+                .latestMessageTime(toOffset(latestMessageTime))
                 .unreadCount(unreadCount)
                 .targetUserId(targetUserId)
                 .targetNickname(targetNickname)
                 .targetProfileImage(targetProfileImage)
                 .build();
+    }
+
+    private static OffsetDateTime toOffset(LocalDateTime value) {
+        if (value == null) {
+            return null;
+        }
+        // DB/서버 저장 시간을 UTC로 간주해 OffsetDateTime으로 통일한다.
+        return value.atOffset(ZoneOffset.UTC);
     }
 
     // 기존 호환성을 위해 유지

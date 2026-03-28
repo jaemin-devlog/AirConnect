@@ -65,8 +65,8 @@ public class ChatRoom {
         this.user2Id = user2Id;
         this.lastMessage = lastMessage;
         this.lastMessageAt = lastMessageAt;
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
+        this.createdAt = LocalDateTime.now(java.time.Clock.systemUTC());
+        this.updatedAt = LocalDateTime.now(java.time.Clock.systemUTC());
     }
 
     public static ChatRoom create(String name, ChatRoomType type) {
@@ -91,7 +91,7 @@ public class ChatRoom {
     public void updateLastMessage(String lastMessage, LocalDateTime lastMessageAt) {
         this.lastMessage = lastMessage;
         this.lastMessageAt = lastMessageAt;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now(java.time.Clock.systemUTC());
     }
 
     public void bindConnectionIfMissing(Long connectionId) {
@@ -99,6 +99,6 @@ public class ChatRoom {
             return;
         }
         this.connectionId = connectionId;
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now(java.time.Clock.systemUTC());
     }
 }
