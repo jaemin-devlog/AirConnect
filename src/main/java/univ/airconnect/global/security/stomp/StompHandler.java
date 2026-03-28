@@ -32,15 +32,18 @@ public class StompHandler implements ChannelInterceptor {
     private final JwtProvider jwtProvider;
     private final ChatService chatService;
     private final GMatchingService matchingService;
+    private final StompOpsMonitor stompOpsMonitor;
 
     public StompHandler(
             JwtProvider jwtProvider,
             @Lazy ChatService chatService,
-            @Lazy GMatchingService matchingService
+            @Lazy GMatchingService matchingService,
+            StompOpsMonitor stompOpsMonitor
     ) {
         this.jwtProvider = jwtProvider;
         this.chatService = chatService;
         this.matchingService = matchingService;
+        this.stompOpsMonitor = stompOpsMonitor;
     }
 
     @Override
@@ -52,13 +55,24 @@ public class StompHandler implements ChannelInterceptor {
         }
 
         StompCommand command = accessor.getCommand();
+        stompOpsMonitor.recordInboundCommand(command);
 
-        if (StompCommand.CONNECT.equals(command)) {
-            handleConnectWithLogging(accessor);
-        } else if (StompCommand.SUBSCRIBE.equals(command)) {
-            handleSubscribe(accessor);
-        } else if (StompCommand.DISCONNECT.equals(command)) {
-            handleDisconnect(accessor);
+        try {
+            if (StompCommand.CONNECT.equals(command)) {
+                handleConnectWithLogging(accessor);
+            } else if (StompCommand.SUBSCRIBE.equals(command)) {
+                handleSubscribe(accessor);
+            } else if (StompCommand.DISCONNECT.equals(command)) {
+                handleDisconnect(accessor);
+            }
+        } catch (RuntimeException ex) {
+            stompOpsMonitor.recordInboundFailure(command, ex);
+            log.warn("STOMP INBOUND FAIL: command={}, sessionId={}, type={}, message={}",
+                    command,
+                    accessor.getSessionId(),
+                    ex.getClass().getSimpleName(),
+                    ex.getMessage());
+            throw ex;
         }
 
         return message;
@@ -80,11 +94,24 @@ public class StompHandler implements ChannelInterceptor {
                     new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 
             accessor.setUser(authentication);
-            chatService.saveSessionInfo(accessor.getSessionId(), userId);
+            try {
+                // principal 정보가 이미 세팅되어 있으므로 Redis 세션 저장 실패로 CONNECT를 깨지 않는다.
+                chatService.saveSessionInfo(accessor.getSessionId(), userId);
+            } catch (RuntimeException redisEx) {
+                stompOpsMonitor.recordSideEffectFailure("CONNECT_SAVE_SESSION", redisEx);
+                log.warn("STOMP CONNECT SIDE-EFFECT FAIL: sessionId={}, userId={}, type={}, message={}",
+                        accessor.getSessionId(),
+                        userId,
+                        redisEx.getClass().getSimpleName(),
+                        redisEx.getMessage());
+            }
+
+            stompOpsMonitor.recordConnectSuccess();
 
             log.info("STOMP CONNECT SUCCESS: sessionId={}, subject={}, userId={}",
                     accessor.getSessionId(), tokenSubject, userId);
         } catch (Exception e) {
+            stompOpsMonitor.recordConnectFailure(e);
             log.warn("STOMP CONNECT FAIL: sessionId={}, subject={}, exceptionType={}, message={}",
                     accessor.getSessionId(), tokenSubject, e.getClass().getSimpleName(), e.getMessage());
             throw e;
@@ -101,6 +128,7 @@ public class StompHandler implements ChannelInterceptor {
         if (userId == null) {
             log.error("STOMP SUBSCRIBE REJECTED: sessionId={}, destination={}, reason=unauthenticated",
                     accessor.getSessionId(), destination);
+            stompOpsMonitor.recordSubscribeFailure(new AccessDeniedException("unauthenticated"));
             throw new AccessDeniedException("Unable to resolve authenticated user.");
         }
 
@@ -119,12 +147,26 @@ public class StompHandler implements ChannelInterceptor {
 
         if (!chatService.isMember(roomId, userId)) {
             log.error("STOMP SUBSCRIBE REJECTED: roomId={}, userId={}, reason=not_member", roomId, userId);
+            stompOpsMonitor.recordSubscribeFailure(new AccessDeniedException("not_member"));
             throw new AccessDeniedException("No permission to subscribe this chat room.");
         }
 
-        chatService.enterChatRoom(roomId.toString());
-        chatService.mapSessionToRoom(accessor.getSessionId(), roomId.toString());
-        chatService.updateLastRead(roomId, userId);
+        // 구독 자체 권한은 이미 검증되었으므로, 부가 동기화 실패는 구독까지 차단하지 않는다.
+        try {
+            chatService.enterChatRoom(roomId.toString());
+            chatService.mapSessionToRoom(accessor.getSessionId(), roomId.toString());
+            chatService.updateLastRead(roomId, userId);
+        } catch (RuntimeException ex) {
+            stompOpsMonitor.recordSideEffectFailure("SUBSCRIBE_SYNC", ex);
+            log.warn("STOMP SUBSCRIBE SIDE-EFFECT FAIL: sessionId={}, userId={}, roomId={}, type={}, message={}",
+                    accessor.getSessionId(),
+                    userId,
+                    roomId,
+                    ex.getClass().getSimpleName(),
+                    ex.getMessage());
+        }
+
+        stompOpsMonitor.recordSubscribeSuccess();
 
         log.info("STOMP SUBSCRIBE CHAT: sessionId={}, userId={}, roomId={}",
                 accessor.getSessionId(), userId, roomId);
@@ -134,8 +176,11 @@ public class StompHandler implements ChannelInterceptor {
         Long teamRoomId = extractId(destination, MATCHING_TEAM_ROOM_SUB_PREFIX, "team room");
         if (!matchingService.canSubscribeTeamRoom(teamRoomId, userId)) {
             log.error("STOMP SUBSCRIBE REJECTED: teamRoomId={}, userId={}, reason=no_access", teamRoomId, userId);
+            stompOpsMonitor.recordSubscribeFailure(new AccessDeniedException("no_access"));
             throw new AccessDeniedException("No permission to subscribe this matching room.");
         }
+
+        stompOpsMonitor.recordSubscribeSuccess();
 
         log.info("STOMP SUBSCRIBE MATCHING: sessionId={}, userId={}, teamRoomId={}",
                 accessor.getSessionId(), userId, teamRoomId);

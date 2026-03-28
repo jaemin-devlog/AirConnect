@@ -1,15 +1,18 @@
 package univ.airconnect.global.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
 import univ.airconnect.global.security.stomp.CustomStompErrorHandler;
+import univ.airconnect.global.security.stomp.StompOpsMonitor;
 import univ.airconnect.global.security.stomp.StompOutboundLoggingInterceptor;
 import univ.airconnect.global.security.stomp.StompHandler;
 
@@ -20,6 +23,39 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final StompHandler stompHandler;
     private final StompOutboundLoggingInterceptor stompOutboundLoggingInterceptor;
+
+    @Value("${app.websocket.inbound.core-pool-size:16}")
+    private int inboundCorePoolSize;
+
+    @Value("${app.websocket.inbound.max-pool-size:64}")
+    private int inboundMaxPoolSize;
+
+    @Value("${app.websocket.inbound.queue-capacity:5000}")
+    private int inboundQueueCapacity;
+
+    @Value("${app.websocket.inbound.keep-alive-seconds:60}")
+    private int inboundKeepAliveSeconds;
+
+    @Value("${app.websocket.outbound.core-pool-size:16}")
+    private int outboundCorePoolSize;
+
+    @Value("${app.websocket.outbound.max-pool-size:64}")
+    private int outboundMaxPoolSize;
+
+    @Value("${app.websocket.outbound.queue-capacity:5000}")
+    private int outboundQueueCapacity;
+
+    @Value("${app.websocket.outbound.keep-alive-seconds:60}")
+    private int outboundKeepAliveSeconds;
+
+    @Value("${app.websocket.transport.send-time-limit-ms:15000}")
+    private int sendTimeLimitMs;
+
+    @Value("${app.websocket.transport.send-buffer-size-limit-bytes:1048576}")
+    private int sendBufferSizeLimitBytes;
+
+    @Value("${app.websocket.transport.message-size-limit-bytes:131072}")
+    private int messageSizeLimitBytes;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
@@ -43,16 +79,33 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.taskExecutor()
+                .corePoolSize(inboundCorePoolSize)
+                .maxPoolSize(inboundMaxPoolSize)
+                .queueCapacity(inboundQueueCapacity)
+                .keepAliveSeconds(inboundKeepAliveSeconds);
         registration.interceptors(stompHandler);
     }
 
     @Override
     public void configureClientOutboundChannel(ChannelRegistration registration) {
+        registration.taskExecutor()
+                .corePoolSize(outboundCorePoolSize)
+                .maxPoolSize(outboundMaxPoolSize)
+                .queueCapacity(outboundQueueCapacity)
+                .keepAliveSeconds(outboundKeepAliveSeconds);
         registration.interceptors(stompOutboundLoggingInterceptor);
     }
 
+    @Override
+    public void configureWebSocketTransport(WebSocketTransportRegistration registry) {
+        registry.setSendTimeLimit(sendTimeLimitMs);
+        registry.setSendBufferSizeLimit(sendBufferSizeLimitBytes);
+        registry.setMessageSizeLimit(messageSizeLimitBytes);
+    }
+
     @Bean("stompSubProtocolErrorHandler")
-    public StompSubProtocolErrorHandler stompSubProtocolErrorHandler() {
-        return new CustomStompErrorHandler();
+    public StompSubProtocolErrorHandler stompSubProtocolErrorHandler(StompOpsMonitor stompOpsMonitor) {
+        return new CustomStompErrorHandler(stompOpsMonitor);
     }
 }

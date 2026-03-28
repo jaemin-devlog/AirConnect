@@ -13,6 +13,11 @@ import java.nio.charset.StandardCharsets;
 public class CustomStompErrorHandler extends StompSubProtocolErrorHandler {
 
     private static final byte[] EMPTY_PAYLOAD = new byte[0];
+    private final StompOpsMonitor stompOpsMonitor;
+
+    public CustomStompErrorHandler(StompOpsMonitor stompOpsMonitor) {
+        this.stompOpsMonitor = stompOpsMonitor;
+    }
 
     @Override
     public Message<byte[]> handleClientMessageProcessingError(@Nullable Message<byte[]> clientMessage, Throwable ex) {
@@ -34,6 +39,7 @@ public class CustomStompErrorHandler extends StompSubProtocolErrorHandler {
                 errorAccessor.getSessionId(),
                 ex.getClass().getSimpleName(),
                 message);
+        stompOpsMonitor.recordOutboundErrorFrameCreated();
 
         return org.springframework.messaging.support.MessageBuilder
                 .createMessage(EMPTY_PAYLOAD, errorAccessor.getMessageHeaders());
