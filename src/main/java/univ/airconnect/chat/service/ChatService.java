@@ -364,8 +364,18 @@ public class ChatService {
     @Transactional
     public void updateLastRead(Long roomId, Long userId) {
         chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)
-                .ifPresent(member -> chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)
-                        .ifPresent(lastMsg -> member.updateLastReadMessageId(lastMsg.getId())));
+                .ifPresent(member -> {
+                    List<Long> unreadIncomingMessageIds = chatMessageRepository.findUnreadIncomingMessageIds(roomId, userId);
+                    LocalDateTime readAt = LocalDateTime.now(java.time.Clock.systemUTC());
+
+                    if (!unreadIncomingMessageIds.isEmpty()) {
+                        chatMessageRepository.markIncomingMessagesRead(roomId, userId, readAt);
+                        publishReadReceiptEvents(roomId, unreadIncomingMessageIds, readAt);
+                    }
+
+                    chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)
+                            .ifPresent(lastMsg -> member.updateLastReadMessageId(lastMsg.getId()));
+                });
     }
 
     /**
@@ -407,7 +417,11 @@ public class ChatService {
         }
 
         message.softDelete();
-        ChatMessageResponse response = ChatMessageResponse.from(message, extractProfileImage(findUserOrThrow(userId)));
+        ChatMessageResponse response = ChatMessageResponse.from(
+                message,
+                extractProfileImage(findUserOrThrow(userId)),
+                resolveMessageUnreadCount(message)
+        );
         publishToRedisSilently(roomId, response);
         return response;
     }
@@ -430,7 +444,11 @@ public class ChatService {
 
         updateLastRead(roomId, sender.getId(), chatMessage.getId());
 
-        ChatMessageResponse response = ChatMessageResponse.from(chatMessage, extractProfileImage(sender));
+        ChatMessageResponse response = ChatMessageResponse.from(
+                chatMessage,
+                extractProfileImage(sender),
+                resolveMessageUnreadCount(chatMessage)
+        );
         publishToRedisSilently(roomId, response);
         publishChatMessageNotifications(roomId, sender, chatMessage);
         return response;
@@ -455,7 +473,11 @@ public class ChatService {
         );
         chatMessageRepository.save(exitMessage);
 
-        ChatMessageResponse response = ChatMessageResponse.from(exitMessage, extractProfileImage(user));
+        ChatMessageResponse response = ChatMessageResponse.from(
+                exitMessage,
+                extractProfileImage(user),
+                resolveMessageUnreadCount(exitMessage)
+        );
         publishToRedisSilently(roomId, response);
 
         chatRoomMemberRepository.delete(member);
@@ -551,11 +573,10 @@ public class ChatService {
                     String profileImage = (sender != null && sender.getUserProfile() != null)
                             ? sender.getUserProfile().getProfileImagePath()
                             : null;
-                    return ChatMessageResponse.from(msg, profileImage);
+                    return ChatMessageResponse.from(msg, profileImage, resolveMessageUnreadCount(msg));
                 })
                 .collect(Collectors.toList());
 
-        markIncomingMessagesRead(roomId, userId);
         updateLastRead(roomId, userId);
 
         Collections.reverse(response);
@@ -743,7 +764,7 @@ public class ChatService {
                 notificationService.createAndEnqueue(new NotificationService.CreateCommand(
                         recipientUserId,
                         NotificationType.CHAT_MESSAGE_RECEIVED,
-                        senderNickname + "님이 메시지를 보냈어요",
+                        senderNickname,
                         preview,
                         deeplink,
                         sender.getId(),
@@ -818,8 +839,24 @@ public class ChatService {
         return normalized.length() > 100 ? normalized.substring(0, 100) : normalized;
     }
 
-    private void markIncomingMessagesRead(Long roomId, Long userId) {
-        chatMessageRepository.markIncomingMessagesRead(roomId, userId, LocalDateTime.now(java.time.Clock.systemUTC()));
+    private Integer resolveMessageUnreadCount(ChatMessage message) {
+        if (message == null || message.isDeleted()) {
+            return 0;
+        }
+
+        MessageType messageType = message.getType();
+        if (messageType != MessageType.TEXT && messageType != MessageType.IMAGE) {
+            return 0;
+        }
+
+        return message.getReadAt() == null ? 1 : 0;
+    }
+
+    private void publishReadReceiptEvents(Long roomId, List<Long> messageIds, LocalDateTime readAt) {
+        for (Long messageId : messageIds) {
+            ChatMessageResponse readReceipt = ChatMessageResponse.readReceipt(roomId, messageId, readAt);
+            publishToRedisSilently(roomId, readReceipt);
+        }
     }
 
     private void validateNotBlocked(Long roomId, Long userId) {
