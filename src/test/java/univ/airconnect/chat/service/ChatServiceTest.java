@@ -20,6 +20,7 @@ import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
+import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -54,6 +55,8 @@ class ChatServiceTest {
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private ObjectMapper objectMapper;
+    @Mock
+    private NotificationService notificationService;
     @Mock
     private ValueOperations<String, Object> valueOperations;
     @Mock
@@ -140,7 +143,8 @@ class ChatServiceTest {
                 redisMessageListenerContainer,
                 redisSubscriber,
                 redisTemplate,
-                objectMapper
+                objectMapper,
+                notificationService
         );
     }
 
