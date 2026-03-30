@@ -41,18 +41,25 @@ public class IapProcessingService {
 
     @Transactional
     public IapVerifyResponse verifyIos(Long userId, IosTransactionVerifyRequest request) {
+        log.info("IAP verifyIos started. userId={}, transactionId={}", userId, request.getTransactionId());
         StoreVerificationResult result = storeVerifierResolver.resolve(IapStore.APPLE).verify(userId, request);
+        log.info("IAP verifyIos store verification succeeded. userId={}, store={}, transactionId={}, productId={}",
+                userId, result.getStore(), result.getTransactionId(), result.getProductId());
         return process(userId, result);
     }
 
     @Transactional
     public IapVerifyResponse verifyAndroid(Long userId, AndroidPurchaseVerifyRequest request) {
+        log.info("IAP verifyAndroid started. userId={}, orderId={}", userId, request.getOrderId());
         StoreVerificationResult result = storeVerifierResolver.resolve(IapStore.GOOGLE).verify(userId, request);
+        log.info("IAP verifyAndroid store verification succeeded. userId={}, store={}, purchaseTokenExists={}, productId={}",
+                userId, result.getStore(), result.getPurchaseToken() != null, result.getProductId());
         return process(userId, result);
     }
 
     @Transactional
     public IapSyncResponse syncIos(Long userId, IosTransactionsSyncRequest request) {
+        log.info("IAP syncIos started. userId={}, itemCount={}", userId, request.getTransactions().size());
         List<IapSyncItemResponse> items = new ArrayList<>();
         int successCount = 0;
         for (IosTransactionsSyncRequest.IosSyncItem item : request.getTransactions()) {
@@ -66,6 +73,8 @@ public class IapProcessingService {
                 items.add(IapSyncItemResponse.builder().success(true).result(response).build());
                 successCount++;
             } catch (IapException e) {
+                log.warn("IAP syncIos item failed. userId={}, transactionId={}, errorCode={}, message={}",
+                        userId, item.getTransactionId(), e.getErrorCode().getCode(), e.getMessage());
                 items.add(IapSyncItemResponse.builder()
                         .success(false)
                         .errorCode(e.getErrorCode().getCode())
@@ -73,6 +82,8 @@ public class IapProcessingService {
                         .build());
             }
         }
+        log.info("IAP syncIos completed. userId={}, total={}, success={}, failure={}",
+                userId, items.size(), successCount, items.size() - successCount);
         return IapSyncResponse.builder()
                 .total(items.size())
                 .successCount(successCount)
@@ -83,6 +94,7 @@ public class IapProcessingService {
 
     @Transactional
     public IapSyncResponse syncAndroid(Long userId, AndroidPurchasesSyncRequest request) {
+        log.info("IAP syncAndroid started. userId={}, itemCount={}", userId, request.getPurchases().size());
         List<IapSyncItemResponse> items = new ArrayList<>();
         int successCount = 0;
         for (AndroidPurchasesSyncRequest.AndroidSyncItem item : request.getPurchases()) {
@@ -98,6 +110,8 @@ public class IapProcessingService {
                 items.add(IapSyncItemResponse.builder().success(true).result(response).build());
                 successCount++;
             } catch (IapException e) {
+                log.warn("IAP syncAndroid item failed. userId={}, orderId={}, errorCode={}, message={}",
+                        userId, item.getOrderId(), e.getErrorCode().getCode(), e.getMessage());
                 items.add(IapSyncItemResponse.builder()
                         .success(false)
                         .errorCode(e.getErrorCode().getCode())
@@ -105,6 +119,8 @@ public class IapProcessingService {
                         .build());
             }
         }
+        log.info("IAP syncAndroid completed. userId={}, total={}, success={}, failure={}",
+                userId, items.size(), successCount, items.size() - successCount);
         return IapSyncResponse.builder()
                 .total(items.size())
                 .successCount(successCount)
@@ -114,13 +130,19 @@ public class IapProcessingService {
     }
 
     private IapVerifyResponse process(Long userId, StoreVerificationResult result) {
+        log.info("IAP process started. userId={}, store={}, key={}, productId={}, valid={}",
+                userId, result.getStore(), keyOf(result), result.getProductId(), result.isValid());
         IapProductPolicy productPolicy = IapProductPolicy.fromProductId(result.getProductId());
         if (productPolicy == null) {
+            log.warn("IAP process invalid product. userId={}, store={}, productId={}",
+                    userId, result.getStore(), result.getProductId());
             throw new IapException(IapErrorCode.IAP_INVALID_PRODUCT);
         }
 
         IapOrder existing = findExisting(result);
         if (existing != null && existing.getStatus() == univ.airconnect.iap.domain.IapOrderStatus.GRANTED) {
+            log.info("IAP process already granted. userId={}, store={}, orderId={}, key={}",
+                    userId, result.getStore(), existing.getId(), existing.idempotencyKey());
             return toAlreadyGranted(existing);
         }
 
@@ -131,6 +153,8 @@ public class IapProcessingService {
 
         if (!result.isValid()) {
             order.markRejected();
+            log.warn("IAP process rejected. userId={}, store={}, orderId={}, key={}",
+                    userId, result.getStore(), order.getId(), order.idempotencyKey());
             return IapVerifyResponse.builder()
                     .transactionId(result.getTransactionId())
                     .purchaseToken(result.getPurchaseToken())
@@ -142,6 +166,8 @@ public class IapProcessingService {
         }
 
         order.markVerified();
+        log.info("IAP process marked verified. userId={}, store={}, orderId={}, key={}",
+                userId, result.getStore(), order.getId(), order.idempotencyKey());
         TicketGrantService.TicketGrantResult grant = ticketGrantService.grantTickets(order, productPolicy.getTickets());
         order.markGranted(productPolicy.getTickets(), grant.beforeTickets(), grant.afterTickets());
 
@@ -164,14 +190,22 @@ public class IapProcessingService {
 
     private IapOrder findExisting(StoreVerificationResult result) {
         if (result.getStore() == IapStore.APPLE) {
-            return iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, result.getTransactionId()).orElse(null);
+            IapOrder found = iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, result.getTransactionId()).orElse(null);
+            if (found != null) {
+                log.info("IAP existing order found. store=APPLE, orderId={}, transactionId={}", found.getId(), result.getTransactionId());
+            }
+            return found;
         }
-        return iapOrderRepository.findByStoreAndPurchaseToken(IapStore.GOOGLE, result.getPurchaseToken()).orElse(null);
+        IapOrder found = iapOrderRepository.findByStoreAndPurchaseToken(IapStore.GOOGLE, result.getPurchaseToken()).orElse(null);
+        if (found != null) {
+            log.info("IAP existing order found. store=GOOGLE, orderId={}, purchaseTokenExists={}", found.getId(), result.getPurchaseToken() != null);
+        }
+        return found;
     }
 
     private IapOrder createPendingOrder(Long userId, StoreVerificationResult result) {
         try {
-            return iapOrderRepository.save(IapOrder.createPending(
+            IapOrder created = iapOrderRepository.save(IapOrder.createPending(
                     userId,
                     result.getStore(),
                     result.getProductId(),
@@ -184,7 +218,12 @@ public class IapProcessingService {
                     result.getVerificationHash(),
                     result.getRawPayloadMasked()
             ));
+            log.info("IAP pending order created. userId={}, store={}, orderId={}, key={}",
+                    userId, result.getStore(), created.getId(), created.idempotencyKey());
+            return created;
         } catch (DataIntegrityViolationException e) {
+            log.warn("IAP pending order creation hit unique constraint. userId={}, store={}, key={}",
+                    userId, result.getStore(), keyOf(result));
             IapOrder existing = findExisting(result);
             if (existing != null) {
                 return existing;
@@ -194,6 +233,8 @@ public class IapProcessingService {
     }
 
     private IapVerifyResponse toAlreadyGranted(IapOrder order) {
+        log.info("IAP already granted response generated. orderId={}, store={}, key={}",
+                order.getId(), order.getStore(), order.idempotencyKey());
         return IapVerifyResponse.builder()
                 .transactionId(order.getTransactionId())
                 .purchaseToken(order.getPurchaseToken())
@@ -206,6 +247,13 @@ public class IapProcessingService {
                 .ledgerId("TICKET_LEDGER_REF_" + order.getId())
                 .processedAt(order.getProcessedAt() == null ? null : order.getProcessedAt().atOffset(ZoneOffset.UTC))
                 .build();
+    }
+
+    private String keyOf(StoreVerificationResult result) {
+        if (result.getStore() == IapStore.APPLE) {
+            return result.getTransactionId();
+        }
+        return result.getPurchaseToken() != null ? "PRESENT" : "MISSING";
     }
 
 }
