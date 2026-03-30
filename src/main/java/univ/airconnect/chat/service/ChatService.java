@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.auth.exception.AuthErrorCode;
@@ -27,9 +28,12 @@ import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
+import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
@@ -52,6 +56,9 @@ public class ChatService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
     private final NotificationService notificationService;
+
+    @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
+    private String imageUrlBase;
 
     private final Map<String, ChannelTopic> topics = new ConcurrentHashMap<>();
 
@@ -547,6 +554,23 @@ public class ChatService {
     }
 
     /**
+     * 1:1 채팅방 상대 프로필 조회
+     */
+    @Transactional(readOnly = true)
+    public MatchingCandidateResponse getCounterpartProfile(Long roomId, Long userId) {
+        validateRoomAccess(roomId, userId);
+
+        User counterpart = chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(roomId)).stream()
+                .map(ChatRoomMember::getUser)
+                .filter(Objects::nonNull)
+                .filter(memberUser -> !Objects.equals(memberUser.getId(), userId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "상대 사용자 정보를 찾을 수 없습니다."));
+
+        return toCounterpartProfileResponse(counterpart);
+    }
+
+    /**
      * 특정 채팅방 메시지 조회
      */
     @Transactional
@@ -857,6 +881,31 @@ public class ChatService {
             ChatMessageResponse readReceipt = ChatMessageResponse.readReceipt(roomId, messageId, readAt);
             publishToRedisSilently(roomId, readReceipt);
         }
+    }
+
+    private MatchingCandidateResponse toCounterpartProfileResponse(User user) {
+        UserProfile profile = user.getUserProfile();
+        UserProfileResponse profileResponse = profile != null ? UserProfileResponse.from(profile, imageUrlBase) : null;
+
+        boolean profileImageUploaded = profile != null
+                && profile.getProfileImagePath() != null
+                && !profile.getProfileImagePath().isBlank();
+
+        return MatchingCandidateResponse.builder()
+                .userId(user.getId())
+                .socialId(user.getSocialId())
+                .nickname(user.getNickname())
+                .deptName(user.getDeptName())
+                .studentNum(user.getStudentNum())
+                .age(profile != null ? profile.getAge() : null)
+                .status(user.getStatus())
+                .onboardingStatus(user.getOnboardingStatus())
+                .profileExists(profile != null)
+                .profileImageUploaded(profileImageUploaded)
+                .emailVerified(false)
+                .tickets(user.getTickets())
+                .profile(profileResponse)
+                .build();
     }
 
     private void validateNotBlocked(Long roomId, Long userId) {
