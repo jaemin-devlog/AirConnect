@@ -19,7 +19,15 @@ public class MailService {
     @Value("${spring.mail.username}")
     private String fromEmail;
 
+    @Value("${spring.mail.host:}")
+    private String mailHost;
+
+    @Value("${spring.mail.port:-1}")
+    private int mailPort;
+
     public void sendVerificationCode(String to, String code) {
+        validateMailConfiguration();
+
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
         message.setTo(to);
@@ -36,6 +44,24 @@ public class MailService {
         } catch (Exception e) {
             log.error("Failed to send verification email. to={}, error={}", to, e.getMessage(), e);
             throw new VerificationException(VerificationErrorCode.MAIL_SEND_FAILED);
+        }
+    }
+
+    private void validateMailConfiguration() {
+        if (mailHost == null || mailHost.isBlank() || mailPort <= 0) {
+            log.error(
+                    "Invalid mail configuration. spring.mail.host='{}', spring.mail.port={}, spring.mail.username='{}'",
+                    mailHost,
+                    mailPort,
+                    fromEmail
+            );
+            throw new VerificationException(VerificationErrorCode.MAIL_SEND_FAILED);
+        }
+
+        if ("localhost".equalsIgnoreCase(mailHost.trim()) && mailPort == 25) {
+            log.warn(
+                    "Mail configuration resolved to localhost:25. If this is unintended, check SPRING_PROFILES_ACTIVE/MAIL_HOST/MAIL_PORT."
+            );
         }
     }
 }
