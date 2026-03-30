@@ -25,6 +25,12 @@ app:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/tmp/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE:http://localhost:8080/api/v1/users/profile-images}
 
+matching:
+  queue:
+    worker:
+      enabled: ${MATCHING_QUEUE_WORKER_ENABLED:true}
+      delay-ms: ${MATCHING_QUEUE_WORKER_DELAY_MS:1000}
+
 notification:
   outbox:
     worker:
