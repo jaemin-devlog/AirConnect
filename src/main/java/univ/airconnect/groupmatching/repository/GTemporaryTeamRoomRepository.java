@@ -132,6 +132,19 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
     );
 
     /**
+     * 현재 큐 대기 중인 팀을 DB 기준 순서대로 모두 조회한다.
+     * Redis 유실 또는 재구성이 필요할 때 기준 목록으로 사용한다.
+     */
+    @Query("""
+            select t
+            from GTemporaryTeamRoom t
+            where t.status = univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus.QUEUE_WAITING
+              and t.teamSize = :teamSize
+            order by t.queuedAt asc, t.id asc
+            """)
+    List<GTemporaryTeamRoom> findAllQueueWaitingRooms(@Param("teamSize") GTeamSize teamSize);
+
+    /**
      * 매칭/종료되지 않은 방 중 inviteCode 중복 여부 확인용
      */
     @Query("""
