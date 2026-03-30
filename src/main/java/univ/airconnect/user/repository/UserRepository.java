@@ -6,15 +6,22 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.user.domain.entity.User;
+
+import jakarta.persistence.LockModeType;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByProviderAndSocialId(SocialProvider provider, String socialId);
 
     Optional<User> findByEmail(String email);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u WHERE u.id = :userId")
+    Optional<User> findByIdForUpdate(@Param("userId") Long userId);
 
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.userProfile WHERE u.id IN :ids")
     List<User> findAllByIdWithProfile(@Param("ids") Collection<Long> ids);

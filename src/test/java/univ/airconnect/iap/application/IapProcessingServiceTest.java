@@ -1,0 +1,156 @@
+package univ.airconnect.iap.application;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+import univ.airconnect.iap.domain.GrantStatus;
+import univ.airconnect.iap.domain.IapEnvironment;
+import univ.airconnect.iap.domain.IapStore;
+import univ.airconnect.iap.domain.entity.IapOrder;
+import univ.airconnect.iap.dto.request.IosTransactionVerifyRequest;
+import univ.airconnect.iap.dto.request.IosTransactionsSyncRequest;
+import univ.airconnect.iap.dto.response.IapSyncResponse;
+import univ.airconnect.iap.dto.response.IapVerifyResponse;
+import univ.airconnect.iap.exception.IapErrorCode;
+import univ.airconnect.iap.exception.IapException;
+import univ.airconnect.iap.repository.IapOrderRepository;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class IapProcessingServiceTest {
+
+    @Mock
+    private StoreVerifierResolver storeVerifierResolver;
+    @Mock
+    private StorePurchaseVerifier storePurchaseVerifier;
+    @Mock
+    private IapOrderRepository iapOrderRepository;
+    @Mock
+    private TicketGrantService ticketGrantService;
+
+    @InjectMocks
+    private IapProcessingService iapProcessingService;
+
+    @Test
+    void verifyIos_grantsTickets_whenFirstProcessed() {
+        Long userId = 1L;
+        IosTransactionVerifyRequest request = new IosTransactionVerifyRequest();
+        ReflectionTestUtils.setField(request, "signedTransactionInfo", "jws");
+
+        StoreVerificationResult verificationResult = StoreVerificationResult.builder()
+                .store(IapStore.APPLE)
+                .productId("com.airconnect.tickets.pack10")
+                .transactionId("tx-1")
+                .environment(IapEnvironment.SANDBOX)
+                .verificationHash("hash")
+                .rawPayloadMasked("mask")
+                .valid(true)
+                .build();
+
+        IapOrder order = IapOrder.createPending(userId, IapStore.APPLE, "com.airconnect.tickets.pack10",
+                "tx-1", null, null, null, null, IapEnvironment.SANDBOX, "hash", "mask");
+        ReflectionTestUtils.setField(order, "id", 10L);
+
+        when(storeVerifierResolver.resolve(IapStore.APPLE)).thenReturn(storePurchaseVerifier);
+        when(storePurchaseVerifier.verify(eq(userId), any())).thenReturn(verificationResult);
+        when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-1")).thenReturn(Optional.empty());
+        when(iapOrderRepository.save(any(IapOrder.class))).thenReturn(order);
+        when(ticketGrantService.grantTickets(any(IapOrder.class), eq(10)))
+                .thenReturn(new TicketGrantService.TicketGrantResult(17, 27, "TICKET_LEDGER_1"));
+
+        IapVerifyResponse response = iapProcessingService.verifyIos(userId, request);
+
+        assertThat(response.getGrantStatus()).isEqualTo(GrantStatus.GRANTED);
+        assertThat(response.getGrantedTickets()).isEqualTo(10);
+        assertThat(response.getBeforeTickets()).isEqualTo(17);
+        assertThat(response.getAfterTickets()).isEqualTo(27);
+    }
+
+    @Test
+    void verifyIos_returnsAlreadyGranted_whenExistingGranted() {
+        Long userId = 1L;
+        IosTransactionVerifyRequest request = new IosTransactionVerifyRequest();
+        ReflectionTestUtils.setField(request, "signedTransactionInfo", "jws");
+
+        StoreVerificationResult verificationResult = StoreVerificationResult.builder()
+                .store(IapStore.APPLE)
+                .productId("com.airconnect.tickets.pack5")
+                .transactionId("tx-dup")
+                .environment(IapEnvironment.SANDBOX)
+                .verificationHash("hash")
+                .rawPayloadMasked("mask")
+                .valid(true)
+                .build();
+
+        IapOrder existing = IapOrder.createPending(userId, IapStore.APPLE, "com.airconnect.tickets.pack5",
+                "tx-dup", null, null, null, null, IapEnvironment.SANDBOX, "hash", "mask");
+        ReflectionTestUtils.setField(existing, "id", 33L);
+        existing.markVerified();
+        existing.markGranted(5, 20, 25);
+
+        when(storeVerifierResolver.resolve(IapStore.APPLE)).thenReturn(storePurchaseVerifier);
+        when(storePurchaseVerifier.verify(eq(userId), any())).thenReturn(verificationResult);
+        when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-dup")).thenReturn(Optional.of(existing));
+
+        IapVerifyResponse response = iapProcessingService.verifyIos(userId, request);
+
+        assertThat(response.getGrantStatus()).isEqualTo(GrantStatus.ALREADY_GRANTED);
+        assertThat(response.getGrantedTickets()).isEqualTo(5);
+        assertThat(response.getAfterTickets()).isEqualTo(25);
+    }
+
+    @Test
+    void syncIos_returnsPartialSuccess() {
+        Long userId = 1L;
+
+        IosTransactionsSyncRequest req = new IosTransactionsSyncRequest();
+        IosTransactionsSyncRequest.IosSyncItem okItem = new IosTransactionsSyncRequest.IosSyncItem();
+        ReflectionTestUtils.setField(okItem, "signedTransactionInfo", "jws-ok");
+        ReflectionTestUtils.setField(okItem, "transactionId", "tx-ok");
+
+        IosTransactionsSyncRequest.IosSyncItem failItem = new IosTransactionsSyncRequest.IosSyncItem();
+        ReflectionTestUtils.setField(failItem, "signedTransactionInfo", "jws-fail");
+        ReflectionTestUtils.setField(failItem, "transactionId", "tx-fail");
+
+        ReflectionTestUtils.setField(req, "transactions", List.of(okItem, failItem));
+
+        when(storeVerifierResolver.resolve(IapStore.APPLE)).thenReturn(storePurchaseVerifier);
+        when(storePurchaseVerifier.verify(eq(userId), any()))
+                .thenReturn(StoreVerificationResult.builder()
+                        .store(IapStore.APPLE)
+                        .productId("com.airconnect.tickets.pack5")
+                        .transactionId("tx-ok")
+                        .environment(IapEnvironment.SANDBOX)
+                        .verificationHash("h1")
+                        .rawPayloadMasked("m1")
+                        .valid(true)
+                        .build())
+                .thenThrow(new IapException(IapErrorCode.IAP_INVALID_TRANSACTION));
+
+        IapOrder order = IapOrder.createPending(userId, IapStore.APPLE, "com.airconnect.tickets.pack5",
+                "tx-ok", null, null, null, null, IapEnvironment.SANDBOX, "h1", "m1");
+        ReflectionTestUtils.setField(order, "id", 99L);
+
+        when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-ok")).thenReturn(Optional.empty());
+        when(iapOrderRepository.save(any(IapOrder.class))).thenReturn(order);
+        when(ticketGrantService.grantTickets(any(IapOrder.class), eq(5)))
+                .thenReturn(new TicketGrantService.TicketGrantResult(10, 15, "TICKET_LEDGER_99"));
+
+        IapSyncResponse response = iapProcessingService.syncIos(userId, req);
+
+        assertThat(response.getTotal()).isEqualTo(2);
+        assertThat(response.getSuccessCount()).isEqualTo(1);
+        assertThat(response.getFailureCount()).isEqualTo(1);
+    }
+}
+

@@ -49,4 +49,5 @@ public class AuthController {
         log.info("Logout succeeded");
         return ResponseEntity.noContent().build();
     }
+
 }
