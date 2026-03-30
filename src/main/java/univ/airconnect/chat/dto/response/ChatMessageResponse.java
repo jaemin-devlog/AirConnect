@@ -1,8 +1,10 @@
 package univ.airconnect.chat.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import univ.airconnect.chat.domain.MessageType;
 import univ.airconnect.chat.domain.entity.ChatMessage;
 
@@ -12,6 +14,8 @@ import java.time.ZoneOffset;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ChatMessageResponse {
     private String eventType;
     private Long id;
