@@ -90,8 +90,6 @@ public final class GMatchingResponse {
             GTeamVisibility visibility,
             Long tempChatRoomId,
             String inviteCode,
-            Integer ageRangeMin,
-            Integer ageRangeMax,
             int readyMemberCount,
             boolean allMembersReady,
             boolean canStartMatching,
@@ -127,8 +125,6 @@ public final class GMatchingResponse {
                     room.getVisibility(),
                     room.getTempChatRoomId(),
                     room.getInviteCode(),
-                    room.getAgeRangeMin(),
-                    room.getAgeRangeMax(),
                     readyMemberCount,
                     allMembersReady,
                     canStartMatching,
@@ -198,6 +194,36 @@ public final class GMatchingResponse {
                     room.getCancelledAt(),
                     room.getUpdatedAt()
             );
+        }
+    }
+
+    public record MyMatchingStateResponse(
+            String state,
+            TemporaryTeamRoomResponse teamRoom,
+            QueueSnapshotResponse queueSnapshot,
+            FinalGroupChatRoomResponse finalRoom,
+            String matchingSubscriptionDestination
+    ) {
+        public static MyMatchingStateResponse idle() {
+            return new MyMatchingStateResponse("IDLE", null, null, null, null);
+        }
+
+        public static MyMatchingStateResponse inTemporaryTeamRoom(
+                TemporaryTeamRoomResponse teamRoom,
+                QueueSnapshotResponse queueSnapshot,
+                String matchingSubscriptionDestination
+        ) {
+            return new MyMatchingStateResponse(
+                    "TEMPORARY_TEAM_ROOM",
+                    teamRoom,
+                    queueSnapshot,
+                    null,
+                    matchingSubscriptionDestination
+            );
+        }
+
+        public static MyMatchingStateResponse inFinalGroupRoom(FinalGroupChatRoomResponse finalRoom) {
+            return new MyMatchingStateResponse("FINAL_GROUP_CHAT_ROOM", null, null, finalRoom, null);
         }
     }
 }
