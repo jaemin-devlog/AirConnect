@@ -105,11 +105,13 @@ public class UserService {
         );
     }
 
+    @Transactional
     public UserMeResponse getMe(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
 
         ensureUserActive(user);
+        String iosAppAccountToken = user.ensureIosAppAccountToken();
 
         log.debug("🔗 현재 imageUrlBase: {}", imageUrlBase);
         UserProfileResponse profile = userProfileRepository.findByUserId(userId)
@@ -145,6 +147,7 @@ public class UserService {
                 .profileImageUploaded(profileImageUploaded)
                 .emailVerified(emailVerified)
                 .tickets(user.getTickets())
+                .iosAppAccountToken(iosAppAccountToken)
                 .profile(profile)
                 .build();
     }

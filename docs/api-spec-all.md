@@ -200,6 +200,7 @@ Response (200)
     "profileImageUploaded": true,
     "emailVerified": true,
     "tickets": 98,
+    "iosAppAccountToken": "11111111-2222-3333-4444-555555555555",
     "profile": {
       "userId": 1,
       "height": 178,
@@ -219,6 +220,8 @@ Response (200)
   "traceId": "trace-id"
 }
 ```
+
+참고: `iosAppAccountToken`은 인증/권한 부여용 토큰이 아니라, iOS 인앱결제 거래를 사용자와 바인딩하기 위한 식별자다.
 
 ## GET `/api/v1/users/profile`
 
@@ -1733,7 +1736,215 @@ Response (204)
 
 ---
 
-## 11) Enum 참고값
+## 11) IAP API
+
+## POST `/api/v1/iap/ios/transactions/verify`
+
+Request
+```json
+{
+  "signedTransactionInfo": "JWS...",
+  "transactionId": "2000001234567890",
+  "appAccountToken": "server-issued-uuid"
+}
+```
+
+Response (200)
+```json
+{
+  "success": true,
+  "data": {
+    "transactionId": "2000001234567890",
+    "productId": "com.airconnect.tickets.pack10",
+    "grantStatus": "GRANTED",
+    "grantedTickets": 10,
+    "beforeTickets": 17,
+    "afterTickets": 27,
+    "ledgerId": "TICKET_LEDGER_90210",
+    "processedAt": "2026-03-30T13:00:01Z"
+  },
+  "traceId": "trace-id"
+}
+```
+
+## POST `/api/v1/iap/ios/transactions/sync`
+
+Request
+```json
+{
+  "transactions": [
+    { "signedTransactionInfo": "JWS..." },
+    { "signedTransactionInfo": "JWS..." }
+  ]
+}
+```
+
+Response (200)
+```json
+{
+  "success": true,
+  "data": {
+    "total": 2,
+    "successCount": 1,
+    "failureCount": 1,
+    "results": [
+      {
+        "success": true,
+        "result": {
+          "transactionId": "2000001234567890",
+          "productId": "com.airconnect.tickets.pack10",
+          "grantStatus": "GRANTED",
+          "grantedTickets": 10,
+          "beforeTickets": 17,
+          "afterTickets": 27,
+          "ledgerId": "TICKET_LEDGER_90210",
+          "processedAt": "2026-03-30T13:00:01Z"
+        }
+      },
+      {
+        "success": false,
+        "errorCode": "IAP_INVALID_TRANSACTION",
+        "message": "유효하지 않은 거래입니다."
+      }
+    ]
+  },
+  "traceId": "trace-id"
+}
+```
+
+## GET `/api/v1/iap/ios/transactions/{transactionId}`
+
+Response (200)
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "userId": 1,
+    "store": "APPLE",
+    "productId": "com.airconnect.tickets.pack10",
+    "transactionId": "2000001234567890",
+    "status": "GRANTED",
+    "grantedTickets": 10,
+    "beforeTickets": 17,
+    "afterTickets": 27,
+    "processedAt": "2026-03-30T13:00:01Z",
+    "createdAt": "2026-03-30T13:00:00Z"
+  },
+  "traceId": "trace-id"
+}
+```
+
+## POST `/api/v1/iap/android/purchases/verify`
+
+Request
+```json
+{
+  "productId": "com.airconnect.tickets.pack10",
+  "purchaseToken": "token-abc",
+  "orderId": "GPA.1234-5678-9012-34567",
+  "packageName": "com.airconnect.app",
+  "purchaseTime": "2026-03-30T13:00:00Z"
+}
+```
+
+Response (200)
+```json
+{
+  "success": true,
+  "data": {
+    "purchaseToken": "token-abc",
+    "orderId": "GPA.1234-5678-9012-34567",
+    "productId": "com.airconnect.tickets.pack10",
+    "grantStatus": "GRANTED",
+    "grantedTickets": 10,
+    "beforeTickets": 17,
+    "afterTickets": 27,
+    "ledgerId": "TICKET_LEDGER_90211",
+    "processedAt": "2026-03-30T13:00:01Z"
+  },
+  "traceId": "trace-id"
+}
+```
+
+## POST `/api/v1/iap/android/purchases/sync`
+
+Request
+```json
+{
+  "purchases": [
+    {
+      "purchaseToken": "token1",
+      "productId": "com.airconnect.tickets.pack5",
+      "orderId": "GPA...",
+      "packageName": "com.airconnect.app"
+    }
+  ]
+}
+```
+
+Response (200)
+```json
+{
+  "success": true,
+  "data": {
+    "total": 1,
+    "successCount": 1,
+    "failureCount": 0,
+    "results": []
+  },
+  "traceId": "trace-id"
+}
+```
+
+## GET `/api/v1/iap/android/purchases/{purchaseToken}`
+
+Response (200)
+```json
+{
+  "success": true,
+  "data": {
+    "id": 2,
+    "userId": 1,
+    "store": "GOOGLE",
+    "productId": "com.airconnect.tickets.pack10",
+    "purchaseToken": "token-abc",
+    "orderId": "GPA.1234-5678-9012-34567",
+    "status": "GRANTED",
+    "grantedTickets": 10,
+    "beforeTickets": 27,
+    "afterTickets": 37,
+    "processedAt": "2026-03-30T13:05:01Z",
+    "createdAt": "2026-03-30T13:05:00Z"
+  },
+  "traceId": "trace-id"
+}
+```
+
+## POST `/api/v1/iap/ios/notifications`
+## POST `/api/v1/iap/android/notifications`
+
+Request
+```json
+{
+  "signedPayload": "...or event payload..."
+}
+```
+
+Response (200)
+```json
+{
+  "success": true,
+  "data": {
+    "accepted": true
+  },
+  "traceId": "trace-id"
+}
+```
+
+---
+
+## 12) Enum 참고값
 
 - `SocialProvider`: `KAKAO`, `APPLE`
 - `Gender`: `MALE`, `FEMALE`
@@ -1746,6 +1957,10 @@ Response (204)
 - `PushPlatform`: `IOS`, `ANDROID`
 - `PushProvider`: `FCM`, `APNS`
 - `PushEventType`: `RECEIVED`, `OPENED`
+- IAP 관련
+  - `IapStore`: `APPLE`, `GOOGLE`
+  - `IapOrderStatus`: `PENDING`, `VERIFIED`, `GRANTED`, `REJECTED`, `REFUNDED`, `REVOKED`
+  - `GrantStatus`: `GRANTED`, `ALREADY_GRANTED`, `REJECTED`
 - `NotificationCategory`: `MATCHING`, `GROUP_MATCHING`, `CHAT`, `MILESTONE`, `REMINDER`, `SYSTEM`
 - `NotificationType`: `MATCH_REQUEST_RECEIVED`, `MATCH_REQUEST_ACCEPTED`, `MATCH_REQUEST_REJECTED`, `GROUP_MATCHED`, `CHAT_MESSAGE_RECEIVED`, `MILESTONE_REWARDED`, `TEAM_READY_REQUIRED`, `TEAM_ALL_READY`, `TEAM_ROOM_CANCELLED`, `TEAM_MEMBER_JOINED`, `TEAM_MEMBER_LEFT`, `APPOINTMENT_REMINDER_1H`, `APPOINTMENT_REMINDER_10M`, `SYSTEM_ANNOUNCEMENT`
 - 그룹매칭 관련

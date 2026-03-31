@@ -56,3 +56,12 @@ notification:
       project-id: ${FIREBASE_PROJECT_ID:}
       credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
 
+iap:
+  apple:
+    bundle-id: ${IAP_APPLE_BUNDLE_ID:com.airconnect.app}
+    environment: ${IAP_APPLE_ENVIRONMENT:PRODUCTION}
+  google:
+    package-name: ${IAP_GOOGLE_PACKAGE_NAME:com.airconnect.app}
+    service-account-json-path: ${IAP_GOOGLE_SERVICE_ACCOUNT_JSON_PATH:}
+    verify-enabled: ${IAP_GOOGLE_VERIFY_ENABLED:false}
+

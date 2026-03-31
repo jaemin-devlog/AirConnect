@@ -16,6 +16,8 @@ import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.response.ErrorBody;
+import univ.airconnect.iap.exception.IapErrorCode;
+import univ.airconnect.iap.exception.IapException;
 import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.user.exception.UserErrorCode;
@@ -197,6 +199,28 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(vec.getHttpStatus())
+                .body(ApiResponse.fail(body, traceId));
+    }
+
+    @ExceptionHandler(IapException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIap(
+            IapException e,
+            HttpServletRequest request
+    ) {
+        IapErrorCode iec = e.getErrorCode();
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+
+        log.warn("IapException [{}] - {}", traceId, e.getMessage());
+
+        ErrorBody body = new ErrorBody(
+                iec.getCode(),
+                e.getMessage(),
+                iec.getHttpStatus().value(),
+                traceId,
+                null
+        );
+
+        return ResponseEntity.status(iec.getHttpStatus())
                 .body(ApiResponse.fail(body, traceId));
     }
 

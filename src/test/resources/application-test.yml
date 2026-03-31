@@ -47,3 +47,12 @@ jwt:
   access-token-expiration-seconds: 3600
   refresh-token-expiration-seconds: 2592000
 
+iap:
+  apple:
+    bundle-id: com.airconnect.app
+    environment: SANDBOX
+  google:
+    package-name: com.airconnect.app
+    service-account-json-path: /tmp/not-used.json
+    verify-enabled: false
+

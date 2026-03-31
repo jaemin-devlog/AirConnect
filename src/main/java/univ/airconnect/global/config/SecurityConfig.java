@@ -45,6 +45,9 @@ public class SecurityConfig {
                         // WebSocket
                         .requestMatchers("/ws-stomp/**").permitAll()
 
+                        // IAP webhook
+                        .requestMatchers("/api/v1/iap/ios/notifications", "/api/v1/iap/android/notifications").permitAll()
+
                         // Swagger
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/health").permitAll()
 

@@ -1,6 +1,7 @@
 package univ.airconnect.user.domain.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -80,6 +81,9 @@ public class User {
     @Column(nullable = false)
     private Integer tickets;
 
+    @Column(name = "ios_app_account_token", nullable = false, unique = true, length = 36)
+    private String iosAppAccountToken;
+
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
     private UserProfile userProfile;
 
@@ -102,7 +106,8 @@ public class User {
             LocalDateTime restrictedAt,
             LocalDateTime restrictedUntil,
             String restrictedReason,
-            Integer tickets
+            Integer tickets,
+            String iosAppAccountToken
     ) {
         this.id = id;
         this.provider = provider;
@@ -122,6 +127,9 @@ public class User {
         this.restrictedUntil = restrictedUntil;
         this.restrictedReason = restrictedReason;
         this.tickets = tickets != null ? tickets : 100;
+        this.iosAppAccountToken = (iosAppAccountToken == null || iosAppAccountToken.isBlank())
+                ? UUID.randomUUID().toString()
+                : iosAppAccountToken;
     }
 
     public static User create(SocialProvider provider, String socialId) {
@@ -136,8 +144,16 @@ public class User {
                 .status(UserStatus.ACTIVE)
                 .onboardingStatus(OnboardingStatus.BASIC)
                 .tickets(100)
+                .iosAppAccountToken(UUID.randomUUID().toString())
                 .createdAt(LocalDateTime.now())
                 .build();
+    }
+
+    public String ensureIosAppAccountToken() {
+        if (this.iosAppAccountToken == null || this.iosAppAccountToken.isBlank()) {
+            this.iosAppAccountToken = UUID.randomUUID().toString();
+        }
+        return this.iosAppAccountToken;
     }
 
     public void completeSignUp(String name, String nickname, Integer studentNum, String deptName) {
