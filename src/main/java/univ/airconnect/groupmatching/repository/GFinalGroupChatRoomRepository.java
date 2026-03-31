@@ -58,4 +58,22 @@ public interface GFinalGroupChatRoomRepository extends JpaRepository<GFinalGroup
             order by f.createdAt desc, f.id desc
             """)
     List<GFinalGroupChatRoom> findActiveRoomsByTeamRoomId(@Param("teamRoomId") Long teamRoomId);
+
+    /**
+     * 특정 사용자가 속했던 임시 팀방을 기반으로 활성 최종 그룹방을 조회한다.
+     * 앱 재실행 시 현재 사용자를 어느 화면으로 복구할지 판단할 때 사용한다.
+     */
+    @Query("""
+            select f
+            from GFinalGroupChatRoom f
+            where f.status = univ.airconnect.groupmatching.domain.GFinalGroupRoomStatus.ACTIVE
+              and exists (
+                    select 1
+                    from GTemporaryTeamMember m
+                    where m.userId = :userId
+                      and (m.teamRoomId = f.team1RoomId or m.teamRoomId = f.team2RoomId)
+              )
+            order by f.createdAt desc, f.id desc
+            """)
+    List<GFinalGroupChatRoom> findActiveRoomsByUserId(@Param("userId") Long userId);
 }

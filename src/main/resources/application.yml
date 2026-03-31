@@ -43,6 +43,12 @@ app:
       report-interval-ms: ${WS_OPS_REPORT_INTERVAL_MS:60000}
       inbound-failure-warn-threshold: ${WS_OPS_INBOUND_FAILURE_WARN_THRESHOLD:20}
 
+matching:
+  queue:
+    worker:
+      enabled: ${MATCHING_QUEUE_WORKER_ENABLED:true}
+      delay-ms: ${MATCHING_QUEUE_WORKER_DELAY_MS:1000}
+
 notification:
   outbox:
     worker:

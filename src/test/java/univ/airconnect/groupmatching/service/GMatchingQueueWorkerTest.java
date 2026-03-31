@@ -18,19 +18,19 @@ class GMatchingQueueWorkerTest {
 
     @Test
     void drainQueues_stopsEachQueueWhenNoMoreMatches() {
-        GMatchingService.MatchSuccessResult result =
-                new GMatchingService.MatchSuccessResult(1L, 2L, 3L, 4L, 5L);
-
-        when(matchingService.processQueue(GTeamSize.TWO, 100))
-                .thenReturn(result)
-                .thenReturn(null);
-        when(matchingService.processQueue(GTeamSize.THREE, 100))
-                .thenReturn(null);
+        when(matchingService.reconcileQueue(GTeamSize.TWO))
+                .thenReturn(new GMatchingService.QueueReconcileResult(GTeamSize.TWO, false, false, true, 2, 2));
+        when(matchingService.reconcileQueue(GTeamSize.THREE))
+                .thenReturn(new GMatchingService.QueueReconcileResult(GTeamSize.THREE, false, false, true, 0, 0));
+        when(matchingService.processQueueUntilStable(GTeamSize.TWO)).thenReturn(2);
+        when(matchingService.processQueueUntilStable(GTeamSize.THREE)).thenReturn(0);
 
         GMatchingQueueWorker worker = new GMatchingQueueWorker(matchingService);
         worker.drainQueues();
 
-        verify(matchingService, times(2)).processQueue(GTeamSize.TWO, 100);
-        verify(matchingService, times(1)).processQueue(GTeamSize.THREE, 100);
+        verify(matchingService, times(1)).reconcileQueue(GTeamSize.TWO);
+        verify(matchingService, times(1)).reconcileQueue(GTeamSize.THREE);
+        verify(matchingService, times(1)).processQueueUntilStable(GTeamSize.TWO);
+        verify(matchingService, times(1)).processQueueUntilStable(GTeamSize.THREE);
     }
 }
