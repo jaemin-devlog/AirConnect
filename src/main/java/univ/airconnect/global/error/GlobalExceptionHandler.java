@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -53,8 +55,7 @@ public class GlobalExceptionHandler {
                 details
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -77,8 +78,7 @@ public class GlobalExceptionHandler {
                 details
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -105,8 +105,7 @@ public class GlobalExceptionHandler {
                 details
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(AuthException.class)
@@ -123,8 +122,7 @@ public class GlobalExceptionHandler {
                     traceId,
                     null
             );
-            return ResponseEntity.status(ec.getHttpStatus())
-                    .body(ApiResponse.fail(body, traceId));
+            return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
         }
 
         ErrorBody body = new ErrorBody(
@@ -135,8 +133,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(aec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(aec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(UserException.class)
@@ -152,8 +149,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(uec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(uec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(MatchingException.class)
@@ -174,8 +170,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(mec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(mec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(VerificationException.class)
@@ -196,8 +191,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(vec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(vec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(BusinessException.class)
@@ -218,8 +212,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
@@ -240,8 +233,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(e.getStatusCode())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(e.getStatusCode(), body, traceId);
     }
 
     @ExceptionHandler(MultipartException.class)
@@ -262,8 +254,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(Exception.class)
@@ -281,8 +272,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     private Map<String, String> fieldErrorToDetail(FieldError error) {
@@ -297,5 +287,15 @@ public class GlobalExceptionHandler {
         detail.put("path", String.valueOf(violation.getPropertyPath()));
         detail.put("message", violation.getMessage());
         return detail;
+    }
+
+    private ResponseEntity<ApiResponse<Void>> jsonErrorResponse(
+            HttpStatusCode status,
+            ErrorBody body,
+            String traceId
+    ) {
+        return ResponseEntity.status(status)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(ApiResponse.fail(body, traceId));
     }
 }
