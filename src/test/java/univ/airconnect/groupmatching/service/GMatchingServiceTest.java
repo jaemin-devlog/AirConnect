@@ -8,7 +8,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.chat.domain.entity.ChatRoom;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.error.BusinessException;
@@ -83,6 +85,39 @@ class GMatchingServiceTest {
     private ListOperations<String, Object> listOperations;
     @Mock
     private ValueOperations<String, Object> valueOperations;
+
+    @Test
+    void createTemporaryTeamRoom_generatesInviteCodeOnCreation() {
+        GMatchingService service = createService();
+        Long leaderId = 10L;
+        User leader = createUser(leaderId, "leader");
+        UserProfile profile = createProfile(leader, Gender.MALE);
+        ChatRoom tempChatRoom = mock(ChatRoom.class);
+
+        when(userRepository.findById(leaderId)).thenReturn(Optional.of(leader));
+        when(temporaryTeamRoomRepository.findActiveRoomsByUserId(eq(leaderId), anySet())).thenReturn(List.of());
+        when(userProfileRepository.findByUserId(leaderId)).thenReturn(Optional.of(profile));
+        when(chatService.createGroupRoomWithMembers(anyString(), any(Collection.class))).thenReturn(tempChatRoom);
+        when(tempChatRoom.getId()).thenReturn(300L);
+        when(temporaryTeamRoomRepository.existsUsableInviteCode(anyString())).thenReturn(false);
+        doAnswer(invocation -> {
+            GTemporaryTeamRoom room = invocation.getArgument(0);
+            ReflectionTestUtils.setField(room, "id", 101L);
+            return room;
+        }).when(temporaryTeamRoomRepository).save(any(GTemporaryTeamRoom.class));
+
+        GTemporaryTeamRoom created = service.createTemporaryTeamRoom(
+                leaderId,
+                "team-a",
+                GTeamGender.M,
+                GTeamSize.TWO,
+                GGenderFilter.ANY,
+                GTeamVisibility.PUBLIC
+        );
+
+        assertThat(created.getInviteCode()).matches("[0-9A-F]{10}");
+        verify(temporaryTeamRoomRepository).existsUsableInviteCode(anyString());
+    }
 
     @Test
     void createTemporaryTeamRoom_throwsWhenLeaderGenderMismatched() {

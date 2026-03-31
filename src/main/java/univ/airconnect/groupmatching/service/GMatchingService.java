@@ -114,6 +114,7 @@ public class GMatchingService {
                 visibility,
                 tempChatRoom.getId()
         );
+        teamRoom.assignInviteCode(generateUniqueInviteCode());
         temporaryTeamRoomRepository.save(teamRoom);
 
         temporaryTeamMemberRepository.save(GTemporaryTeamMember.create(teamRoom.getId(), leaderUserId, true));
