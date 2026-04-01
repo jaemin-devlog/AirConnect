@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.global.response.ApiResponse;
@@ -252,6 +253,31 @@ public class GlobalExceptionHandler {
                 ec.getHttpStatus().value(),
                 traceId,
                 null
+        );
+
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(
+            NoResourceFoundException e,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        ErrorCode ec = ErrorCode.NOT_FOUND;
+
+        log.warn("NoResourceFoundException [{}] - {} {}", traceId, request.getMethod(), request.getRequestURI());
+
+        Map<String, Object> details = new HashMap<>();
+        details.put("method", request.getMethod());
+        details.put("path", request.getRequestURI());
+
+        ErrorBody body = new ErrorBody(
+                ec.getCode(),
+                ec.getMessage(),
+                ec.getHttpStatus().value(),
+                traceId,
+                details
         );
 
         return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
