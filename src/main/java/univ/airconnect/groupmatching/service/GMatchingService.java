@@ -411,27 +411,46 @@ public class GMatchingService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방 멤버를 찾을 수 없습니다."));
 
         if (!member.isActiveMember()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "이미 나간 팀원입니다.");
+            // idempotent leave: already-left member should not fail retry calls.
+            return teamRoom;
         }
         if (member.isLeader()) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "방장은 팀 나가기 대신 팀 해산을 사용해야 합니다.");
         }
 
         User user = findUserOrThrow(userId);
+        Long tempChatRoomId = teamRoom.getTempChatRoomId();
+        GTemporaryTeamRoomStatus status = teamRoom.getStatus();
 
-        chatService.publishExitMessage(
-                teamRoom.getTempChatRoomId(),
-                userId,
-                user.getNickname() + "님이 팀에서 나갔습니다."
-        );
+        if (chatService.isMember(tempChatRoomId, userId)) {
+            chatService.publishExitMessage(
+                    tempChatRoomId,
+                    userId,
+                    user.getNickname() + "님이 팀에서 나갔습니다."
+            );
+        } else {
+            log.warn("Skip exit-message publishing because chat membership is already missing. teamRoomId={}, userId={}, chatRoomId={}",
+                    teamRoomId, userId, tempChatRoomId);
+        }
 
-        removeChatRoomMembership(teamRoom.getTempChatRoomId(), userId);
+        removeChatRoomMembership(tempChatRoomId, userId);
         member.markLeft();
         teamReadyStateRepository.findByTeamRoomIdAndUserId(teamRoomId, userId)
                 .ifPresent(teamReadyStateRepository::delete);
 
-        teamRoom.removeMember();
-        resetReadyStatesForActiveMembers(teamRoomId);
+        if (status.canModifyMembers()) {
+            if (teamRoom.getCurrentMemberCount() > 1) {
+                teamRoom.removeMember();
+                resetReadyStatesForActiveMembers(teamRoomId);
+            } else {
+                log.warn("Skip member-count decrement due to unexpected count while leaving team room. teamRoomId={}, userId={}, currentMemberCount={}",
+                        teamRoomId, userId, teamRoom.getCurrentMemberCount());
+            }
+        } else {
+            log.warn("Skip member-count decrement because room status no longer allows member modification. teamRoomId={}, userId={}, status={}",
+                    teamRoomId, userId, status);
+        }
+
         return teamRoom;
     }
 
@@ -447,19 +466,25 @@ public class GMatchingService {
 
         User leader = findUserOrThrow(requestUserId);
         String queueToken = teamRoom.getQueueToken();
+        Long tempChatRoomId = teamRoom.getTempChatRoomId();
 
-        chatService.publishExitMessage(
-                teamRoom.getTempChatRoomId(),
-                requestUserId,
-                leader.getNickname() + "님이 팀을 해산했습니다."
-        );
+        if (chatService.isMember(tempChatRoomId, requestUserId)) {
+            chatService.publishExitMessage(
+                    tempChatRoomId,
+                    requestUserId,
+                    leader.getNickname() + "님이 팀을 해산했습니다."
+            );
+        } else {
+            log.warn("Skip room-cancel exit-message publishing because leader chat membership is missing. teamRoomId={}, leaderId={}, chatRoomId={}",
+                    teamRoomId, requestUserId, tempChatRoomId);
+        }
 
         teamRoom.cancel(requestUserId);
 
         List<GTemporaryTeamMember> activeMembers = temporaryTeamMemberRepository
                 .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoomId);
         markMembersLeft(activeMembers);
-        removeChatRoomMemberships(teamRoom.getTempChatRoomId(), extractUserIds(activeMembers));
+        removeChatRoomMemberships(tempChatRoomId, extractUserIds(activeMembers));
         teamReadyStateRepository.deleteByTeamRoomId(teamRoomId);
         withQueueLockOrThrow(teamRoom.getTeamSize(), () -> {
             removeRoomFromRedisQueue(teamRoom.getTeamSize(), teamRoomId, queueToken);

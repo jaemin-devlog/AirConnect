@@ -127,7 +127,7 @@ public class GMatchingController {
     /**
      * 임시방 내부 채팅 메시지를 조회한다.
      */
-    @GetMapping("/{teamRoomId}/chat/messages")
+    @GetMapping({"/{teamRoomId}/chat/messages", "/{teamRoomId}/chat/messages/"})
     public ResponseEntity<List<ChatMessageResponse>> getTeamRoomMessages(
             @PathVariable Long teamRoomId,
             @RequestParam(required = false) @Positive Long lastMessageId,
@@ -142,7 +142,7 @@ public class GMatchingController {
     /**
      * 임시방 내부 채팅 메시지를 전송한다.
      */
-    @PostMapping("/{teamRoomId}/chat/messages")
+    @PostMapping({"/{teamRoomId}/chat/messages", "/{teamRoomId}/chat/messages/"})
     public ResponseEntity<ChatMessageResponse> sendTeamRoomMessage(
             @PathVariable Long teamRoomId,
             @Valid @RequestBody SendMessageRequest request,
@@ -156,7 +156,7 @@ public class GMatchingController {
     /**
      * 임시방 내부 채팅 읽음 상태를 갱신한다.
      */
-    @PatchMapping("/{teamRoomId}/chat/read")
+    @PatchMapping({"/{teamRoomId}/chat/read", "/{teamRoomId}/chat/read/"})
     public ResponseEntity<Void> updateTeamRoomChatRead(
             @PathVariable Long teamRoomId,
             Authentication authentication
@@ -170,7 +170,7 @@ public class GMatchingController {
     /**
      * 내가 현재 참여 중인 활성 임시 팀방을 조회한다.
      */
-    @GetMapping("/me")
+    @GetMapping({"/me", "/me/"})
     public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> getMyActiveTeamRoom(
             Authentication authentication
     ) {
@@ -187,7 +187,7 @@ public class GMatchingController {
      * - 최종 그룹방에 있으면 최종 그룹방 정보를 내려준다.
      * - 아무 상태가 없으면 IDLE을 내려준다.
      */
-    @GetMapping("/me/state")
+    @GetMapping({"/me/state", "/me/state/"})
     public ResponseEntity<GMatchingResponse.MyMatchingStateResponse> getMyMatchingState(
             Authentication authentication
     ) {

@@ -9,11 +9,14 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
+
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.global.response.ApiResponse;
@@ -281,6 +284,76 @@ public class GlobalExceptionHandler {
         return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(
+            NoResourceFoundException e,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        ErrorCode ec = ErrorCode.NOT_FOUND;
+        String userAgent = headerOrDash(request, "User-Agent");
+        String origin = headerOrDash(request, "Origin");
+        String referer = headerOrDash(request, "Referer");
+        String forwardedFor = headerOrDash(request, "X-Forwarded-For");
+
+        log.warn("NoResourceFoundException [{}] - {} {} (ua='{}', origin='{}', referer='{}', xff='{}')",
+                traceId, request.getMethod(), request.getRequestURI(), userAgent, origin, referer, forwardedFor);
+
+        Map<String, Object> details = new HashMap<>();
+        details.put("method", request.getMethod());
+        details.put("path", request.getRequestURI());
+        details.put("userAgent", userAgent);
+        details.put("origin", origin);
+        details.put("referer", referer);
+        details.put("xForwardedFor", forwardedFor);
+
+        ErrorBody body = new ErrorBody(
+                ec.getCode(),
+                ec.getMessage(),
+                ec.getHttpStatus().value(),
+                traceId,
+                details
+        );
+
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException e,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        ErrorCode ec = ErrorCode.METHOD_NOT_ALLOWED;
+        String userAgent = headerOrDash(request, "User-Agent");
+        String origin = headerOrDash(request, "Origin");
+        String referer = headerOrDash(request, "Referer");
+        String forwardedFor = headerOrDash(request, "X-Forwarded-For");
+
+        log.warn("HttpRequestMethodNotSupportedException [{}] - {} {} (allowed={}, ua='{}', origin='{}', referer='{}', xff='{}')",
+                traceId, request.getMethod(), request.getRequestURI(), e.getSupportedMethods(),
+                userAgent, origin, referer, forwardedFor);
+
+        Map<String, Object> details = new HashMap<>();
+        details.put("method", request.getMethod());
+        details.put("path", request.getRequestURI());
+        details.put("supportedMethods", e.getSupportedMethods());
+        details.put("userAgent", userAgent);
+        details.put("origin", origin);
+        details.put("referer", referer);
+        details.put("xForwardedFor", forwardedFor);
+
+        ErrorBody body = new ErrorBody(
+                ec.getCode(),
+                ec.getMessage(),
+                ec.getHttpStatus().value(),
+                traceId,
+                details
+        );
+
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception e, HttpServletRequest request) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
@@ -321,5 +394,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(ApiResponse.fail(body, traceId));
+    }
+
+    private String headerOrDash(HttpServletRequest request, String headerName) {
+        String value = request.getHeader(headerName);
+        return (value == null || value.isBlank()) ? "-" : value;
     }
 }
