@@ -220,6 +220,54 @@ class GMatchingServiceTest {
     }
 
     @Test
+    void leaveTeamRoom_returnsSuccessWhenMemberAlreadyLeft() {
+        GMatchingService service = createService();
+        Long roomId = 210L;
+        Long userId = 21L;
+        GTemporaryTeamRoom teamRoom = mock(GTemporaryTeamRoom.class);
+        GTemporaryTeamMember member = mock(GTemporaryTeamMember.class);
+
+        when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(member));
+        when(member.isActiveMember()).thenReturn(false);
+
+        GTemporaryTeamRoom leftRoom = service.leaveTeamRoom(roomId, userId);
+
+        assertThat(leftRoom).isSameAs(teamRoom);
+        verify(member, never()).markLeft();
+        verify(chatService, never()).publishExitMessage(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void leaveTeamRoom_cleansUpActiveMemberEvenWhenRoomIsCancelled() {
+        GMatchingService service = createService();
+        Long roomId = 220L;
+        Long userId = 22L;
+        Long chatRoomId = 320L;
+        GTemporaryTeamRoom teamRoom = mock(GTemporaryTeamRoom.class);
+        GTemporaryTeamMember member = mock(GTemporaryTeamMember.class);
+        User user = createUser(userId, "member");
+
+        when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(member));
+        when(member.isActiveMember()).thenReturn(true);
+        when(member.isLeader()).thenReturn(false);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(teamRoom.getTempChatRoomId()).thenReturn(chatRoomId);
+        when(teamRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.CANCELLED);
+        when(chatService.isMember(chatRoomId, userId)).thenReturn(false);
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserId(chatRoomId, userId)).thenReturn(Optional.empty());
+        when(teamReadyStateRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.empty());
+
+        GTemporaryTeamRoom leftRoom = service.leaveTeamRoom(roomId, userId);
+
+        assertThat(leftRoom).isSameAs(teamRoom);
+        verify(member).markLeft();
+        verify(chatService, never()).publishExitMessage(eq(chatRoomId), eq(userId), org.mockito.ArgumentMatchers.anyString());
+        verify(teamRoom, never()).removeMember();
+    }
+
+    @Test
     void processQueueUntilStable_repeatsUntilQueueStopsMatching() {
         GMatchingService service = spy(createService());
         GMatchingService.MatchSuccessResult first = new GMatchingService.MatchSuccessResult(1L, 2L, 3L, 4L, 5L);
