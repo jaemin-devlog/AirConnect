@@ -48,6 +48,9 @@ public class SecurityConfig {
                         // IAP webhook
                         .requestMatchers("/api/v1/iap/ios/notifications", "/api/v1/iap/android/notifications").permitAll()
 
+                        // Ad reward callback (SSV)
+                        .requestMatchers("/api/v1/ads/rewards/callback/admob").permitAll()
+
                         // Swagger
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/health").permitAll()
 
