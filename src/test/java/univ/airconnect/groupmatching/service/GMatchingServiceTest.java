@@ -1,5 +1,6 @@
 package univ.airconnect.groupmatching.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -20,6 +21,7 @@ import univ.airconnect.groupmatching.domain.GTeamGender;
 import univ.airconnect.groupmatching.domain.GTeamSize;
 import univ.airconnect.groupmatching.domain.GTeamVisibility;
 import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
+import univ.airconnect.groupmatching.domain.entity.GTeamReadyState;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamMember;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamRoom;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
@@ -27,6 +29,8 @@ import univ.airconnect.groupmatching.repository.GMatchResultRepository;
 import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
+import univ.airconnect.notification.domain.NotificationType;
+import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
@@ -80,11 +84,15 @@ class GMatchingServiceTest {
     @Mock
     private GMatchingPushService matchingPushService;
     @Mock
+    private NotificationService notificationService;
+    @Mock
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private ListOperations<String, Object> listOperations;
     @Mock
     private ValueOperations<String, Object> valueOperations;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void createTemporaryTeamRoom_generatesInviteCodeOnCreation() {
@@ -195,6 +203,7 @@ class GMatchingServiceTest {
         when(temporaryTeamRoomRepository.findActiveRoomsByUserId(eq(userId), anySet())).thenReturn(List.of());
         when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
         when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(roomId, userId)).thenReturn(false);
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(roomId)).thenReturn(List.of());
 
         GTemporaryTeamRoom joined = service.joinRoomByInviteCode("INVITE1234", userId);
 
@@ -217,6 +226,102 @@ class GMatchingServiceTest {
 
         assertThat(updated).isSameAs(teamRoom);
         verify(teamRoom).assignInviteCode(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void updateReadyState_publishesStatusChangedEvent() {
+        GMatchingService service = createService();
+        Long roomId = 110L;
+        Long userId = 11L;
+        GTemporaryTeamRoom teamRoom = mock(GTemporaryTeamRoom.class);
+        GTeamReadyState readyState = mock(GTeamReadyState.class);
+
+        when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));
+        when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(roomId, userId)).thenReturn(true);
+        when(teamRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.READY_CHECK);
+        when(teamReadyStateRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(readyState));
+        when(readyState.isReady()).thenReturn(true);
+
+        GTeamReadyState updated = service.updateReadyState(roomId, userId, true);
+
+        assertThat(updated).isSameAs(readyState);
+        verify(readyState).setReady(true);
+        verify(matchingEventPublisher).publishStatus(roomId, GTemporaryTeamRoomStatus.READY_CHECK.name());
+    }
+
+    @Test
+    void updateReadyState_notifiesLeaderWhenAllMembersReady() {
+        GMatchingService service = createService();
+        Long roomId = 111L;
+        Long userId = 11L;
+        Long leaderId = 99L;
+        GTemporaryTeamRoom teamRoom = mock(GTemporaryTeamRoom.class);
+        GTeamReadyState readyState = mock(GTeamReadyState.class);
+
+        when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));
+        when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(roomId, userId)).thenReturn(true);
+        when(teamRoom.getId()).thenReturn(roomId);
+        when(teamRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.READY_CHECK);
+        when(teamRoom.getLeaderId()).thenReturn(leaderId);
+        when(teamRoom.getTeamSize()).thenReturn(GTeamSize.TWO);
+        when(teamReadyStateRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(readyState));
+        when(readyState.isReady()).thenReturn(false);
+        when(teamReadyStateRepository.areAllMembersReady(roomId, GTeamSize.TWO.getValue())).thenReturn(true);
+
+        service.updateReadyState(roomId, userId, true);
+
+        ArgumentCaptor<NotificationService.CreateCommand> commandCaptor =
+                ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
+        verify(notificationService).createAndEnqueue(commandCaptor.capture());
+
+        NotificationService.CreateCommand command = commandCaptor.getValue();
+        assertThat(command.userId()).isEqualTo(leaderId);
+        assertThat(command.type()).isEqualTo(NotificationType.TEAM_ALL_READY);
+    }
+
+    @Test
+    void joinRoomByInviteCode_notifiesReadyRequiredWhenRoomBecomesFull() {
+        GMatchingService service = createService();
+        Long roomId = 201L;
+        Long userId = 21L;
+        Long leaderId = 999L;
+
+        User joiner = createUser(userId, "joiner");
+        UserProfile profile = createProfile(joiner, Gender.MALE);
+        GTemporaryTeamRoom teamRoom = mock(GTemporaryTeamRoom.class);
+        GTemporaryTeamMember leaderMember = mock(GTemporaryTeamMember.class);
+        GTemporaryTeamMember joinerMember = mock(GTemporaryTeamMember.class);
+
+        when(temporaryTeamRoomRepository.findByInviteCode("INVITEFULL1")).thenReturn(Optional.of(teamRoom));
+        when(teamRoom.getId()).thenReturn(roomId);
+        when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));
+        when(teamRoom.getLeaderId()).thenReturn(leaderId);
+        when(teamRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.OPEN);
+        when(teamRoom.isFull()).thenReturn(false, true);
+        when(teamRoom.getTeamGender()).thenReturn(GTeamGender.M);
+        when(teamRoom.getTeamSize()).thenReturn(GTeamSize.TWO);
+        when(teamRoom.getTempChatRoomId()).thenReturn(301L);
+        when(teamRoom.getCurrentMemberCount()).thenReturn(2);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(joiner));
+        when(temporaryTeamRoomRepository.findActiveRoomsByUserId(eq(userId), anySet())).thenReturn(List.of());
+        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
+        when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(roomId, userId)).thenReturn(false);
+
+        when(leaderMember.getUserId()).thenReturn(leaderId);
+        when(joinerMember.getUserId()).thenReturn(userId);
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(roomId))
+                .thenReturn(List.of(leaderMember, joinerMember));
+
+        service.joinRoomByInviteCode("INVITEFULL1", userId);
+
+        ArgumentCaptor<NotificationService.CreateCommand> enqueueCaptor =
+                ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
+        verify(notificationService, times(2)).createAndEnqueue(enqueueCaptor.capture());
+        assertThat(enqueueCaptor.getAllValues())
+                .extracting(NotificationService.CreateCommand::type)
+                .containsOnly(NotificationType.TEAM_READY_REQUIRED);
+
+        verify(teamRoom).enterReadyCheck(leaderId);
     }
 
     @Test
@@ -253,11 +358,13 @@ class GMatchingServiceTest {
         when(member.isActiveMember()).thenReturn(true);
         when(member.isLeader()).thenReturn(false);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(teamRoom.getId()).thenReturn(roomId);
         when(teamRoom.getTempChatRoomId()).thenReturn(chatRoomId);
         when(teamRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.CANCELLED);
         when(chatService.isMember(chatRoomId, userId)).thenReturn(false);
         when(chatRoomMemberRepository.findByChatRoomIdAndUserId(chatRoomId, userId)).thenReturn(Optional.empty());
         when(teamReadyStateRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.empty());
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(roomId)).thenReturn(List.of());
 
         GTemporaryTeamRoom leftRoom = service.leaveTeamRoom(roomId, userId);
 
@@ -444,6 +551,8 @@ class GMatchingServiceTest {
                 chatService,
                 matchingEventPublisher,
                 matchingPushService,
+                notificationService,
+                objectMapper,
                 redisTemplate
         );
     }
