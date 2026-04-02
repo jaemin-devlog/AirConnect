@@ -155,10 +155,10 @@ public class GMatchingService {
     @Transactional
     public GTemporaryTeamRoom joinPublicRoom(Long teamRoomId, Long userId) {
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
         if (!teamRoom.isPublicRoom()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "공개방만 공개 입장이 가능합니다.");
+            throw new BusinessException(ErrorCode.PUBLIC_ROOM_ONLY);
         }
 
         return joinTeamRoomInternal(teamRoom, userId);
@@ -171,14 +171,14 @@ public class GMatchingService {
     @Transactional
     public GTemporaryTeamRoom joinRoomByInviteCode(String inviteCode, Long userId) {
         if (inviteCode == null || inviteCode.isBlank()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "초대 코드는 비어 있을 수 없습니다.");
+            throw new BusinessException(ErrorCode.INVITE_CODE_REQUIRED);
         }
 
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByInviteCode(inviteCode)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "유효하지 않은 초대 코드입니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INVITE_CODE));
 
         teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoom.getId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
         return joinTeamRoomInternal(teamRoom, userId);
     }
@@ -186,7 +186,7 @@ public class GMatchingService {
     @Transactional
     public GTemporaryTeamRoom generateInviteCode(Long teamRoomId, Long requestUserId) {
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
         validateActiveMembership(teamRoomId, requestUserId);
         teamRoom.assignInviteCode(generateUniqueInviteCode());
@@ -202,21 +202,28 @@ public class GMatchingService {
         GTemporaryTeamRoom teamRoom = getTeamRoomForMemberAction(teamRoomId, userId);
 
         if (teamRoom.getStatus() != GTemporaryTeamRoomStatus.READY_CHECK) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "준비 확인 상태에서만 준비 여부를 변경할 수 있습니다.");
+            throw new BusinessException(ErrorCode.READY_CHECK_REQUIRED);
         }
 
         GTeamReadyState readyState = teamReadyStateRepository.findByTeamRoomIdAndUserId(teamRoomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "준비 상태 정보를 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.READY_STATE_NOT_FOUND));
 
         boolean wasReady = readyState.isReady();
         readyState.setReady(ready);
         matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
 
+        boolean allReady = false;
         if (!wasReady && ready) {
-            boolean allReady = teamReadyStateRepository.areAllMembersReady(teamRoomId, teamRoom.getTeamSize().getValue());
-            if (allReady) {
-                notifyTeamAllReady(teamRoom, userId);
-            }
+            allReady = teamReadyStateRepository.areAllMembersReady(teamRoomId, teamRoom.getTeamSize().getValue());
+        }
+
+        if (wasReady != ready) {
+            Long skipRecipientId = allReady ? teamRoom.getLeaderId() : null;
+            notifyTeamMemberReadyChanged(teamRoom, userId, ready, skipRecipientId);
+        }
+
+        if (allReady) {
+            notifyTeamAllReady(teamRoom, userId, readyState.getUpdatedAt());
         }
         return readyState;
     }
@@ -230,7 +237,7 @@ public class GMatchingService {
     @Transactional
     public QueueSnapshot startMatching(Long teamRoomId, Long requestUserId) {
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
         validateActiveMembership(teamRoomId, requestUserId);
 
@@ -256,7 +263,7 @@ public class GMatchingService {
     @Transactional
     public GTemporaryTeamRoom leaveMatchingQueue(Long teamRoomId, Long requestUserId) {
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
         validateActiveMembership(teamRoomId, requestUserId);
 
@@ -274,7 +281,7 @@ public class GMatchingService {
     @Transactional
     public QueueReconcileResult reconcileQueue(GTeamSize teamSize) {
         if (teamSize == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "teamSize는 필수입니다.");
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
         }
         return withQueueLock(teamSize, () -> reconcileQueueUnderLock(teamSize))
                 .orElseGet(() -> QueueReconcileResult.lockBusy(teamSize));
@@ -345,7 +352,7 @@ public class GMatchingService {
     @Transactional
     public MatchSuccessResult processQueue(GTeamSize teamSize, int scanSize) {
         if (teamSize == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "teamSize는 필수입니다.");
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
         }
         return withQueueLock(teamSize, () -> processQueueUnderLock(teamSize, scanSize)).orElse(null);
     }
@@ -364,7 +371,7 @@ public class GMatchingService {
 
     private MatchSuccessResult processQueueUnderLock(GTeamSize teamSize, int scanSize) {
         if (teamSize == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "teamSize는 필수입니다.");
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
         }
 
         List<Long> orderedRoomIds = readQueueRoomIds(teamSize, scanSize);
@@ -421,17 +428,17 @@ public class GMatchingService {
     @Transactional
     public GTemporaryTeamRoom leaveTeamRoom(Long teamRoomId, Long userId) {
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
         GTemporaryTeamMember member = temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(teamRoomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방 멤버를 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_MEMBER_NOT_FOUND));
 
         if (!member.isActiveMember()) {
             // idempotent leave: already-left member should not fail retry calls.
             return teamRoom;
         }
         if (member.isLeader()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "방장은 팀 나가기 대신 팀 해산을 사용해야 합니다.");
+            throw new BusinessException(ErrorCode.LEADER_CANNOT_LEAVE);
         }
 
         User user = findUserOrThrow(userId);
@@ -468,6 +475,7 @@ public class GMatchingService {
         }
 
         notifyTeamMemberLeft(teamRoom, userId, user.getNickname());
+        matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
 
         return teamRoom;
     }
@@ -478,7 +486,7 @@ public class GMatchingService {
     @Transactional
     public GTemporaryTeamRoom cancelTeamRoom(Long teamRoomId, Long requestUserId) {
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
         validateActiveMembership(teamRoomId, requestUserId);
 
@@ -498,6 +506,7 @@ public class GMatchingService {
         }
 
         teamRoom.cancel(requestUserId);
+        matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
 
         List<GTemporaryTeamMember> activeMembers = temporaryTeamMemberRepository
                 .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoomId);
@@ -538,7 +547,7 @@ public class GMatchingService {
     @Transactional(readOnly = true)
     public Long getTempChatRoomId(Long teamRoomId, Long requestUserId) {
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findById(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
         validateActiveMembership(teamRoomId, requestUserId);
         return teamRoom.getTempChatRoomId();
     }
@@ -548,21 +557,21 @@ public class GMatchingService {
         ensureUserHasNoActiveTeamRoom(userId);
 
         if (Objects.equals(teamRoom.getLeaderId(), userId)) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "방장은 자신의 팀방에 다시 입장할 수 없습니다.");
+            throw new BusinessException(ErrorCode.LEADER_CANNOT_REJOIN);
         }
         if (teamRoom.getStatus().isTerminal()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "종료된 팀방에는 입장할 수 없습니다.");
+            throw new BusinessException(ErrorCode.TEAM_ROOM_TERMINATED);
         }
         if (!teamRoom.getStatus().canModifyMembers()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "현재 상태에서는 팀원 입장이 불가능합니다.");
+            throw new BusinessException(ErrorCode.TEAM_ROOM_JOIN_NOT_ALLOWED);
         }
         if (teamRoom.isFull()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "팀 정원이 가득 찼습니다.");
+            throw new BusinessException(ErrorCode.TEAM_ROOM_FULL);
         }
         validateUserTeamGender(userId, teamRoom.getTeamGender());
 
         if (temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(teamRoom.getId(), userId)) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "이미 해당 팀의 활성 멤버입니다.");
+            throw new BusinessException(ErrorCode.ALREADY_TEAM_MEMBER);
         }
 
         teamRoom.addMember();
@@ -587,6 +596,7 @@ public class GMatchingService {
         if (becameReadyCheck) {
             notifyTeamReadyRequired(teamRoom);
         }
+        matchingEventPublisher.publishStatus(teamRoom.getId(), teamRoom.getStatus().name());
 
         return teamRoom;
     }
@@ -705,7 +715,7 @@ public class GMatchingService {
                     joinedUserId,
                     payload.toString(),
                     null,
-                    false
+                    true
             );
         }
     }
@@ -746,7 +756,53 @@ public class GMatchingService {
         }
     }
 
-    private void notifyTeamAllReady(GTemporaryTeamRoom teamRoom, Long updatedByUserId) {
+    private void notifyTeamMemberReadyChanged(
+            GTemporaryTeamRoom teamRoom,
+            Long updatedUserId,
+            boolean ready,
+            Long skipRecipientId
+    ) {
+        List<GTemporaryTeamMember> activeMembers =
+                temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoom.getId());
+        if (activeMembers == null || activeMembers.isEmpty()) {
+            return;
+        }
+
+        List<Long> recipientIds = activeMembers.stream()
+                .map(GTemporaryTeamMember::getUserId)
+                .filter(id -> !Objects.equals(id, updatedUserId))
+                .filter(id -> !Objects.equals(id, skipRecipientId))
+                .distinct()
+                .toList();
+        if (recipientIds.isEmpty()) {
+            return;
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("teamRoomId", teamRoom.getId());
+        payload.put("updatedUserId", updatedUserId);
+        payload.put("ready", ready);
+        payload.put("status", teamRoom.getStatus().name());
+        payload.put("currentMemberCount", teamRoom.getCurrentMemberCount());
+        String title = ready ? "Team member ready" : "Team member unready";
+        String body = ready ? "A teammate marked ready." : "A teammate canceled ready.";
+
+        for (Long recipientId : recipientIds) {
+            sendGroupNotification(
+                    recipientId,
+                    NotificationType.TEAM_MEMBER_READY_CHANGED,
+                    title,
+                    body,
+                    teamRoomDeeplink(teamRoom.getId()),
+                    updatedUserId,
+                    payload.toString(),
+                    null,
+                    true
+            );
+        }
+    }
+
+    private void notifyTeamAllReady(GTemporaryTeamRoom teamRoom, Long updatedByUserId, LocalDateTime readyChangedAt) {
         Long leaderId = teamRoom.getLeaderId();
         if (leaderId == null || Objects.equals(leaderId, updatedByUserId)) {
             return;
@@ -760,7 +816,7 @@ public class GMatchingService {
         String dedupeKey = buildGroupMatchingDedupeKey(
                 "team-all-ready",
                 teamRoom.getId(),
-                teamRoom.getUpdatedAt() != null ? teamRoom.getUpdatedAt() : LocalDateTime.now()
+                readyChangedAt != null ? readyChangedAt : LocalDateTime.now()
         );
 
         sendGroupNotification(
@@ -803,7 +859,7 @@ public class GMatchingService {
                     leftUserId,
                     payload.toString(),
                     null,
-                    false
+                    true
             );
         }
     }
@@ -937,17 +993,17 @@ public class GMatchingService {
 
     private void validateReadyToFinalize(GTemporaryTeamRoom room, List<GTemporaryTeamMember> members) {
         if (room.getStatus() != GTemporaryTeamRoomStatus.QUEUE_WAITING) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "매칭 대기 중인 팀만 매칭할 수 있습니다.");
+            throw new BusinessException(ErrorCode.QUEUE_WAITING_REQUIRED);
         }
         if (members.size() != room.getTeamSize().getValue()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "팀 인원 수가 팀 크기와 일치하지 않습니다.");
+            throw new BusinessException(ErrorCode.TEAM_MEMBER_COUNT_MISMATCH);
         }
     }
 
     private void validateActiveMembership(Long teamRoomId, Long userId) {
         boolean isActiveMember = temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(teamRoomId, userId);
         if (!isActiveMember) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "해당 임시 팀방의 활성 멤버가 아닙니다.");
+            throw new BusinessException(ErrorCode.TEAM_MEMBER_FORBIDDEN);
         }
     }
 
@@ -979,23 +1035,23 @@ public class GMatchingService {
         }
 
         GTemporaryTeamMember member = temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(teamRoomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "해당 임시 팀방 접근 권한이 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_ACCESS_FORBIDDEN));
 
         if (member.getLeftAt() == null) {
             return;
         }
 
         GTemporaryTeamRoom room = temporaryTeamRoomRepository.findById(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
         if (room.getStatus() != GTemporaryTeamRoomStatus.CLOSED && room.getStatus() != GTemporaryTeamRoomStatus.MATCHED) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "해당 임시 팀방 접근 권한이 없습니다.");
+            throw new BusinessException(ErrorCode.TEAM_ROOM_ACCESS_FORBIDDEN);
         }
     }
 
     private GTemporaryTeamRoom getTeamRoomForMemberAction(Long teamRoomId, Long userId) {
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
         validateActiveMembership(teamRoomId, userId);
         return teamRoom;
     }
@@ -1003,7 +1059,7 @@ public class GMatchingService {
     private void ensureUserHasNoActiveTeamRoom(Long userId) {
         List<GTemporaryTeamRoom> activeRooms = temporaryTeamRoomRepository.findActiveRoomsByUserId(userId, ACTIVE_ROOM_STATUSES);
         if (!activeRooms.isEmpty()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "이미 참여 중인 활성 임시 팀방이 있습니다.");
+            throw new BusinessException(ErrorCode.ACTIVE_TEAM_ROOM_EXISTS);
         }
     }
 
@@ -1069,19 +1125,19 @@ public class GMatchingService {
 
     private void validateUserTeamGender(Long userId, GTeamGender teamGender) {
         if (teamGender == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "팀 성별 정보가 없습니다.");
+            throw new BusinessException(ErrorCode.TEAM_GENDER_REQUIRED);
         }
 
         UserProfile profile = userProfileRepository.findByUserId(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "프로필 성별을 먼저 설정해 주세요."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.PROFILE_GENDER_REQUIRED));
 
         if (profile.getGender() == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "프로필 성별을 먼저 설정해 주세요.");
+            throw new BusinessException(ErrorCode.PROFILE_GENDER_REQUIRED);
         }
 
         GTeamGender userTeamGender = mapUserGenderToTeamGender(profile.getGender());
         if (userTeamGender != teamGender) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "팀 성별과 사용자 성별이 일치하지 않습니다.");
+            throw new BusinessException(ErrorCode.TEAM_GENDER_MISMATCH);
         }
     }
 
@@ -1108,7 +1164,7 @@ public class GMatchingService {
                 return candidate;
             }
         }
-        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "초대 코드 생성에 실패했습니다.");
+        throw new BusinessException(ErrorCode.INVITE_CODE_GENERATION_FAILED);
     }
 
     private String truncate(String value, int maxLength) {
@@ -1120,7 +1176,7 @@ public class GMatchingService {
 
     private QueueReconcileResult reconcileQueueUnderLock(GTeamSize teamSize) {
         if (teamSize == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "teamSize는 필수입니다.");
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
         }
 
         List<GTemporaryTeamRoom> waitingRooms = temporaryTeamRoomRepository.findAllQueueWaitingRooms(teamSize);
@@ -1282,7 +1338,7 @@ public class GMatchingService {
 
     private <T> Optional<T> withQueueLock(GTeamSize teamSize, Supplier<T> action) {
         if (teamSize == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "teamSize는 필수입니다.");
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
         }
         String processLockKey = processLockKey(teamSize);
         String lockValue = UUID.randomUUID().toString();
@@ -1300,13 +1356,13 @@ public class GMatchingService {
 
     private <T> T withQueueLockOrThrow(GTeamSize teamSize, Supplier<T> action) {
         if (teamSize == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "teamSize는 필수입니다.");
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
         }
         String processLockKey = processLockKey(teamSize);
         String lockValue = UUID.randomUUID().toString();
 
         if (!tryAcquireProcessLockWithRetry(processLockKey, lockValue)) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "큐 처리 잠금을 획득하지 못했습니다.");
+            throw new BusinessException(ErrorCode.QUEUE_LOCK_FAILED);
         }
 
         try {
@@ -1387,3 +1443,8 @@ public class GMatchingService {
         }
     }
 }
+
+
+
+
+

@@ -1,10 +1,8 @@
 package univ.airconnect.groupmatching.domain;
 
-/**
- * 팀 크기 제약
- * - TWO: 2인 팀
- * - THREE: 3인 팀
- */
+import univ.airconnect.global.error.BusinessException;
+import univ.airconnect.global.error.ErrorCode;
+
 public enum GTeamSize {
     TWO(2),
     THREE(3);
@@ -25,6 +23,9 @@ public enum GTeamSize {
                 return ts;
             }
         }
-        throw new IllegalArgumentException("지원하지 않는 팀 인원입니다. size=" + size);
+        throw new BusinessException(
+                ErrorCode.INVALID_TEAM_SIZE,
+                "지원하지 않는 팀 인원입니다. size=" + size
+        );
     }
 }

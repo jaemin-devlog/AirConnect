@@ -235,7 +235,7 @@ public class GMatchingController {
 
         GTemporaryTeamRoom room = matchingService.findMyActiveTeamRoom(userId)
                 .filter(r -> Objects.equals(r.getId(), teamRoomId))
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "임시 팀방을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
         return ResponseEntity.ok(toRoomResponse(room, userId));
     }
@@ -415,3 +415,6 @@ public class GMatchingController {
         throw new BusinessException(ErrorCode.UNAUTHORIZED, "인증 principal에서 userId를 추출할 수 없습니다.");
     }
 }
+
+
+

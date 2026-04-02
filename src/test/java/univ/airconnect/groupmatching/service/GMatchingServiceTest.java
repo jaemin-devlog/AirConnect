@@ -147,7 +147,7 @@ class GMatchingServiceTest {
                 GTeamVisibility.PUBLIC
         )).isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(ErrorCode.TEAM_GENDER_MISMATCH);
 
         verify(chatService, never()).createGroupRoomWithMembers(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyCollection());
     }
@@ -175,7 +175,7 @@ class GMatchingServiceTest {
         assertThatThrownBy(() -> service.joinPublicRoom(roomId, userId))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(ErrorCode.TEAM_GENDER_MISMATCH);
 
         verify(temporaryTeamMemberRepository, never())
                 .existsByTeamRoomIdAndUserIdAndLeftAtIsNull(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong());
@@ -195,7 +195,11 @@ class GMatchingServiceTest {
         when(teamRoom.getId()).thenReturn(roomId);
         when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));
         when(teamRoom.getLeaderId()).thenReturn(999L);
-        when(teamRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.OPEN);
+        when(teamRoom.getStatus()).thenReturn(
+                GTemporaryTeamRoomStatus.OPEN,
+                GTemporaryTeamRoomStatus.OPEN,
+                GTemporaryTeamRoomStatus.OPEN
+        );
         when(teamRoom.isFull()).thenReturn(false);
         when(teamRoom.getTeamGender()).thenReturn(GTeamGender.M);
         when(teamRoom.getTempChatRoomId()).thenReturn(300L);
@@ -280,6 +284,42 @@ class GMatchingServiceTest {
     }
 
     @Test
+    void updateReadyState_enqueuesPushForOtherMembersWhenReadyStateChanges() {
+        GMatchingService service = createService();
+        Long roomId = 112L;
+        Long userId = 11L;
+        Long otherUserId = 22L;
+        GTemporaryTeamRoom teamRoom = mock(GTemporaryTeamRoom.class);
+        GTeamReadyState readyState = mock(GTeamReadyState.class);
+        GTemporaryTeamMember actorMember = mock(GTemporaryTeamMember.class);
+        GTemporaryTeamMember otherMember = mock(GTemporaryTeamMember.class);
+
+        when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));
+        when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(roomId, userId)).thenReturn(true);
+        when(teamRoom.getId()).thenReturn(roomId);
+        when(teamRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.READY_CHECK);
+        when(teamRoom.getCurrentMemberCount()).thenReturn(2);
+        when(teamRoom.getTeamSize()).thenReturn(GTeamSize.TWO);
+        when(teamReadyStateRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(readyState));
+        when(readyState.isReady()).thenReturn(false);
+        when(teamReadyStateRepository.areAllMembersReady(roomId, GTeamSize.TWO.getValue())).thenReturn(false);
+        when(actorMember.getUserId()).thenReturn(userId);
+        when(otherMember.getUserId()).thenReturn(otherUserId);
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(roomId))
+                .thenReturn(List.of(actorMember, otherMember));
+
+        service.updateReadyState(roomId, userId, true);
+
+        ArgumentCaptor<NotificationService.CreateCommand> commandCaptor =
+                ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
+        verify(notificationService).createAndEnqueue(commandCaptor.capture());
+
+        NotificationService.CreateCommand command = commandCaptor.getValue();
+        assertThat(command.userId()).isEqualTo(otherUserId);
+        assertThat(command.type()).isEqualTo(NotificationType.TEAM_MEMBER_READY_CHANGED);
+    }
+
+    @Test
     void joinRoomByInviteCode_notifiesReadyRequiredWhenRoomBecomesFull() {
         GMatchingService service = createService();
         Long roomId = 201L;
@@ -296,7 +336,11 @@ class GMatchingServiceTest {
         when(teamRoom.getId()).thenReturn(roomId);
         when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));
         when(teamRoom.getLeaderId()).thenReturn(leaderId);
-        when(teamRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.OPEN);
+        when(teamRoom.getStatus()).thenReturn(
+                GTemporaryTeamRoomStatus.OPEN,
+                GTemporaryTeamRoomStatus.OPEN,
+                GTemporaryTeamRoomStatus.READY_CHECK
+        );
         when(teamRoom.isFull()).thenReturn(false, true);
         when(teamRoom.getTeamGender()).thenReturn(GTeamGender.M);
         when(teamRoom.getTeamSize()).thenReturn(GTeamSize.TWO);
@@ -316,12 +360,17 @@ class GMatchingServiceTest {
 
         ArgumentCaptor<NotificationService.CreateCommand> enqueueCaptor =
                 ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
-        verify(notificationService, times(2)).createAndEnqueue(enqueueCaptor.capture());
+        verify(notificationService, times(3)).createAndEnqueue(enqueueCaptor.capture());
         assertThat(enqueueCaptor.getAllValues())
                 .extracting(NotificationService.CreateCommand::type)
-                .containsOnly(NotificationType.TEAM_READY_REQUIRED);
+                .containsExactlyInAnyOrder(
+                        NotificationType.TEAM_MEMBER_JOINED,
+                        NotificationType.TEAM_READY_REQUIRED,
+                        NotificationType.TEAM_READY_REQUIRED
+                );
 
         verify(teamRoom).enterReadyCheck(leaderId);
+        verify(matchingEventPublisher).publishStatus(roomId, GTemporaryTeamRoomStatus.READY_CHECK.name());
     }
 
     @Test
@@ -341,6 +390,43 @@ class GMatchingServiceTest {
         assertThat(leftRoom).isSameAs(teamRoom);
         verify(member, never()).markLeft();
         verify(chatService, never()).publishExitMessage(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void leaveTeamRoom_enqueuesPushAndPublishesStatusChanged() {
+        GMatchingService service = createService();
+        Long roomId = 215L;
+        Long userId = 21L;
+        Long leaderId = 99L;
+        Long chatRoomId = 315L;
+        GTemporaryTeamRoom teamRoom = mock(GTemporaryTeamRoom.class);
+        GTemporaryTeamMember member = mock(GTemporaryTeamMember.class);
+        GTemporaryTeamMember leaderMember = mock(GTemporaryTeamMember.class);
+        GTeamReadyState readyState = mock(GTeamReadyState.class);
+        User user = createUser(userId, "member");
+
+        when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(member));
+        when(member.isActiveMember()).thenReturn(true);
+        when(member.isLeader()).thenReturn(false);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(teamRoom.getId()).thenReturn(roomId);
+        when(teamRoom.getTempChatRoomId()).thenReturn(chatRoomId);
+        when(teamRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.READY_CHECK, GTemporaryTeamRoomStatus.OPEN);
+        when(teamRoom.getCurrentMemberCount()).thenReturn(2);
+        when(chatService.isMember(chatRoomId, userId)).thenReturn(true);
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserId(chatRoomId, userId)).thenReturn(Optional.empty());
+        when(teamReadyStateRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(readyState));
+        when(leaderMember.getUserId()).thenReturn(leaderId);
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(roomId))
+                .thenReturn(List.of(leaderMember));
+
+        GTemporaryTeamRoom leftRoom = service.leaveTeamRoom(roomId, userId);
+
+        assertThat(leftRoom).isSameAs(teamRoom);
+        verify(teamRoom).removeMember();
+        verify(notificationService).createAndEnqueue(any(NotificationService.CreateCommand.class));
+        verify(matchingEventPublisher).publishStatus(roomId, GTemporaryTeamRoomStatus.OPEN.name());
     }
 
     @Test
@@ -579,3 +665,4 @@ class GMatchingServiceTest {
         );
     }
 }
+
