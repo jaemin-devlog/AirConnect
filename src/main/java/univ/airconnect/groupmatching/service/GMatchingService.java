@@ -1,5 +1,7 @@
 package univ.airconnect.groupmatching.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -29,6 +31,8 @@ import univ.airconnect.groupmatching.repository.GMatchResultRepository;
 import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
+import univ.airconnect.notification.domain.NotificationType;
+import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
@@ -36,6 +40,7 @@ import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -82,6 +87,8 @@ public class GMatchingService {
     private final ChatService chatService;
     private final GMatchingEventPublisher matchingEventPublisher;
     private final GMatchingPushService matchingPushService;
+    private final NotificationService notificationService;
+    private final ObjectMapper objectMapper;
     private final RedisTemplate<String, Object> redisTemplate;
 
     /**
@@ -201,7 +208,16 @@ public class GMatchingService {
         GTeamReadyState readyState = teamReadyStateRepository.findByTeamRoomIdAndUserId(teamRoomId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "준비 상태 정보를 찾을 수 없습니다."));
 
+        boolean wasReady = readyState.isReady();
         readyState.setReady(ready);
+        matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
+
+        if (!wasReady && ready) {
+            boolean allReady = teamReadyStateRepository.areAllMembersReady(teamRoomId, teamRoom.getTeamSize().getValue());
+            if (allReady) {
+                notifyTeamAllReady(teamRoom, userId);
+            }
+        }
         return readyState;
     }
 
@@ -451,6 +467,8 @@ public class GMatchingService {
                     teamRoomId, userId, status);
         }
 
+        notifyTeamMemberLeft(teamRoom, userId, user.getNickname());
+
         return teamRoom;
     }
 
@@ -483,6 +501,7 @@ public class GMatchingService {
 
         List<GTemporaryTeamMember> activeMembers = temporaryTeamMemberRepository
                 .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoomId);
+        notifyTeamRoomCancelled(teamRoom, activeMembers, requestUserId, leader.getNickname());
         markMembersLeft(activeMembers);
         removeChatRoomMemberships(tempChatRoomId, extractUserIds(activeMembers));
         teamReadyStateRepository.deleteByTeamRoomId(teamRoomId);
@@ -551,8 +570,10 @@ public class GMatchingService {
         teamReadyStateRepository.save(GTeamReadyState.create(teamRoom.getId(), userId));
         resetReadyStatesForActiveMembers(teamRoom.getId());
 
+        boolean becameReadyCheck = false;
         if (teamRoom.isFull()) {
             teamRoom.enterReadyCheck(teamRoom.getLeaderId());
+            becameReadyCheck = true;
         }
 
         chatService.addMembersToRoom(teamRoom.getTempChatRoomId(), List.of(userId));
@@ -561,6 +582,11 @@ public class GMatchingService {
                 userId,
                 user.getNickname() + "님이 팀에 입장했습니다."
         );
+
+        notifyTeamMemberJoined(teamRoom, userId, user.getNickname());
+        if (becameReadyCheck) {
+            notifyTeamReadyRequired(teamRoom);
+        }
 
         return teamRoom;
     }
@@ -611,6 +637,7 @@ public class GMatchingService {
         QueueSnapshot secondMatchedSnapshot = QueueSnapshot.matched(second.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
         matchingEventPublisher.publishMatched(firstMatchedSnapshot);
         matchingEventPublisher.publishMatched(secondMatchedSnapshot);
+        notifyGroupMatched(finalMemberIds, first.getId(), second.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
         matchingPushService.notifyMatched(finalMemberIds, finalGroupChatRoom.getId(), finalChatRoom.getId());
 
         chatService.publishEnterMessage(
@@ -649,6 +676,263 @@ public class GMatchingService {
                 first.getId(),
                 second.getId()
         );
+    }
+
+    private void notifyTeamMemberJoined(GTemporaryTeamRoom teamRoom, Long joinedUserId, String joinedNickname) {
+        List<Long> recipientIds = temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoom.getId())
+                .stream()
+                .map(GTemporaryTeamMember::getUserId)
+                .filter(id -> !Objects.equals(id, joinedUserId))
+                .distinct()
+                .toList();
+        if (recipientIds.isEmpty()) {
+            return;
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("teamRoomId", teamRoom.getId());
+        payload.put("joinedUserId", joinedUserId);
+        payload.put("joinedNickname", joinedNickname);
+        payload.put("currentMemberCount", teamRoom.getCurrentMemberCount());
+
+        for (Long recipientId : recipientIds) {
+            sendGroupNotification(
+                    recipientId,
+                    NotificationType.TEAM_MEMBER_JOINED,
+                    "팀원 합류",
+                    joinedNickname + "님이 팀에 합류했어요.",
+                    teamRoomDeeplink(teamRoom.getId()),
+                    joinedUserId,
+                    payload.toString(),
+                    null,
+                    false
+            );
+        }
+    }
+
+    private void notifyTeamReadyRequired(GTemporaryTeamRoom teamRoom) {
+        List<Long> recipientIds = temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoom.getId())
+                .stream()
+                .map(GTemporaryTeamMember::getUserId)
+                .distinct()
+                .toList();
+        if (recipientIds.isEmpty()) {
+            return;
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("teamRoomId", teamRoom.getId());
+        payload.put("teamSize", teamRoom.getTeamSize().name());
+        payload.put("currentMemberCount", teamRoom.getCurrentMemberCount());
+
+        String dedupeKey = buildGroupMatchingDedupeKey(
+                "team-ready-required",
+                teamRoom.getId(),
+                teamRoom.getUpdatedAt() != null ? teamRoom.getUpdatedAt() : LocalDateTime.now()
+        );
+
+        for (Long recipientId : recipientIds) {
+            sendGroupNotification(
+                    recipientId,
+                    NotificationType.TEAM_READY_REQUIRED,
+                    "팀 준비 확인 필요",
+                    "팀원이 모두 모였어요. 준비 상태를 체크해주세요.",
+                    teamRoomDeeplink(teamRoom.getId()),
+                    null,
+                    payload.toString(),
+                    dedupeKey,
+                    true
+            );
+        }
+    }
+
+    private void notifyTeamAllReady(GTemporaryTeamRoom teamRoom, Long updatedByUserId) {
+        Long leaderId = teamRoom.getLeaderId();
+        if (leaderId == null || Objects.equals(leaderId, updatedByUserId)) {
+            return;
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("teamRoomId", teamRoom.getId());
+        payload.put("leaderUserId", leaderId);
+        payload.put("allMembersReady", true);
+
+        String dedupeKey = buildGroupMatchingDedupeKey(
+                "team-all-ready",
+                teamRoom.getId(),
+                teamRoom.getUpdatedAt() != null ? teamRoom.getUpdatedAt() : LocalDateTime.now()
+        );
+
+        sendGroupNotification(
+                leaderId,
+                NotificationType.TEAM_ALL_READY,
+                "모든 팀원이 준비 완료",
+                "지금 매칭을 시작할 수 있어요.",
+                teamRoomDeeplink(teamRoom.getId()),
+                null,
+                payload.toString(),
+                dedupeKey,
+                true
+        );
+    }
+
+    private void notifyTeamMemberLeft(GTemporaryTeamRoom teamRoom, Long leftUserId, String leftNickname) {
+        List<Long> recipientIds = temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoom.getId())
+                .stream()
+                .map(GTemporaryTeamMember::getUserId)
+                .filter(id -> !Objects.equals(id, leftUserId))
+                .distinct()
+                .toList();
+        if (recipientIds.isEmpty()) {
+            return;
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("teamRoomId", teamRoom.getId());
+        payload.put("leftUserId", leftUserId);
+        payload.put("leftNickname", leftNickname);
+        payload.put("currentMemberCount", teamRoom.getCurrentMemberCount());
+
+        for (Long recipientId : recipientIds) {
+            sendGroupNotification(
+                    recipientId,
+                    NotificationType.TEAM_MEMBER_LEFT,
+                    "팀원 이탈",
+                    leftNickname + "님이 팀에서 나갔어요.",
+                    teamRoomDeeplink(teamRoom.getId()),
+                    leftUserId,
+                    payload.toString(),
+                    null,
+                    false
+            );
+        }
+    }
+
+    private void notifyTeamRoomCancelled(
+            GTemporaryTeamRoom teamRoom,
+            List<GTemporaryTeamMember> activeMembers,
+            Long cancelledByUserId,
+            String cancelledByNickname
+    ) {
+        if (activeMembers == null || activeMembers.isEmpty()) {
+            return;
+        }
+
+        List<Long> recipientIds = activeMembers.stream()
+                .map(GTemporaryTeamMember::getUserId)
+                .filter(id -> !Objects.equals(id, cancelledByUserId))
+                .distinct()
+                .toList();
+        if (recipientIds.isEmpty()) {
+            return;
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("teamRoomId", teamRoom.getId());
+        payload.put("cancelledByUserId", cancelledByUserId);
+
+        String dedupeKey = buildGroupMatchingDedupeKey(
+                "team-room-cancelled",
+                teamRoom.getId(),
+                teamRoom.getCancelledAt() != null ? teamRoom.getCancelledAt() : LocalDateTime.now()
+        );
+
+        for (Long recipientId : recipientIds) {
+            sendGroupNotification(
+                    recipientId,
+                    NotificationType.TEAM_ROOM_CANCELLED,
+                    "팀 방이 해산됐어요",
+                    cancelledByNickname + "님이 팀 방을 해산했어요.",
+                    "airconnect://matching/team-rooms",
+                    cancelledByUserId,
+                    payload.toString(),
+                    dedupeKey,
+                    true
+            );
+        }
+    }
+
+    private void notifyGroupMatched(
+            Collection<Long> userIds,
+            Long firstTeamRoomId,
+            Long secondTeamRoomId,
+            Long finalGroupRoomId,
+            Long finalChatRoomId
+    ) {
+        if (userIds == null || userIds.isEmpty()) {
+            return;
+        }
+
+        String dedupeKey = "group-matched:" + finalGroupRoomId;
+        for (Long recipientId : new LinkedHashSet<>(userIds)) {
+            if (recipientId == null) {
+                continue;
+            }
+
+            ObjectNode payload = objectMapper.createObjectNode();
+            payload.put("team1RoomId", firstTeamRoomId);
+            payload.put("team2RoomId", secondTeamRoomId);
+            payload.put("finalGroupRoomId", finalGroupRoomId);
+            payload.put("finalChatRoomId", finalChatRoomId);
+            payload.put("memberCount", userIds.size());
+
+            sendGroupNotification(
+                    recipientId,
+                    NotificationType.GROUP_MATCHED,
+                    "그룹 매칭 성사",
+                    "상대 팀과 매칭됐어요. 최종 그룹 채팅방으로 이동해보세요.",
+                    "airconnect://group-chat/final/" + finalGroupRoomId,
+                    null,
+                    payload.toString(),
+                    dedupeKey,
+                    false
+            );
+        }
+    }
+
+    private void sendGroupNotification(
+            Long recipientUserId,
+            NotificationType type,
+            String title,
+            String body,
+            String deeplink,
+            Long actorUserId,
+            String payloadJson,
+            String dedupeKey,
+            boolean enqueuePush
+    ) {
+        if (recipientUserId == null) {
+            return;
+        }
+        try {
+            NotificationService.CreateCommand command = new NotificationService.CreateCommand(
+                    recipientUserId,
+                    type,
+                    title,
+                    body,
+                    deeplink,
+                    actorUserId,
+                    null,
+                    payloadJson,
+                    dedupeKey
+            );
+
+            if (enqueuePush) {
+                notificationService.createAndEnqueue(command);
+                return;
+            }
+            notificationService.create(command);
+        } catch (Exception e) {
+            log.error("Group matching notification failed. type={}, recipientUserId={}", type, recipientUserId, e);
+        }
+    }
+
+    private String buildGroupMatchingDedupeKey(String action, Long teamRoomId, Object discriminator) {
+        return "group-matching:" + action + ":" + teamRoomId + ":" + String.valueOf(discriminator);
+    }
+
+    private String teamRoomDeeplink(Long teamRoomId) {
+        return "airconnect://matching/team-rooms/" + teamRoomId;
     }
 
     private void validateReadyToFinalize(GTemporaryTeamRoom room, List<GTemporaryTeamMember> members) {
