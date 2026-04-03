@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
+import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.chat.domain.entity.ChatRoom;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
@@ -78,6 +79,8 @@ class GMatchingServiceTest {
     @Mock
     private UserProfileRepository userProfileRepository;
     @Mock
+    private AnalyticsService analyticsService;
+    @Mock
     private ChatService chatService;
     @Mock
     private GMatchingEventPublisher matchingEventPublisher;
@@ -123,7 +126,7 @@ class GMatchingServiceTest {
                 GTeamVisibility.PUBLIC
         );
 
-        assertThat(created.getInviteCode()).matches("[0-9A-F]{10}");
+        assertThat(created.getInviteCode()).matches("\\d{6}");
         verify(temporaryTeamRoomRepository).existsUsableInviteCode(anyString());
     }
 
@@ -683,7 +686,8 @@ class GMatchingServiceTest {
                 matchingPushService,
                 notificationService,
                 objectMapper,
-                redisTemplate
+                redisTemplate,
+                analyticsService
         );
     }
 

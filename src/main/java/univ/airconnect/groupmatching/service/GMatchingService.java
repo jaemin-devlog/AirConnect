@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import univ.airconnect.analytics.domain.AnalyticsEventType;
+import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.chat.domain.entity.ChatRoom;
@@ -46,9 +48,11 @@ import java.util.Collection;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -90,6 +94,7 @@ public class GMatchingService {
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final AnalyticsService analyticsService;
 
     /**
      * Step 1. 임시 팀방을 생성한다.
@@ -131,6 +136,17 @@ public class GMatchingService {
                 tempChatRoom.getId(),
                 leaderUserId,
                 leader.getNickname() + "님이 팀방을 생성했습니다."
+        );
+
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.TEAM_ROOM_CREATED,
+                leaderUserId,
+                Map.of(
+                        "teamRoomId", teamRoom.getId(),
+                        "teamSize", teamRoom.getTeamSize().name(),
+                        "teamGender", teamRoom.getTeamGender().name(),
+                        "visibility", teamRoom.getVisibility().name()
+                )
         );
 
         return teamRoom;
@@ -220,6 +236,14 @@ public class GMatchingService {
         if (wasReady != ready) {
             Long skipRecipientId = allReady ? teamRoom.getLeaderId() : null;
             notifyTeamMemberReadyChanged(teamRoom, userId, ready, skipRecipientId);
+            analyticsService.trackServerEvent(
+                    AnalyticsEventType.TEAM_READY_CHANGED,
+                    userId,
+                    Map.of(
+                            "teamRoomId", teamRoomId,
+                            "ready", ready
+                    )
+            );
         }
 
         if (allReady) {
@@ -254,6 +278,15 @@ public class GMatchingService {
         if (snapshot.finalGroupRoomId() == null) {
             matchingEventPublisher.publishQueueSnapshot(snapshot);
         }
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.GROUP_QUEUE_STARTED,
+                requestUserId,
+                Map.of(
+                        "teamRoomId", teamRoomId,
+                        "teamSize", teamRoom.getTeamSize().name(),
+                        "status", snapshot.status()
+                )
+        );
         return snapshot;
     }
 
@@ -452,7 +485,7 @@ public class GMatchingService {
                     user.getNickname() + "님이 팀에서 나갔습니다."
             );
         } else {
-            log.warn("Skip exit-message publishing because chat membership is already missing. teamRoomId={}, userId={}, chatRoomId={}",
+            log.warn("채팅방 멤버십이 이미 없어 퇴장 메시지 발행을 건너뜁니다. teamRoomId={}, userId={}, chatRoomId={}",
                     teamRoomId, userId, tempChatRoomId);
         }
 
@@ -466,16 +499,24 @@ public class GMatchingService {
                 teamRoom.removeMember();
                 resetReadyStatesForActiveMembers(teamRoomId);
             } else {
-                log.warn("Skip member-count decrement due to unexpected count while leaving team room. teamRoomId={}, userId={}, currentMemberCount={}",
+                log.warn("팀방 나가기 중 현재 인원 수가 예상과 달라 인원 차감을 건너뜁니다. teamRoomId={}, userId={}, currentMemberCount={}",
                         teamRoomId, userId, teamRoom.getCurrentMemberCount());
             }
         } else {
-            log.warn("Skip member-count decrement because room status no longer allows member modification. teamRoomId={}, userId={}, status={}",
+            log.warn("현재 방 상태에서는 인원 변경이 불가능해 인원 차감을 건너뜁니다. teamRoomId={}, userId={}, status={}",
                     teamRoomId, userId, status);
         }
 
         notifyTeamMemberLeft(teamRoom, userId, user.getNickname());
         matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.TEAM_ROOM_LEFT,
+                userId,
+                Map.of(
+                        "teamRoomId", teamRoomId,
+                        "memberCount", teamRoom.getCurrentMemberCount()
+                )
+        );
 
         return teamRoom;
     }
@@ -501,7 +542,7 @@ public class GMatchingService {
                     leader.getNickname() + "님이 팀을 해산했습니다."
             );
         } else {
-            log.warn("Skip room-cancel exit-message publishing because leader chat membership is missing. teamRoomId={}, leaderId={}, chatRoomId={}",
+            log.warn("방장 채팅 멤버십이 없어 방 해산 퇴장 메시지 발행을 건너뜁니다. teamRoomId={}, leaderId={}, chatRoomId={}",
                     teamRoomId, requestUserId, tempChatRoomId);
         }
 
@@ -612,6 +653,15 @@ public class GMatchingService {
             notifyTeamReadyRequired(teamRoom);
         }
         matchingEventPublisher.publishStatus(teamRoom.getId(), teamRoom.getStatus().name());
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.TEAM_ROOM_JOINED,
+                userId,
+                Map.of(
+                        "teamRoomId", teamRoom.getId(),
+                        "memberCount", teamRoom.getCurrentMemberCount(),
+                        "status", teamRoom.getStatus().name()
+                )
+        );
 
         return teamRoom;
     }
@@ -693,6 +743,16 @@ public class GMatchingService {
         teamReadyStateRepository.deleteByTeamRoomId(second.getId());
         removeRoomFromRedisQueue(first.getTeamSize(), first.getId(), firstQueueToken);
         removeRoomFromRedisQueue(second.getTeamSize(), second.getId(), secondQueueToken);
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.GROUP_MATCH_COMPLETED,
+                first.getLeaderId(),
+                Map.of(
+                        "firstTeamRoomId", first.getId(),
+                        "secondTeamRoomId", second.getId(),
+                        "finalGroupRoomId", finalGroupChatRoom.getId(),
+                        "finalChatRoomId", finalChatRoom.getId()
+                )
+        );
 
         return new MatchSuccessResult(
                 matchResult.getId(),
@@ -994,7 +1054,7 @@ public class GMatchingService {
             }
             notificationService.create(command);
         } catch (Exception e) {
-            log.error("Group matching notification failed. type={}, recipientUserId={}", type, recipientUserId, e);
+            log.error("과팅 알림 발송에 실패했습니다. type={}, recipientUserId={}", type, recipientUserId, e);
         }
     }
 
@@ -1174,7 +1234,7 @@ public class GMatchingService {
 
     private String generateUniqueInviteCode() {
         for (int i = 0; i < 20; i++) {
-            String candidate = UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
+            String candidate = String.format("%06d", ThreadLocalRandom.current().nextInt(1_000_000));
             if (!temporaryTeamRoomRepository.existsUsableInviteCode(candidate)) {
                 return candidate;
             }

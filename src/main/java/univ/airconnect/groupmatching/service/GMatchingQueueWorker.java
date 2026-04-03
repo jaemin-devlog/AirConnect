@@ -32,7 +32,7 @@ public class GMatchingQueueWorker {
         GMatchingService.QueueReconcileResult reconcileResult = matchingService.reconcileQueue(teamSize);
         if (reconcileResult.lockAcquired() && (reconcileResult.rebuilt() || reconcileResult.metadataRecovered())) {
             log.info(
-                    "Queue worker reconciled: teamSize={}, rebuilt={}, metadataRecovered={}, waitingTeamCount={}, redisQueueCount={}",
+                    "과팅 큐 워커가 대기열을 동기화했습니다. teamSize={}, rebuilt={}, metadataRecovered={}, waitingTeamCount={}, redisQueueCount={}",
                     teamSize,
                     reconcileResult.rebuilt(),
                     reconcileResult.metadataRecovered(),
@@ -43,7 +43,7 @@ public class GMatchingQueueWorker {
 
         int matchedCount = matchingService.processQueueUntilStable(teamSize);
         if (matchedCount > 0) {
-            log.info("Queue worker matched: teamSize={}, matchedCount={}", teamSize, matchedCount);
+            log.info("과팅 큐 워커가 매칭을 처리했습니다. teamSize={}, matchedCount={}", teamSize, matchedCount);
         }
     }
 }

@@ -56,10 +56,10 @@ public class GRedisMatchingPushService implements GMatchingPushService {
 
         try {
             redisTemplate.convertAndSend(PUSH_DISPATCH_CHANNEL, objectMapper.writeValueAsString(payload));
-            log.info("Push dispatch event published: userId={}, deviceId={}, finalChatRoomId={}",
+            log.info("과팅 푸시 디스패치 이벤트를 발행했습니다. userId={}, deviceId={}, finalChatRoomId={}",
                     userId, deviceId, finalChatRoomId);
         } catch (JsonProcessingException e) {
-            log.error("Push dispatch serialization failed: userId={}, deviceId={}", userId, deviceId, e);
+            log.error("과팅 푸시 디스패치 직렬화에 실패했습니다. userId={}, deviceId={}", userId, deviceId, e);
         }
     }
 
