@@ -14,7 +14,5 @@ public class MatchingRecommendationResponse {
     private int count;
     private List<MatchingCandidateResponse> candidates;
     private Integer userTicketsRemaining;
-    private boolean restartRequired;
-    private String restartPromptMessage;
 }
 
