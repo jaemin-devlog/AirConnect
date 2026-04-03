@@ -278,6 +278,31 @@ class GMatchingServiceTest {
     }
 
     @Test
+    void getTeamMemberProfile_returnsSelectedActiveMemberProfile() {
+        GMatchingService service = createService();
+        Long roomId = 108L;
+        Long requestUserId = 10L;
+        Long targetUserId = 20L;
+        GTemporaryTeamRoom teamRoom = mock(GTemporaryTeamRoom.class);
+        User targetUser = createUser(targetUserId, "target");
+        createProfile(targetUser, Gender.FEMALE);
+
+        when(temporaryTeamRoomRepository.findById(roomId)).thenReturn(Optional.of(teamRoom));
+        when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(roomId, requestUserId)).thenReturn(true);
+        when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(roomId, targetUserId)).thenReturn(true);
+        when(userRepository.findAllByIdWithProfile(List.of(targetUserId))).thenReturn(List.of(targetUser));
+
+        var response = service.getTeamMemberProfile(roomId, requestUserId, targetUserId);
+
+        assertThat(response.getUserId()).isEqualTo(targetUserId);
+        assertThat(response.getNickname()).isEqualTo("target");
+        assertThat(response.isProfileExists()).isTrue();
+        assertThat(response.getProfile()).isNotNull();
+        assertThat(response.getProfile().getGender()).isEqualTo(Gender.FEMALE);
+        assertThat(response.getDeptName()).isEqualTo("dept");
+    }
+
+    @Test
     void updateReadyState_publishesStatusChangedEvent() {
         GMatchingService service = createService();
         Long roomId = 110L;
@@ -672,7 +697,7 @@ class GMatchingServiceTest {
     }
 
     private GMatchingService createService() {
-        return new GMatchingService(
+        GMatchingService service = new GMatchingService(
                 temporaryTeamRoomRepository,
                 temporaryTeamMemberRepository,
                 teamReadyStateRepository,
@@ -689,16 +714,19 @@ class GMatchingServiceTest {
                 redisTemplate,
                 analyticsService
         );
+        ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
+        return service;
     }
 
     private User createUser(Long userId, String nickname) {
         User user = User.create(SocialProvider.KAKAO, "social-" + userId, "u" + userId + "@test.dev");
         user.completeSignUp("name-" + userId, nickname, 20230000 + userId.intValue(), "dept");
+        ReflectionTestUtils.setField(user, "id", userId);
         return user;
     }
 
     private UserProfile createProfile(User user, Gender gender) {
-        return UserProfile.create(
+        UserProfile profile = UserProfile.create(
                 user,
                 null,
                 null,
@@ -711,6 +739,9 @@ class GMatchingServiceTest {
                 null,
                 null
         );
+        ReflectionTestUtils.setField(profile, "userId", user.getId());
+        ReflectionTestUtils.setField(user, "userProfile", profile);
+        return profile;
     }
 }
 

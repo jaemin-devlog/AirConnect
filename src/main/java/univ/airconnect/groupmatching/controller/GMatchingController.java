@@ -24,6 +24,7 @@ import univ.airconnect.groupmatching.dto.response.GMatchingResponse;
 import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.service.GMatchingService;
+import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -122,6 +123,16 @@ public class GMatchingController {
         Long userId = currentUserId(authentication);
         GTemporaryTeamRoom teamRoom = matchingService.generateInviteCode(teamRoomId, userId);
         return ResponseEntity.ok(toRoomResponse(teamRoom, userId));
+    }
+
+    @GetMapping("/{teamRoomId}/members/{targetUserId}/profile")
+    public ResponseEntity<MatchingCandidateResponse> getTeamMemberProfile(
+            @PathVariable Long teamRoomId,
+            @PathVariable Long targetUserId,
+            Authentication authentication
+    ) {
+        Long userId = currentUserId(authentication);
+        return ResponseEntity.ok(matchingService.getTeamMemberProfile(teamRoomId, userId, targetUserId));
     }
 
     /**

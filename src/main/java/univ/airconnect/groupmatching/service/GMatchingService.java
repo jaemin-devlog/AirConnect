@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,11 +34,13 @@ import univ.airconnect.groupmatching.repository.GMatchResultRepository;
 import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
+import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -95,6 +98,9 @@ public class GMatchingService {
     private final ObjectMapper objectMapper;
     private final RedisTemplate<String, Object> redisTemplate;
     private final AnalyticsService analyticsService;
+
+    @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
+    private String imageUrlBase;
 
     /**
      * Step 1. 임시 팀방을 생성한다.
@@ -207,6 +213,32 @@ public class GMatchingService {
         validateActiveMembership(teamRoomId, requestUserId);
         teamRoom.assignInviteCode(generateUniqueInviteCode());
         return teamRoom;
+    }
+
+    @Transactional(readOnly = true)
+    public MatchingCandidateResponse getTeamMemberProfile(
+            Long teamRoomId,
+            Long requestUserId,
+            Long targetUserId
+    ) {
+        temporaryTeamRoomRepository.findById(teamRoomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
+        validateActiveMembership(teamRoomId, requestUserId);
+
+        if (Objects.equals(requestUserId, targetUserId)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "본인 프로필은 이 API로 조회할 수 없습니다.");
+        }
+
+        boolean activeTargetMember = temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(
+                teamRoomId,
+                targetUserId
+        );
+        if (!activeTargetMember) {
+            throw new BusinessException(ErrorCode.TEAM_MEMBER_NOT_FOUND);
+        }
+
+        User targetUser = findUserWithProfileOrThrow(targetUserId);
+        return toMatchingCandidateResponse(targetUser);
     }
 
     /**
@@ -1196,6 +1228,37 @@ public class GMatchingService {
     private User findUserOrThrow(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+    }
+
+    private User findUserWithProfileOrThrow(Long userId) {
+        return userRepository.findAllByIdWithProfile(List.of(userId)).stream()
+                .findFirst()
+                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+    }
+
+    private MatchingCandidateResponse toMatchingCandidateResponse(User user) {
+        UserProfile profile = user.getUserProfile();
+        UserProfileResponse profileResponse = profile != null ? UserProfileResponse.from(profile, imageUrlBase) : null;
+
+        boolean profileImageUploaded = profile != null
+                && profile.getProfileImagePath() != null
+                && !profile.getProfileImagePath().isBlank();
+
+        return MatchingCandidateResponse.builder()
+                .userId(user.getId())
+                .socialId(user.getSocialId())
+                .nickname(user.getNickname())
+                .deptName(user.getDeptName())
+                .studentNum(user.getStudentNum())
+                .age(profile != null ? profile.getAge() : null)
+                .status(user.getStatus())
+                .onboardingStatus(user.getOnboardingStatus())
+                .profileExists(profile != null)
+                .profileImageUploaded(profileImageUploaded)
+                .emailVerified(false)
+                .tickets(user.getTickets())
+                .profile(profileResponse)
+                .build();
     }
 
     private void validateUserTeamGender(Long userId, GTeamGender teamGender) {
