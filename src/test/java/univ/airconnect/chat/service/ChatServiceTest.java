@@ -20,8 +20,11 @@ import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
+import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 import univ.airconnect.notification.service.NotificationService;
+import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.util.Optional;
@@ -132,10 +135,32 @@ class ChatServiceTest {
         assertThat(response.getId()).isEqualTo(555L);
     }
 
+    @Test
+    void getParticipantProfile_returnsSelectedParticipantProfile() {
+        ChatService service = createService();
+        Long roomId = 901L;
+        Long requestUserId = 1L;
+        Long targetUserId = 2L;
+        User targetUser = createUser(targetUserId, "target");
+        createProfile(targetUser, Gender.FEMALE);
+
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, requestUserId)).thenReturn(true);
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, targetUserId)).thenReturn(true);
+        when(userRepository.findAllByIdWithProfile(List.of(targetUserId))).thenReturn(List.of(targetUser));
+
+        MatchingCandidateResponse response = service.getParticipantProfile(roomId, requestUserId, targetUserId);
+
+        assertThat(response.getUserId()).isEqualTo(targetUserId);
+        assertThat(response.getNickname()).isEqualTo("target");
+        assertThat(response.isProfileExists()).isTrue();
+        assertThat(response.getProfile()).isNotNull();
+        assertThat(response.getProfile().getGender()).isEqualTo(Gender.FEMALE);
+    }
+
     private ChatService createService() {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(redisTemplate.opsForSet()).thenReturn(setOperations);
-        return new ChatService(
+        ChatService service = new ChatService(
                 chatRoomRepository,
                 chatMessageRepository,
                 chatRoomMemberRepository,
@@ -146,11 +171,33 @@ class ChatServiceTest {
                 objectMapper,
                 notificationService
         );
+        ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
+        return service;
     }
 
     private User createUser(Long userId, String nickname) {
         User user = User.create(SocialProvider.KAKAO, "social-" + userId, "u" + userId + "@test.dev");
         user.completeSignUp("name-" + userId, nickname, 20230000 + userId.intValue(), "dept");
+        ReflectionTestUtils.setField(user, "id", userId);
         return user;
+    }
+
+    private UserProfile createProfile(User user, Gender gender) {
+        UserProfile profile = UserProfile.create(
+                user,
+                null,
+                null,
+                null,
+                null,
+                gender,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        ReflectionTestUtils.setField(profile, "userId", user.getId());
+        ReflectionTestUtils.setField(user, "userProfile", profile);
+        return profile;
     }
 }

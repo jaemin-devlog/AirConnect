@@ -185,6 +185,13 @@ public class User {
         this.tickets += amount;
     }
 
+    public void markActive() {
+        if (this.status == UserStatus.DELETED) {
+            return;
+        }
+        this.lastActiveAt = LocalDateTime.now();
+    }
+
     public void markDeleted() {
         if (this.status == UserStatus.DELETED) {
             return;

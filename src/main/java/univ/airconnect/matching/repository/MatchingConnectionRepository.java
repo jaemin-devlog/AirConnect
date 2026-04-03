@@ -1,10 +1,12 @@
 package univ.airconnect.matching.repository;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
+import univ.airconnect.statistics.repository.DepartmentRequestCountProjection;
 
 import java.util.List;
 import java.util.Optional;
@@ -33,7 +35,23 @@ public interface MatchingConnectionRepository extends JpaRepository<MatchingConn
         AND mc.status = :status
     """)
     List<MatchingConnection> findReceivedRequestsByStatus(@Param("userId") Long userId, @Param("status") ConnectionStatus status);
+
+    long countByStatus(ConnectionStatus status);
+
+    @Query(value = """
+        SELECT u.dept_name AS deptName, COUNT(*) AS requestCount
+        FROM matching_connections mc
+        JOIN users u
+          ON u.id = CASE
+                        WHEN mc.requester_id = mc.user1_id THEN mc.user2_id
+                        ELSE mc.user1_id
+                    END
+        WHERE u.status = 'ACTIVE'
+          AND u.onboarding_status = 'FULL'
+          AND u.dept_name IS NOT NULL
+          AND u.dept_name <> ''
+        GROUP BY u.dept_name
+        ORDER BY COUNT(*) DESC, u.dept_name ASC
+    """, nativeQuery = true)
+    List<DepartmentRequestCountProjection> findTopRequestedDepartments(Pageable pageable);
 }
-
-
-

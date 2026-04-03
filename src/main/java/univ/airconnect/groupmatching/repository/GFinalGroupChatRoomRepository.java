@@ -36,6 +36,8 @@ public interface GFinalGroupChatRoomRepository extends JpaRepository<GFinalGroup
 
     List<GFinalGroupChatRoom> findByStatusIn(Collection<GFinalGroupRoomStatus> statuses);
 
+    long countByStatusIn(Collection<GFinalGroupRoomStatus> statuses);
+
     /**
      * team pair 역순까지 포함한 최종 그룹방 조회
      */

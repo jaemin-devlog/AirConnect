@@ -34,6 +34,6 @@ public class GMatchingEventPublisher {
                 GMatchingRealtimeEventResponse.fromQueueSnapshot(eventType, snapshot);
         String destination = MATCHING_TEAM_ROOM_SUB_PREFIX + snapshot.teamRoomId();
         messagingTemplate.convertAndSend(destination, payload);
-        log.info("Matching event published: destination={}, eventType={}", destination, eventType);
+        log.info("과팅 실시간 이벤트를 발행했습니다. destination={}, eventType={}", destination, eventType);
     }
 }

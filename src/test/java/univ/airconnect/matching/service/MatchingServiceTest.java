@@ -8,6 +8,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
+import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.domain.entity.ChatRoom;
@@ -78,6 +79,9 @@ class MatchingServiceTest {
 
     @MockitoBean
     private ChatService chatService;
+
+    @MockitoBean
+    private AnalyticsService analyticsService;
 
     @Test
     @DisplayName("추천 후보가 2명 있으면 2명 반환되고 티켓이 1 차감된다")

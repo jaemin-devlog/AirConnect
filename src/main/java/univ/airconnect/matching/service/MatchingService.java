@@ -7,6 +7,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import univ.airconnect.analytics.domain.AnalyticsEventType;
+import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.service.ChatService;
@@ -48,6 +50,7 @@ public class MatchingService {
     private final ChatService chatService;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
+    private final AnalyticsService analyticsService;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -96,6 +99,14 @@ public class MatchingService {
         if (selectedUsers.isEmpty()) {
             log.warn("⚠️ 추천 대상 없음: userId={}, 티켓 소진 안 함", userId);
             matchingExposureRepository.deleteByUserId(userId);
+            analyticsService.trackServerEvent(
+                    AnalyticsEventType.MATCH_RECOMMENDATION_REFRESHED,
+                    userId,
+                    Map.of(
+                            "candidateCount", 0,
+                            "ticketsRemaining", user.getTickets()
+                    )
+            );
             return MatchingRecommendationResponse.builder()
                     .count(0)
                     .candidates(Collections.emptyList())
@@ -121,6 +132,15 @@ public class MatchingService {
         // ✅ 추천 대상이 있을 때만 티켓 차감
         user.consumeTickets(1);
         log.info("🎫 매칭 티켓 사용: userId={}, 사용한 티켓=1, 남은 티켓={}", userId, user.getTickets());
+
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.MATCH_RECOMMENDATION_REFRESHED,
+                userId,
+                Map.of(
+                        "candidateCount", candidates.size(),
+                        "ticketsRemaining", user.getTickets()
+                )
+        );
 
         return MatchingRecommendationResponse.builder()
                 .count(candidates.size())
@@ -186,7 +206,15 @@ public class MatchingService {
                 user.consumeTickets(2);
                 log.info("🎫 컨택 티켓 사용: userId={}, 사용한 티켓=2, 남은 티켓={}", userId, user.getTickets());
                 sendMatchRequestReceivedNotification(userId, targetUserId, connection);
-                
+                analyticsService.trackServerEvent(
+                        AnalyticsEventType.MATCH_REQUEST_SENT,
+                        userId,
+                        Map.of(
+                                "targetUserId", targetUserId,
+                                "connectionId", connection.getId()
+                        )
+                );
+
                 return new MatchingConnectResponse(null, targetUserId, false);
             }
         }
@@ -211,6 +239,15 @@ public class MatchingService {
         log.info("✅ 매칭 요청 생성 완료: requester={}, target={}, connectionId={}", userId, targetUserId, connection.getId());
         sendMatchRequestReceivedNotification(userId, targetUserId, connection);
 
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.MATCH_REQUEST_SENT,
+                userId,
+                Map.of(
+                        "targetUserId", targetUserId,
+                        "connectionId", connection.getId()
+                )
+        );
+
         return new MatchingConnectResponse(null, targetUserId, false);
     }
 
@@ -230,6 +267,14 @@ public class MatchingService {
         requester.consumeTickets(2);
         log.info("🎫 컨택 티켓 사용(경쟁복구): userId={}, 사용한 티켓=2, 남은 티켓={}", userId, requester.getTickets());
         sendMatchRequestReceivedNotification(userId, targetUserId, connection);
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.MATCH_REQUEST_SENT,
+                userId,
+                Map.of(
+                        "targetUserId", targetUserId,
+                        "connectionId", connection.getId()
+                )
+        );
         return new MatchingConnectResponse(null, targetUserId, false);
     }
 
@@ -346,6 +391,16 @@ public class MatchingService {
 
         log.info("✅ 매칭 요청 수락 완료: 수락자userId={}, 요청자userId={}, connectionId={}, chatRoomId={}", 
                 userId, connection.getRequesterId(), connectionId, room.getId());
+
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.MATCH_REQUEST_ACCEPTED,
+                userId,
+                Map.of(
+                        "connectionId", connection.getId(),
+                        "chatRoomId", room.getId(),
+                        "targetUserId", otherUserId
+                )
+        );
 
         return MatchingResponseResponse.builder()
                 .connectionId(connection.getId())
