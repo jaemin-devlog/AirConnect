@@ -40,6 +40,7 @@ import java.util.*;
 public class MatchingService {
 
     private static final int RECOMMENDATION_LIMIT = 2;
+    private static final String RESTART_PROMPT_MESSAGE = "모든 추천을 확인했습니다. 처음부터 다시 보시겠습니까?";
 
     private final MatchingExposureRepository matchingExposureRepository;
     private final MatchingConnectionRepository matchingConnectionRepository;
@@ -57,6 +58,11 @@ public class MatchingService {
 
     @Transactional
     public MatchingRecommendationResponse recommend(Long userId) {
+        return recommend(userId, false);
+    }
+
+    @Transactional
+    public MatchingRecommendationResponse recommend(Long userId, boolean restart) {
         validateActiveUser(userId);
         requireProfileGender(userId);
 
@@ -86,14 +92,35 @@ public class MatchingService {
                 .limit(RECOMMENDATION_LIMIT)
                 .toList();
 
-        // 이미 모든 후보가 소진된 경우 노출 이력을 리셋하고 처음부터 다시 순환한다.
-        if (selectedUsers.isEmpty() && !allCandidates.isEmpty()) {
+        boolean cycleExhausted = selectedUsers.isEmpty() && !allCandidates.isEmpty();
+        if (cycleExhausted && restart) {
             matchingExposureRepository.deleteByUserId(userId);
             List<User> resetCandidates = new ArrayList<>(allCandidates);
             Collections.shuffle(resetCandidates);
             selectedUsers = resetCandidates.stream()
                     .limit(RECOMMENDATION_LIMIT)
                     .toList();
+            cycleExhausted = false;
+        }
+
+        if (cycleExhausted) {
+            log.info("추천 사이클이 모두 소진되어 재시작 확인이 필요합니다. userId={}, tickets={}", userId, user.getTickets());
+            analyticsService.trackServerEvent(
+                    AnalyticsEventType.MATCH_RECOMMENDATION_REFRESHED,
+                    userId,
+                    Map.of(
+                            "candidateCount", 0,
+                            "ticketsRemaining", user.getTickets(),
+                            "restartRequired", true
+                    )
+            );
+            return MatchingRecommendationResponse.builder()
+                    .count(0)
+                    .candidates(Collections.emptyList())
+                    .userTicketsRemaining(user.getTickets())
+                    .restartRequired(true)
+                    .restartPromptMessage(RESTART_PROMPT_MESSAGE)
+                    .build();
         }
 
         if (selectedUsers.isEmpty()) {
@@ -111,6 +138,8 @@ public class MatchingService {
                     .count(0)
                     .candidates(Collections.emptyList())
                     .userTicketsRemaining(user.getTickets())
+                    .restartRequired(false)
+                    .restartPromptMessage(null)
                     .build();
         }
 
@@ -129,12 +158,14 @@ public class MatchingService {
                 .map(this::toMatchingCandidateResponse)
                 .toList();
 
-        if (candidates.size() >= RECOMMENDATION_LIMIT) {
+        boolean ticketConsumed = false;
+        if (candidates.size() >= RECOMMENDATION_LIMIT && !restart) {
             user.consumeTickets(1);
+            ticketConsumed = true;
             log.info("🎫 매칭 티켓 사용: userId={}, 사용한 티켓=1, 남은 티켓={}", userId, user.getTickets());
         } else {
-            log.info("추천 후보가 1명 이하라 티켓을 차감하지 않습니다. userId={}, candidateCount={}, 남은 티켓={}",
-                    userId, candidates.size(), user.getTickets());
+            log.info("추천 티켓을 차감하지 않습니다. userId={}, candidateCount={}, restart={}, 남은 티켓={}",
+                    userId, candidates.size(), restart, user.getTickets());
         }
 
         analyticsService.trackServerEvent(
@@ -142,7 +173,9 @@ public class MatchingService {
                 userId,
                 Map.of(
                         "candidateCount", candidates.size(),
-                        "ticketsRemaining", user.getTickets()
+                        "ticketsRemaining", user.getTickets(),
+                        "restartRequired", false,
+                        "ticketConsumed", ticketConsumed
                 )
         );
 
@@ -150,6 +183,8 @@ public class MatchingService {
                 .count(candidates.size())
                 .candidates(candidates)
                 .userTicketsRemaining(user.getTickets())
+                .restartRequired(false)
+                .restartPromptMessage(null)
                 .build();
     }
 
