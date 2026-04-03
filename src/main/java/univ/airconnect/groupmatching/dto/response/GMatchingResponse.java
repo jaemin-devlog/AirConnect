@@ -1,5 +1,6 @@
 package univ.airconnect.groupmatching.dto.response;
 
+import org.springframework.data.domain.Page;
 import univ.airconnect.groupmatching.domain.GFinalGroupRoomStatus;
 import univ.airconnect.groupmatching.domain.GGenderFilter;
 import univ.airconnect.groupmatching.domain.GTeamGender;
@@ -29,6 +30,7 @@ public final class GMatchingResponse {
             GTemporaryTeamRoomStatus status,
             GGenderFilter opponentGenderFilter,
             GTeamVisibility visibility,
+            boolean locked,
             Long tempChatRoomId,
             LocalDateTime createdAt
     ) {
@@ -43,8 +45,31 @@ public final class GMatchingResponse {
                     room.getStatus(),
                     room.getOpponentGenderFilter(),
                     room.getVisibility(),
+                    room.isPrivateRoom(),
                     room.getTempChatRoomId(),
                     room.getCreatedAt()
+            );
+        }
+    }
+
+    public record RecruitableTeamRoomPageResponse(
+            List<PublicTeamRoomSummaryResponse> rooms,
+            int page,
+            int size,
+            long totalElements,
+            int totalPages,
+            boolean hasNext
+    ) {
+        public static RecruitableTeamRoomPageResponse from(Page<GTemporaryTeamRoom> roomsPage) {
+            return new RecruitableTeamRoomPageResponse(
+                    roomsPage.getContent().stream()
+                            .map(PublicTeamRoomSummaryResponse::from)
+                            .toList(),
+                    roomsPage.getNumber(),
+                    roomsPage.getSize(),
+                    roomsPage.getTotalElements(),
+                    roomsPage.getTotalPages(),
+                    roomsPage.hasNext()
             );
         }
     }
