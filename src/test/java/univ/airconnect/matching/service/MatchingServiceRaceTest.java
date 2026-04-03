@@ -1,14 +1,17 @@
 package univ.airconnect.matching.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
+import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.matching.domain.ConnectionStatus;
@@ -18,8 +21,10 @@ import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.repository.MatchingExposureRepository;
+import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -43,9 +48,17 @@ class MatchingServiceRaceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
+    private UserMilestoneRepository userMilestoneRepository;
+    @Mock
     private UserProfileRepository userProfileRepository;
     @Mock
     private ChatService chatService;
+    @Mock
+    private AnalyticsService analyticsService;
+    @Mock
+    private NotificationService notificationService;
+    @Spy
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
     private MatchingService matchingService;
@@ -89,6 +102,7 @@ class MatchingServiceRaceTest {
         User requester = testUser(userId, 10);
         User target = testUser(targetUserId, 10);
         MatchingConnection accepted = MatchingConnection.createPending(userId, targetUserId);
+        ReflectionTestUtils.setField(accepted, "id", 55L);
         accepted.accept(99L);
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(requester));
