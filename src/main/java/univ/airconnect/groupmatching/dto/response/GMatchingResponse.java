@@ -52,6 +52,7 @@ public final class GMatchingResponse {
     public record TeamMemberSummaryResponse(
             Long userId,
             String nickname,
+            String profileImage,
             boolean leader,
             boolean active,
             boolean ready,
@@ -61,11 +62,13 @@ public final class GMatchingResponse {
         public static TeamMemberSummaryResponse from(
                 GTemporaryTeamMember member,
                 String nickname,
+                String profileImage,
                 boolean ready
         ) {
             return new TeamMemberSummaryResponse(
                     member.getUserId(),
                     nickname,
+                    profileImage,
                     member.isLeader(),
                     member.isActiveMember(),
                     ready,

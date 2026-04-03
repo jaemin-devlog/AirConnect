@@ -348,18 +348,19 @@ public class GMatchingController {
                 .distinct()
                 .toList();
 
-        Map<Long, String> nicknameMap = userRepository.findAllById(userIds)
+        Map<Long, User> userMap = userRepository.findAllByIdWithProfile(userIds)
                 .stream()
                 .collect(Collectors.toMap(
                         User::getId,
-                        User::getNickname,
+                        user -> user,
                         (left, right) -> left
                 ));
 
         List<GMatchingResponse.TeamMemberSummaryResponse> memberResponses = members.stream()
                 .map(member -> GMatchingResponse.TeamMemberSummaryResponse.from(
                         member,
-                        nicknameMap.get(member.getUserId()),
+                        userMap.containsKey(member.getUserId()) ? userMap.get(member.getUserId()).getNickname() : null,
+                        extractProfileImage(userMap.get(member.getUserId())),
                         Boolean.TRUE.equals(readyMap.get(member.getUserId()))
                 ))
                 .toList();
@@ -390,6 +391,13 @@ public class GMatchingController {
 
     private String matchingSubscriptionDestination(Long teamRoomId) {
         return MATCHING_TEAM_ROOM_SUB_PREFIX + teamRoomId;
+    }
+
+    private String extractProfileImage(User user) {
+        if (user == null || user.getUserProfile() == null) {
+            return null;
+        }
+        return user.getUserProfile().getProfileImagePath();
     }
 
     /**
