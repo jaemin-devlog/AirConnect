@@ -206,13 +206,55 @@ class GMatchingServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(joiner));
         when(temporaryTeamRoomRepository.findActiveRoomsByUserId(eq(userId), anySet())).thenReturn(List.of());
         when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
-        when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(roomId, userId)).thenReturn(false);
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.empty());
         when(temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(roomId)).thenReturn(List.of());
 
         GTemporaryTeamRoom joined = service.joinRoomByInviteCode("INVITE1234", userId);
 
         assertThat(joined).isSameAs(teamRoom);
         verify(chatService).addMembersToRoom(300L, List.of(userId));
+    }
+
+    @Test
+    void joinRoomByInviteCode_rejoinsLeftMember() {
+        GMatchingService service = createService();
+        Long roomId = 205L;
+        Long userId = 25L;
+
+        User joiner = createUser(userId, "rejoiner");
+        UserProfile profile = createProfile(joiner, Gender.MALE);
+        GTemporaryTeamRoom teamRoom = mock(GTemporaryTeamRoom.class);
+        GTemporaryTeamMember existingMember = mock(GTemporaryTeamMember.class);
+        GTeamReadyState existingReadyState = mock(GTeamReadyState.class);
+
+        when(temporaryTeamRoomRepository.findByInviteCode("REJOIN1234")).thenReturn(Optional.of(teamRoom));
+        when(teamRoom.getId()).thenReturn(roomId);
+        when(temporaryTeamRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(teamRoom));
+        when(teamRoom.getLeaderId()).thenReturn(999L);
+        when(teamRoom.getStatus()).thenReturn(
+                GTemporaryTeamRoomStatus.OPEN,
+                GTemporaryTeamRoomStatus.OPEN,
+                GTemporaryTeamRoomStatus.OPEN
+        );
+        when(teamRoom.isFull()).thenReturn(false);
+        when(teamRoom.getTeamGender()).thenReturn(GTeamGender.M);
+        when(teamRoom.getTempChatRoomId()).thenReturn(305L);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(joiner));
+        when(temporaryTeamRoomRepository.findActiveRoomsByUserId(eq(userId), anySet())).thenReturn(List.of());
+        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(existingMember));
+        when(existingMember.isActiveMember()).thenReturn(false);
+        when(teamReadyStateRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(existingReadyState));
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(roomId)).thenReturn(List.of());
+
+        GTemporaryTeamRoom joined = service.joinRoomByInviteCode("REJOIN1234", userId);
+
+        assertThat(joined).isSameAs(teamRoom);
+        verify(existingMember).rejoin();
+        verify(existingReadyState).markNotReady();
+        verify(temporaryTeamMemberRepository, never()).save(any(GTemporaryTeamMember.class));
+        verify(teamReadyStateRepository, never()).save(any(GTeamReadyState.class));
+        verify(chatService).addMembersToRoom(305L, List.of(userId));
     }
 
     @Test
@@ -317,6 +359,8 @@ class GMatchingServiceTest {
         NotificationService.CreateCommand command = commandCaptor.getValue();
         assertThat(command.userId()).isEqualTo(otherUserId);
         assertThat(command.type()).isEqualTo(NotificationType.TEAM_MEMBER_READY_CHANGED);
+        assertThat(command.title()).isEqualTo("팀원 준비 완료");
+        assertThat(command.body()).isEqualTo("팀원이 준비를 완료했어요.");
     }
 
     @Test
@@ -349,7 +393,7 @@ class GMatchingServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(joiner));
         when(temporaryTeamRoomRepository.findActiveRoomsByUserId(eq(userId), anySet())).thenReturn(List.of());
         when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
-        when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(roomId, userId)).thenReturn(false);
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(roomId, userId)).thenReturn(Optional.empty());
 
         when(leaderMember.getUserId()).thenReturn(leaderId);
         when(joinerMember.getUserId()).thenReturn(userId);

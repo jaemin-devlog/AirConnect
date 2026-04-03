@@ -90,6 +90,14 @@ public class GTemporaryTeamMember {
         this.updatedAt = LocalDateTime.now();
     }
 
+    public void rejoin() {
+        if (leftAt == null) {
+            throw new BusinessException(ErrorCode.ALREADY_TEAM_MEMBER, "이미 활성 상태인 팀원입니다.");
+        }
+        this.leftAt = null;
+        this.updatedAt = LocalDateTime.now();
+    }
+
     public boolean isLeader() {
         return Boolean.TRUE.equals(leader);
     }

@@ -570,13 +570,28 @@ public class GMatchingService {
         }
         validateUserTeamGender(userId, teamRoom.getTeamGender());
 
-        if (temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(teamRoom.getId(), userId)) {
-            throw new BusinessException(ErrorCode.ALREADY_TEAM_MEMBER);
+        Optional<GTemporaryTeamMember> existingMember = temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(teamRoom.getId(), userId);
+        if (existingMember.isPresent()) {
+            GTemporaryTeamMember member = existingMember.get();
+            if (member.isActiveMember()) {
+                throw new BusinessException(ErrorCode.ALREADY_TEAM_MEMBER);
+            }
         }
 
         teamRoom.addMember();
-        temporaryTeamMemberRepository.save(GTemporaryTeamMember.create(teamRoom.getId(), userId, false));
-        teamReadyStateRepository.save(GTeamReadyState.create(teamRoom.getId(), userId));
+        if (existingMember.isPresent()) {
+            existingMember.get().rejoin();
+        } else {
+            temporaryTeamMemberRepository.save(GTemporaryTeamMember.create(teamRoom.getId(), userId, false));
+        }
+
+        Optional<GTeamReadyState> existingReadyState =
+                teamReadyStateRepository.findByTeamRoomIdAndUserId(teamRoom.getId(), userId);
+        if (existingReadyState.isPresent()) {
+            existingReadyState.get().markNotReady();
+        } else {
+            teamReadyStateRepository.save(GTeamReadyState.create(teamRoom.getId(), userId));
+        }
         resetReadyStatesForActiveMembers(teamRoom.getId());
 
         boolean becameReadyCheck = false;
@@ -784,8 +799,8 @@ public class GMatchingService {
         payload.put("ready", ready);
         payload.put("status", teamRoom.getStatus().name());
         payload.put("currentMemberCount", teamRoom.getCurrentMemberCount());
-        String title = ready ? "Team member ready" : "Team member unready";
-        String body = ready ? "A teammate marked ready." : "A teammate canceled ready.";
+        String title = ready ? "팀원 준비 완료" : "팀원 준비 취소";
+        String body = ready ? "팀원이 준비를 완료했어요." : "팀원이 준비를 취소했어요.";
 
         for (Long recipientId : recipientIds) {
             sendGroupNotification(
