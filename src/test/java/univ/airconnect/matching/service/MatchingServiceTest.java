@@ -96,6 +96,8 @@ class MatchingServiceTest {
         assertThat(response.getCount()).isEqualTo(2);
         assertThat(response.getCandidates()).extracting("userId").containsExactlyInAnyOrder(c1.getId(), c2.getId());
         assertThat(reloaded.getTickets()).isEqualTo(99);
+        assertThat(response.isRestartRequired()).isFalse();
+        assertThat(response.getRestartPromptMessage()).isNull();
     }
 
     @Test
@@ -110,6 +112,8 @@ class MatchingServiceTest {
         assertThat(response.getCount()).isEqualTo(1);
         assertThat(response.getCandidates()).extracting("userId").containsExactly(c1.getId());
         assertThat(reloaded.getTickets()).isEqualTo(100);
+        assertThat(response.isRestartRequired()).isFalse();
+        assertThat(response.getRestartPromptMessage()).isNull();
     }
 
     @Test
@@ -123,6 +127,8 @@ class MatchingServiceTest {
         assertThat(response.getCount()).isEqualTo(0);
         assertThat(response.getCandidates()).isEmpty();
         assertThat(reloaded.getTickets()).isEqualTo(100);
+        assertThat(response.isRestartRequired()).isFalse();
+        assertThat(response.getRestartPromptMessage()).isNull();
     }
 
     @Test
@@ -162,17 +168,40 @@ class MatchingServiceTest {
 
     @Test
     @DisplayName("한 사이클 소진 후에는 노출 이력이 리셋되어 재순환된다")
-    void recommend_resetsAfterCycle() {
+    void recommend_requiresRestartConfirmationAfterCycleExhausted() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         saveUserWithProfile("u2", Gender.FEMALE, 100);
         saveUserWithProfile("u3", Gender.FEMALE, 100);
 
         matchingService.recommend(requester.getId());
+        MatchingRecommendationResponse exhausted = matchingService.recommend(requester.getId());
+
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(exhausted.getCount()).isEqualTo(0);
+        assertThat(exhausted.getCandidates()).isEmpty();
+        assertThat(exhausted.isRestartRequired()).isTrue();
+        assertThat(exhausted.getRestartPromptMessage()).isEqualTo("모든 추천을 확인했습니다. 처음부터 다시 보시겠습니까?");
+        assertThat(reloaded.getTickets()).isEqualTo(99);
+    }
+
+    @Test
+    @DisplayName("재시작 확인 후에는 처음부터 다시 추천되며 티켓은 차감되지 않는다")
+    void recommend_restartsAfterConfirmationWithoutConsumingTicket() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        saveUserWithProfile("u2", Gender.FEMALE, 100);
+        saveUserWithProfile("u3", Gender.FEMALE, 100);
+
         matchingService.recommend(requester.getId());
+        MatchingRecommendationResponse exhausted = matchingService.recommend(requester.getId());
+        MatchingRecommendationResponse restarted = matchingService.recommend(requester.getId(), true);
 
-        MatchingRecommendationResponse third = matchingService.recommend(requester.getId());
-
-        assertThat(third.getCount()).isGreaterThan(0);
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(exhausted.isRestartRequired()).isTrue();
+        assertThat(restarted.getCount()).isEqualTo(2);
+        assertThat(restarted.getCandidates()).hasSize(2);
+        assertThat(restarted.isRestartRequired()).isFalse();
+        assertThat(restarted.getRestartPromptMessage()).isNull();
+        assertThat(reloaded.getTickets()).isEqualTo(99);
     }
 
     @Test

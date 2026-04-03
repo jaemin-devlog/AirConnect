@@ -27,10 +27,11 @@ public class MatchingController {
     @GetMapping("/recommendations")
     public ResponseEntity<ApiResponse<MatchingRecommendationResponse>> recommend(
             @CurrentUserId Long userId,
+            @RequestParam(name = "restart", defaultValue = "false") boolean restart,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        MatchingRecommendationResponse response = matchingService.recommend(userId);
+        MatchingRecommendationResponse response = matchingService.recommend(userId, restart);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
