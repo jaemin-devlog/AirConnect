@@ -300,6 +300,7 @@ class GMatchingServiceTest {
         assertThat(response.getProfile()).isNotNull();
         assertThat(response.getProfile().getGender()).isEqualTo(Gender.FEMALE);
         assertThat(response.getDeptName()).isEqualTo("dept");
+        assertThat(response.getProfileImage()).isEqualTo("profiles/" + targetUserId + ".png");
     }
 
     @Test
@@ -741,6 +742,7 @@ class GMatchingServiceTest {
         );
         ReflectionTestUtils.setField(profile, "userId", user.getId());
         ReflectionTestUtils.setField(user, "userProfile", profile);
+        profile.updateProfileImagePath("profiles/" + user.getId() + ".png");
         return profile;
     }
 }

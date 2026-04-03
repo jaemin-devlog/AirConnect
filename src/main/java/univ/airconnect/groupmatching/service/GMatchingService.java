@@ -1249,6 +1249,7 @@ public class GMatchingService {
                 .socialId(user.getSocialId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
+                .profileImage(profile != null ? profile.getProfileImagePath() : null)
                 .studentNum(user.getStudentNum())
                 .age(profile != null ? profile.getAge() : null)
                 .status(user.getStatus())
