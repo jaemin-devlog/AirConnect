@@ -155,6 +155,7 @@ class ChatServiceTest {
         assertThat(response.isProfileExists()).isTrue();
         assertThat(response.getProfile()).isNotNull();
         assertThat(response.getProfile().getGender()).isEqualTo(Gender.FEMALE);
+        assertThat(response.getProfileImage()).isEqualTo("profiles/" + targetUserId + ".png");
     }
 
     private ChatService createService() {
@@ -198,6 +199,7 @@ class ChatServiceTest {
         );
         ReflectionTestUtils.setField(profile, "userId", user.getId());
         ReflectionTestUtils.setField(user, "userProfile", profile);
+        profile.updateProfileImagePath("profiles/" + user.getId() + ".png");
         return profile;
     }
 }
