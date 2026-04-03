@@ -100,7 +100,7 @@ class MatchingServiceTest {
 
     @Test
     @DisplayName("추천 후보가 1명만 있으면 1명 반환되고 티켓이 1 차감된다")
-    void recommend_returnsOneAndConsumesOneTicket() {
+    void recommend_returnsOneAndDoesNotConsumeTicket() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User c1 = saveUserWithProfile("u2", Gender.FEMALE, 100);
 
@@ -109,7 +109,7 @@ class MatchingServiceTest {
         User reloaded = userRepository.findById(requester.getId()).orElseThrow();
         assertThat(response.getCount()).isEqualTo(1);
         assertThat(response.getCandidates()).extracting("userId").containsExactly(c1.getId());
-        assertThat(reloaded.getTickets()).isEqualTo(99);
+        assertThat(reloaded.getTickets()).isEqualTo(100);
     }
 
     @Test
@@ -156,6 +156,8 @@ class MatchingServiceTest {
 
         assertThat(allShown).doesNotHaveDuplicates();
         assertThat(allShown).contains(c1.getId(), c2.getId(), c3.getId());
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(reloaded.getTickets()).isEqualTo(99);
     }
 
     @Test

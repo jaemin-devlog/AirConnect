@@ -129,9 +129,13 @@ public class MatchingService {
                 .map(this::toMatchingCandidateResponse)
                 .toList();
 
-        // ✅ 추천 대상이 있을 때만 티켓 차감
-        user.consumeTickets(1);
-        log.info("🎫 매칭 티켓 사용: userId={}, 사용한 티켓=1, 남은 티켓={}", userId, user.getTickets());
+        if (candidates.size() >= RECOMMENDATION_LIMIT) {
+            user.consumeTickets(1);
+            log.info("🎫 매칭 티켓 사용: userId={}, 사용한 티켓=1, 남은 티켓={}", userId, user.getTickets());
+        } else {
+            log.info("추천 후보가 1명 이하라 티켓을 차감하지 않습니다. userId={}, candidateCount={}, 남은 티켓={}",
+                    userId, candidates.size(), user.getTickets());
+        }
 
         analyticsService.trackServerEvent(
                 AnalyticsEventType.MATCH_RECOMMENDATION_REFRESHED,
