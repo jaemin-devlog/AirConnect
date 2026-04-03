@@ -74,16 +74,13 @@ public class GMatchingController {
      * 공개 모집 중인 임시 팀방 목록을 조회한다.
      * 현재는 teamSize 기준으로만 직접 필터링한다.
      */
-    @GetMapping("/public")
-    public ResponseEntity<List<GMatchingResponse.PublicTeamRoomSummaryResponse>> getRecruitablePublicRooms(
-            @RequestParam("teamSize") univ.airconnect.groupmatching.domain.GTeamSize teamSize
+    @GetMapping({"/public", "/recruitable"})
+    public ResponseEntity<GMatchingResponse.RecruitableTeamRoomPageResponse> getRecruitableTeamRooms(
+            @RequestParam("teamSize") univ.airconnect.groupmatching.domain.GTeamSize teamSize,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        List<GMatchingResponse.PublicTeamRoomSummaryResponse> response = matchingService.findRecruitablePublicRooms(teamSize)
-                .stream()
-                .map(GMatchingResponse.PublicTeamRoomSummaryResponse::from)
-                .toList();
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(matchingService.findRecruitableTeamRooms(teamSize, page, size));
     }
 
     /**

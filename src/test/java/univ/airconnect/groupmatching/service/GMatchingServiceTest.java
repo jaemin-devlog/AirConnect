@@ -6,6 +6,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -25,6 +27,7 @@ import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
 import univ.airconnect.groupmatching.domain.entity.GTeamReadyState;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamMember;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamRoom;
+import univ.airconnect.groupmatching.dto.response.GMatchingResponse;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
 import univ.airconnect.groupmatching.repository.GMatchResultRepository;
 import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
@@ -38,6 +41,7 @@ import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
+import java.time.LocalDateTime;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
@@ -301,6 +305,58 @@ class GMatchingServiceTest {
         assertThat(response.getProfile().getGender()).isEqualTo(Gender.FEMALE);
         assertThat(response.getDeptName()).isEqualTo("dept");
         assertThat(response.getProfileImage()).isEqualTo("profiles/" + targetUserId + ".png");
+    }
+
+    @Test
+    void findRecruitableTeamRooms_returnsPublicAndPrivateRoomsWithPagingMetadata() {
+        GMatchingService service = createService();
+        LocalDateTime now = LocalDateTime.now();
+
+        GTemporaryTeamRoom publicRoom = mock(GTemporaryTeamRoom.class);
+        when(publicRoom.getId()).thenReturn(1L);
+        when(publicRoom.getTeamName()).thenReturn("public-room");
+        when(publicRoom.getTeamGender()).thenReturn(GTeamGender.M);
+        when(publicRoom.getTeamSize()).thenReturn(GTeamSize.TWO);
+        when(publicRoom.getCurrentMemberCount()).thenReturn(1);
+        when(publicRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.OPEN);
+        when(publicRoom.getOpponentGenderFilter()).thenReturn(GGenderFilter.ANY);
+        when(publicRoom.getVisibility()).thenReturn(GTeamVisibility.PUBLIC);
+        when(publicRoom.isPrivateRoom()).thenReturn(false);
+        when(publicRoom.getTempChatRoomId()).thenReturn(101L);
+        when(publicRoom.getCreatedAt()).thenReturn(now);
+
+        GTemporaryTeamRoom privateRoom = mock(GTemporaryTeamRoom.class);
+        when(privateRoom.getId()).thenReturn(2L);
+        when(privateRoom.getTeamName()).thenReturn("private-room");
+        when(privateRoom.getTeamGender()).thenReturn(GTeamGender.F);
+        when(privateRoom.getTeamSize()).thenReturn(GTeamSize.TWO);
+        when(privateRoom.getCurrentMemberCount()).thenReturn(1);
+        when(privateRoom.getStatus()).thenReturn(GTemporaryTeamRoomStatus.OPEN);
+        when(privateRoom.getOpponentGenderFilter()).thenReturn(GGenderFilter.ANY);
+        when(privateRoom.getVisibility()).thenReturn(GTeamVisibility.PRIVATE);
+        when(privateRoom.isPrivateRoom()).thenReturn(true);
+        when(privateRoom.getTempChatRoomId()).thenReturn(102L);
+        when(privateRoom.getCreatedAt()).thenReturn(now.plusMinutes(1));
+
+        when(temporaryTeamRoomRepository.findRecruitableRooms(
+                GTemporaryTeamRoomStatus.OPEN,
+                GTeamSize.TWO,
+                PageRequest.of(0, 2)
+        )).thenReturn(new PageImpl<>(List.of(publicRoom, privateRoom), PageRequest.of(0, 2), 3));
+
+        GMatchingResponse.RecruitableTeamRoomPageResponse response =
+                service.findRecruitableTeamRooms(GTeamSize.TWO, 0, 2);
+
+        assertThat(response.rooms()).hasSize(2);
+        assertThat(response.rooms()).extracting(GMatchingResponse.PublicTeamRoomSummaryResponse::visibility)
+                .containsExactly(GTeamVisibility.PUBLIC, GTeamVisibility.PRIVATE);
+        assertThat(response.rooms()).extracting(GMatchingResponse.PublicTeamRoomSummaryResponse::locked)
+                .containsExactly(false, true);
+        assertThat(response.page()).isEqualTo(0);
+        assertThat(response.size()).isEqualTo(2);
+        assertThat(response.totalElements()).isEqualTo(3);
+        assertThat(response.totalPages()).isEqualTo(2);
+        assertThat(response.hasNext()).isTrue();
     }
 
     @Test

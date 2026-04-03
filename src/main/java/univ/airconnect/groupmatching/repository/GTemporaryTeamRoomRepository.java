@@ -1,6 +1,7 @@
 package univ.airconnect.groupmatching.repository;
 
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -8,7 +9,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import univ.airconnect.groupmatching.domain.GTeamSize;
-import univ.airconnect.groupmatching.domain.GTeamVisibility;
 import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamRoom;
 
@@ -84,18 +84,33 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
      * 공개 모집 중인 임시 팀방 목록 조회
      * - 정원 미달 여부는 서비스에서 t.isFull()로 한 번 더 거르는 것을 권장
      */
-    @Query("""
-            select t
-            from GTemporaryTeamRoom t
-            where t.visibility = :visibility
-              and t.status = :status
-              and t.teamSize = :teamSize
-            order by t.createdAt asc
-            """)
-    List<GTemporaryTeamRoom> findRecruitablePublicRooms(
-            @Param("visibility") GTeamVisibility visibility,
+    @Query(
+            value = """
+                    select t
+                    from GTemporaryTeamRoom t
+                    where t.status = :status
+                      and t.teamSize = :teamSize
+                      and (
+                          (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.TWO and t.currentMemberCount < 2)
+                          or (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.THREE and t.currentMemberCount < 3)
+                      )
+                    order by t.createdAt asc, t.id asc
+                    """,
+            countQuery = """
+                    select count(t)
+                    from GTemporaryTeamRoom t
+                    where t.status = :status
+                      and t.teamSize = :teamSize
+                      and (
+                          (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.TWO and t.currentMemberCount < 2)
+                          or (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.THREE and t.currentMemberCount < 3)
+                      )
+                    """
+    )
+    Page<GTemporaryTeamRoom> findRecruitableRooms(
             @Param("status") GTemporaryTeamRoomStatus status,
-            @Param("teamSize") GTeamSize teamSize
+            @Param("teamSize") GTeamSize teamSize,
+            Pageable pageable
     );
 
     /**

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +31,7 @@ import univ.airconnect.groupmatching.domain.entity.GMatchResult;
 import univ.airconnect.groupmatching.domain.entity.GTeamReadyState;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamMember;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamRoom;
+import univ.airconnect.groupmatching.dto.response.GMatchingResponse;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
 import univ.airconnect.groupmatching.repository.GMatchResultRepository;
 import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
@@ -161,14 +164,17 @@ public class GMatchingService {
     /** 공개 모집 중인 임시 팀방 목록을 조회한다. */
 
     @Transactional(readOnly = true)
-    public List<GTemporaryTeamRoom> findRecruitablePublicRooms(GTeamSize teamSize) {
-        return temporaryTeamRoomRepository.findRecruitablePublicRooms(
-                        GTeamVisibility.PUBLIC,
-                        GTemporaryTeamRoomStatus.OPEN,
-                        teamSize
-                ).stream()
-                .filter(room -> !room.isFull())
-                .collect(Collectors.toList());
+    public GMatchingResponse.RecruitableTeamRoomPageResponse findRecruitableTeamRooms(
+            GTeamSize teamSize,
+            int page,
+            int size
+    ) {
+        Page<GTemporaryTeamRoom> roomsPage = temporaryTeamRoomRepository.findRecruitableRooms(
+                GTemporaryTeamRoomStatus.OPEN,
+                teamSize,
+                PageRequest.of(page, size)
+        );
+        return GMatchingResponse.RecruitableTeamRoomPageResponse.from(roomsPage);
     }
 
     /**
