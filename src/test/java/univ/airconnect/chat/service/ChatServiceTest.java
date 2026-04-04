@@ -14,8 +14,11 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.chat.domain.ChatRoomType;
+import univ.airconnect.chat.domain.entity.ChatMessage;
 import univ.airconnect.chat.domain.entity.ChatRoom;
+import univ.airconnect.chat.domain.entity.ChatRoomMember;
 import univ.airconnect.chat.dto.request.ChatMessageRequest;
+import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
@@ -29,10 +32,13 @@ import univ.airconnect.user.repository.UserRepository;
 
 import java.util.Optional;
 import java.util.List;
+import java.time.LocalDateTime;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -156,6 +162,100 @@ class ChatServiceTest {
         assertThat(response.getProfile()).isNotNull();
         assertThat(response.getProfile().getGender()).isEqualTo(Gender.FEMALE);
         assertThat(response.getProfileImage()).isEqualTo("profiles/" + targetUserId + ".png");
+    }
+
+    @Test
+    void updateLastRead_marksMessagesReadAndUpdatesLastReadMessageId() {
+        ChatService service = createService();
+        Long roomId = 500L;
+        Long userId = 10L;
+
+        ChatRoom room = ChatRoom.create("room-500", ChatRoomType.PERSONAL);
+        User user = createUser(userId, "reader");
+        ChatRoomMember member = ChatRoomMember.create(room, user);
+        ChatMessage lastMessage = ChatMessage.create(roomId, 20L, "sender", "hello", univ.airconnect.chat.domain.MessageType.TEXT);
+        ReflectionTestUtils.setField(lastMessage, "id", 77L);
+
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(member));
+        when(chatMessageRepository.findUnreadIncomingMessageIds(roomId, userId)).thenReturn(List.of(11L, 12L));
+        when(chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)).thenReturn(Optional.of(lastMessage));
+
+        service.updateLastRead(roomId, userId);
+
+        verify(chatMessageRepository).markIncomingMessagesRead(eq(roomId), eq(userId), any(LocalDateTime.class));
+        assertThat(member.getLastReadMessageId()).isEqualTo(77L);
+    }
+
+    @Test
+    void deleteMessage_softDeletesOwnMessage() {
+        ChatService service = createService();
+        Long roomId = 99L;
+        Long userId = 1L;
+        Long messageId = 100L;
+        User user = createUser(userId, "sender");
+        ChatMessage message = ChatMessage.create(roomId, userId, "sender", "hello", univ.airconnect.chat.domain.MessageType.TEXT);
+        ReflectionTestUtils.setField(message, "id", messageId);
+
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)).thenReturn(true);
+        when(chatMessageRepository.findById(messageId)).thenReturn(Optional.of(message));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        var response = service.deleteMessage(userId, roomId, messageId);
+
+        assertThat(response.isDeleted()).isTrue();
+        assertThat(response.getContent()).isEqualTo("삭제된 메시지입니다.");
+    }
+
+    @Test
+    void findAllRooms_returnsRoomListWithCounterpartInfo() {
+        ChatService service = createService();
+        Long myUserId = 1L;
+        Long roomId = 300L;
+        User me = createUser(myUserId, "me");
+        User other = createUser(2L, "other");
+        createProfile(other, Gender.FEMALE);
+        ChatRoom room = ChatRoom.createPersonal("소개팅 1:1", myUserId, other.getId(), 88L);
+        ReflectionTestUtils.setField(room, "id", roomId);
+        room.updateLastMessage("latest", LocalDateTime.now());
+
+        ChatRoomMember myMembership = ChatRoomMember.create(room, me);
+        ChatRoomMember otherMembership = ChatRoomMember.create(room, other);
+
+        when(chatRoomMemberRepository.findByUser_IdWithRoom(myUserId)).thenReturn(List.of(myMembership));
+        when(chatMessageRepository.findLatestMessagesByRoomIds(List.of(roomId))).thenReturn(List.of());
+        when(chatMessageRepository.countUnreadByUserId(myUserId)).thenReturn(java.util.Collections.singletonList(new Object[]{roomId, 2L}));
+        when(chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(roomId))).thenReturn(List.of(myMembership, otherMembership));
+
+        List<ChatRoomResponse> response = service.findAllRooms(myUserId);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).getTargetUserId()).isEqualTo(other.getId());
+        assertThat(response.get(0).getTargetNickname()).isEqualTo("other");
+        assertThat(response.get(0).getUnreadCount()).isEqualTo(2);
+    }
+
+    @Test
+    void findMessagesByRoomId_returnsChronologicalMessages() {
+        ChatService service = createService();
+        Long roomId = 700L;
+        Long userId = 1L;
+        User sender = createUser(2L, "sender");
+        createProfile(sender, Gender.FEMALE);
+        ChatMessage newer = ChatMessage.create(roomId, sender.getId(), "sender", "second", univ.airconnect.chat.domain.MessageType.TEXT);
+        ChatMessage older = ChatMessage.create(roomId, sender.getId(), "sender", "first", univ.airconnect.chat.domain.MessageType.TEXT);
+        ReflectionTestUtils.setField(newer, "id", 20L);
+        ReflectionTestUtils.setField(older, "id", 10L);
+
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)).thenReturn(true);
+        when(chatMessageRepository.findMessagesCursor(eq(roomId), eq(null), any())).thenReturn(List.of(newer, older));
+        when(userRepository.findAllByIdWithProfile(Set.of(sender.getId()))).thenReturn(List.of(sender));
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)).thenReturn(Optional.empty());
+
+        List<ChatMessageResponse> response = service.findMessagesByRoomId(roomId, userId, null, 20);
+
+        assertThat(response).hasSize(2);
+        assertThat(response.get(0).getId()).isEqualTo(10L);
+        assertThat(response.get(1).getId()).isEqualTo(20L);
     }
 
     private ChatService createService() {
