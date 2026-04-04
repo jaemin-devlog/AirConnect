@@ -177,6 +177,11 @@ public class GMatchingService {
         return GMatchingResponse.RecruitableTeamRoomPageResponse.from(roomsPage);
     }
 
+    @Transactional(readOnly = true)
+    public long countRecruitableTeamRooms() {
+        return temporaryTeamRoomRepository.countRecruitableRooms(GTemporaryTeamRoomStatus.OPEN);
+    }
+
     /**
      * 공개방에 입장한다.
      */

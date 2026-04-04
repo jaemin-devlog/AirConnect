@@ -113,6 +113,17 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
             Pageable pageable
     );
 
+    @Query("""
+            select count(t)
+            from GTemporaryTeamRoom t
+            where t.status = :status
+              and (
+                  (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.TWO and t.currentMemberCount < 2)
+                  or (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.THREE and t.currentMemberCount < 3)
+              )
+            """)
+    long countRecruitableRooms(@Param("status") GTemporaryTeamRoomStatus status);
+
     /**
      * 큐 대기 중인 팀 후보를 오래 기다린 순으로 조회
      * - 실제 상대 팀 선택은 서비스에서 canMatchWith()로 판정

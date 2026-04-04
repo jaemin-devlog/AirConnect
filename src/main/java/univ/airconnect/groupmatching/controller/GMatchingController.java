@@ -200,6 +200,7 @@ public class GMatchingController {
             Authentication authentication
     ) {
         Long userId = currentUserId(authentication);
+        long recruitableTeamRoomCount = matchingService.countRecruitableTeamRooms();
 
         return matchingService.findMyActiveTeamRoom(userId)
                 .map(room -> {
@@ -215,17 +216,21 @@ public class GMatchingController {
                             GMatchingResponse.MyMatchingStateResponse.inTemporaryTeamRoom(
                                     teamRoomResponse,
                                     queueSnapshotResponse,
-                                    matchingSubscriptionDestination(room.getId())
+                                    matchingSubscriptionDestination(room.getId()),
+                                    recruitableTeamRoomCount
                             )
                     );
                 })
                 .orElseGet(() -> matchingService.findMyActiveFinalRoom(userId)
                         .map(finalRoom -> ResponseEntity.ok(
                                 GMatchingResponse.MyMatchingStateResponse.inFinalGroupRoom(
-                                        GMatchingResponse.FinalGroupChatRoomResponse.from(finalRoom)
+                                        GMatchingResponse.FinalGroupChatRoomResponse.from(finalRoom),
+                                        recruitableTeamRoomCount
                                 )
                         ))
-                        .orElseGet(() -> ResponseEntity.ok(GMatchingResponse.MyMatchingStateResponse.idle())));
+                        .orElseGet(() -> ResponseEntity.ok(
+                                GMatchingResponse.MyMatchingStateResponse.idle(recruitableTeamRoomCount)
+                        )));
     }
 
     /**

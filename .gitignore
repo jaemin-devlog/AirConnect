@@ -101,6 +101,7 @@ coverage/
 docker-compose.local.yml
 application-test.yml
 
+/docs/
 .md
 
 # Local docs

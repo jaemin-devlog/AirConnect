@@ -230,28 +230,41 @@ public final class GMatchingResponse {
             TemporaryTeamRoomResponse teamRoom,
             QueueSnapshotResponse queueSnapshot,
             FinalGroupChatRoomResponse finalRoom,
-            String matchingSubscriptionDestination
+            String matchingSubscriptionDestination,
+            long recruitableTeamRoomCount
     ) {
-        public static MyMatchingStateResponse idle() {
-            return new MyMatchingStateResponse("IDLE", null, null, null, null);
+        public static MyMatchingStateResponse idle(long recruitableTeamRoomCount) {
+            return new MyMatchingStateResponse("IDLE", null, null, null, null, recruitableTeamRoomCount);
         }
 
         public static MyMatchingStateResponse inTemporaryTeamRoom(
                 TemporaryTeamRoomResponse teamRoom,
                 QueueSnapshotResponse queueSnapshot,
-                String matchingSubscriptionDestination
+                String matchingSubscriptionDestination,
+                long recruitableTeamRoomCount
         ) {
             return new MyMatchingStateResponse(
                     "TEMPORARY_TEAM_ROOM",
                     teamRoom,
                     queueSnapshot,
                     null,
-                    matchingSubscriptionDestination
+                    matchingSubscriptionDestination,
+                    recruitableTeamRoomCount
             );
         }
 
-        public static MyMatchingStateResponse inFinalGroupRoom(FinalGroupChatRoomResponse finalRoom) {
-            return new MyMatchingStateResponse("FINAL_GROUP_CHAT_ROOM", null, null, finalRoom, null);
+        public static MyMatchingStateResponse inFinalGroupRoom(
+                FinalGroupChatRoomResponse finalRoom,
+                long recruitableTeamRoomCount
+        ) {
+            return new MyMatchingStateResponse(
+                    "FINAL_GROUP_CHAT_ROOM",
+                    null,
+                    null,
+                    finalRoom,
+                    null,
+                    recruitableTeamRoomCount
+            );
         }
     }
 }
