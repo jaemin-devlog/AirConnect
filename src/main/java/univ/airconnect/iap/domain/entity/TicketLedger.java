@@ -86,22 +86,6 @@ public class TicketLedger {
                 .build();
     }
 
-    public static TicketLedger grantForAdReward(Long userId,
-                                                int amount,
-                                                int beforeAmount,
-                                                int afterAmount,
-                                                String refId) {
-        return TicketLedger.builder()
-                .userId(userId)
-                .changeAmount(amount)
-                .beforeAmount(beforeAmount)
-                .afterAmount(afterAmount)
-                .reason("AD_REWARD")
-                .refType(LedgerRefType.AD_REWARD_SESSION)
-                .refId(refId)
-                .build();
-    }
-
     public String ledgerExternalId() {
         return "TICKET_LEDGER_" + id;
     }

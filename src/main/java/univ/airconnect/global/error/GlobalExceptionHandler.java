@@ -224,28 +224,6 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(body, traceId));
     }
 
-    @ExceptionHandler(AdsException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAds(
-            AdsException e,
-            HttpServletRequest request
-    ) {
-        AdsErrorCode aec = e.getErrorCode();
-        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-
-        log.warn("AdsException [{}] - {}", traceId, e.getMessage());
-
-        ErrorBody body = new ErrorBody(
-                aec.getCode(),
-                e.getMessage(),
-                aec.getHttpStatus().value(),
-                traceId,
-                null
-        );
-
-        return ResponseEntity.status(aec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
-    }
-
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(
             BusinessException e,
