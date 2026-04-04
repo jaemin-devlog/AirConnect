@@ -1,17 +1,23 @@
 package univ.airconnect.groupmatching.domain.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import univ.airconnect.global.error.BusinessException;
+import univ.airconnect.global.error.ErrorCode;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-/**
- * 임시 팀방 참여 멤버
- */
 @Entity
 @Table(
         name = "matching_temporary_team_members",
@@ -55,10 +61,10 @@ public class GTemporaryTeamMember {
     @Builder
     private GTemporaryTeamMember(Long teamRoomId, Long userId, Boolean leader) {
         if (teamRoomId == null) {
-            throw new IllegalArgumentException("teamRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "teamRoomId는 필수입니다.");
         }
         if (userId == null) {
-            throw new IllegalArgumentException("userId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "userId는 필수입니다.");
         }
         this.teamRoomId = teamRoomId;
         this.userId = userId;
@@ -78,9 +84,17 @@ public class GTemporaryTeamMember {
 
     public void markLeft() {
         if (leftAt != null) {
-            throw new IllegalStateException("이미 퇴장 처리된 멤버입니다.");
+            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "이미 퇴장 처리된 멤버입니다.");
         }
         this.leftAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void rejoin() {
+        if (leftAt == null) {
+            throw new BusinessException(ErrorCode.ALREADY_TEAM_MEMBER, "이미 활성 상태인 팀원입니다.");
+        }
+        this.leftAt = null;
         this.updatedAt = LocalDateTime.now();
     }
 

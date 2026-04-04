@@ -122,6 +122,18 @@ public class ChatRoomController {
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
+    @GetMapping("/rooms/{roomId}/participants/{targetUserId}/profile")
+    public ResponseEntity<ApiResponse<MatchingCandidateResponse>> getParticipantProfile(
+            @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
+            @PathVariable @Positive(message = "대상 사용자 ID는 양수여야 합니다.") Long targetUserId,
+            @CurrentUserId Long userId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        MatchingCandidateResponse response = chatService.getParticipantProfile(roomId, userId, targetUserId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
     @PostMapping("/rooms/{roomId}/messages")
     public ResponseEntity<ApiResponse<ChatMessageResponse>> sendMessage(
             @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,

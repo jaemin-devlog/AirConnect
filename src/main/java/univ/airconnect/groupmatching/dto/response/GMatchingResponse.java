@@ -1,5 +1,6 @@
 package univ.airconnect.groupmatching.dto.response;
 
+import org.springframework.data.domain.Page;
 import univ.airconnect.groupmatching.domain.GFinalGroupRoomStatus;
 import univ.airconnect.groupmatching.domain.GGenderFilter;
 import univ.airconnect.groupmatching.domain.GTeamGender;
@@ -29,6 +30,7 @@ public final class GMatchingResponse {
             GTemporaryTeamRoomStatus status,
             GGenderFilter opponentGenderFilter,
             GTeamVisibility visibility,
+            boolean locked,
             Long tempChatRoomId,
             LocalDateTime createdAt
     ) {
@@ -43,8 +45,31 @@ public final class GMatchingResponse {
                     room.getStatus(),
                     room.getOpponentGenderFilter(),
                     room.getVisibility(),
+                    room.isPrivateRoom(),
                     room.getTempChatRoomId(),
                     room.getCreatedAt()
+            );
+        }
+    }
+
+    public record RecruitableTeamRoomPageResponse(
+            List<PublicTeamRoomSummaryResponse> rooms,
+            int page,
+            int size,
+            long totalElements,
+            int totalPages,
+            boolean hasNext
+    ) {
+        public static RecruitableTeamRoomPageResponse from(Page<GTemporaryTeamRoom> roomsPage) {
+            return new RecruitableTeamRoomPageResponse(
+                    roomsPage.getContent().stream()
+                            .map(PublicTeamRoomSummaryResponse::from)
+                            .toList(),
+                    roomsPage.getNumber(),
+                    roomsPage.getSize(),
+                    roomsPage.getTotalElements(),
+                    roomsPage.getTotalPages(),
+                    roomsPage.hasNext()
             );
         }
     }
@@ -52,6 +77,7 @@ public final class GMatchingResponse {
     public record TeamMemberSummaryResponse(
             Long userId,
             String nickname,
+            String profileImage,
             boolean leader,
             boolean active,
             boolean ready,
@@ -61,11 +87,13 @@ public final class GMatchingResponse {
         public static TeamMemberSummaryResponse from(
                 GTemporaryTeamMember member,
                 String nickname,
+                String profileImage,
                 boolean ready
         ) {
             return new TeamMemberSummaryResponse(
                     member.getUserId(),
                     nickname,
+                    profileImage,
                     member.isLeader(),
                     member.isActiveMember(),
                     ready,
@@ -90,8 +118,6 @@ public final class GMatchingResponse {
             GTeamVisibility visibility,
             Long tempChatRoomId,
             String inviteCode,
-            Integer ageRangeMin,
-            Integer ageRangeMax,
             int readyMemberCount,
             boolean allMembersReady,
             boolean canStartMatching,
@@ -127,8 +153,6 @@ public final class GMatchingResponse {
                     room.getVisibility(),
                     room.getTempChatRoomId(),
                     room.getInviteCode(),
-                    room.getAgeRangeMin(),
-                    room.getAgeRangeMax(),
                     readyMemberCount,
                     allMembersReady,
                     canStartMatching,
@@ -197,6 +221,49 @@ public final class GMatchingResponse {
                     room.getEndedAt(),
                     room.getCancelledAt(),
                     room.getUpdatedAt()
+            );
+        }
+    }
+
+    public record MyMatchingStateResponse(
+            String state,
+            TemporaryTeamRoomResponse teamRoom,
+            QueueSnapshotResponse queueSnapshot,
+            FinalGroupChatRoomResponse finalRoom,
+            String matchingSubscriptionDestination,
+            long recruitableTeamRoomCount
+    ) {
+        public static MyMatchingStateResponse idle(long recruitableTeamRoomCount) {
+            return new MyMatchingStateResponse("IDLE", null, null, null, null, recruitableTeamRoomCount);
+        }
+
+        public static MyMatchingStateResponse inTemporaryTeamRoom(
+                TemporaryTeamRoomResponse teamRoom,
+                QueueSnapshotResponse queueSnapshot,
+                String matchingSubscriptionDestination,
+                long recruitableTeamRoomCount
+        ) {
+            return new MyMatchingStateResponse(
+                    "TEMPORARY_TEAM_ROOM",
+                    teamRoom,
+                    queueSnapshot,
+                    null,
+                    matchingSubscriptionDestination,
+                    recruitableTeamRoomCount
+            );
+        }
+
+        public static MyMatchingStateResponse inFinalGroupRoom(
+                FinalGroupChatRoomResponse finalRoom,
+                long recruitableTeamRoomCount
+        ) {
+            return new MyMatchingStateResponse(
+                    "FINAL_GROUP_CHAT_ROOM",
+                    null,
+                    null,
+                    finalRoom,
+                    null,
+                    recruitableTeamRoomCount
             );
         }
     }

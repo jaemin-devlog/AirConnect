@@ -1,24 +1,27 @@
 package univ.airconnect.groupmatching.domain.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import univ.airconnect.global.error.BusinessException;
+import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.groupmatching.domain.GFinalGroupRoomStatus;
 import univ.airconnect.groupmatching.domain.GTeamSize;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-/**
- * 최종 그룹 채팅방
- *
- * 확정 UX 규칙
- * - 수락/거절 단계 없음
- * - 매칭 성공 시 즉시 생성
- * - 기존 임시 팀방은 MATCHED -> CLOSED 로 종료 처리
- */
 @Entity
 @Table(
         name = "matching_final_group_chat_rooms",
@@ -44,9 +47,6 @@ public class GFinalGroupChatRoom {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
-     * 실제 채팅 시스템의 ChatRoom ID
-     */
     @Column(name = "chat_room_id", nullable = false, unique = true)
     private Long chatRoomId;
 
@@ -88,19 +88,19 @@ public class GFinalGroupChatRoom {
             GTeamSize teamSize
     ) {
         if (chatRoomId == null) {
-            throw new IllegalArgumentException("chatRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "chatRoomId는 필수입니다.");
         }
         if (team1RoomId == null || team2RoomId == null) {
-            throw new IllegalArgumentException("teamRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "teamRoomId는 필수입니다.");
         }
         if (Objects.equals(team1RoomId, team2RoomId)) {
-            throw new IllegalArgumentException("동일한 팀끼리는 최종 그룹방을 만들 수 없습니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "동일한 팀끼리는 최종 그룹방을 만들 수 없습니다.");
         }
         if (matchResultId == null) {
-            throw new IllegalArgumentException("matchResultId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "matchResultId는 필수입니다.");
         }
         if (teamSize == null) {
-            throw new IllegalArgumentException("teamSize는 필수입니다.");
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED, "teamSize는 필수입니다.");
         }
 
         Long smaller = Math.min(team1RoomId, team2RoomId);
@@ -134,7 +134,7 @@ public class GFinalGroupChatRoom {
 
     public void end() {
         if (this.status != GFinalGroupRoomStatus.ACTIVE) {
-            throw new IllegalStateException("활성 상태의 최종 그룹방만 종료할 수 있습니다.");
+            throw new BusinessException(ErrorCode.FINAL_GROUP_ROOM_STATE_INVALID, "활성 상태의 최종 그룹방만 종료할 수 있습니다.");
         }
         this.status = GFinalGroupRoomStatus.ENDED;
         this.endedAt = LocalDateTime.now();
@@ -143,7 +143,7 @@ public class GFinalGroupChatRoom {
 
     public void cancel() {
         if (this.status != GFinalGroupRoomStatus.ACTIVE) {
-            throw new IllegalStateException("활성 상태의 최종 그룹방만 취소할 수 있습니다.");
+            throw new BusinessException(ErrorCode.FINAL_GROUP_ROOM_STATE_INVALID, "활성 상태의 최종 그룹방만 취소할 수 있습니다.");
         }
         this.status = GFinalGroupRoomStatus.CANCELLED;
         this.cancelledAt = LocalDateTime.now();

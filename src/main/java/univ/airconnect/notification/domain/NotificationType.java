@@ -27,6 +27,7 @@ public enum NotificationType {
     TEAM_MEMBER_JOINED(NotificationCategory.GROUP_MATCHING, false),
     /** 팀원이 팀에서 나갔을 때 */
     TEAM_MEMBER_LEFT(NotificationCategory.GROUP_MATCHING, false),
+    TEAM_MEMBER_READY_CHANGED(NotificationCategory.GROUP_MATCHING, false),
     /** 약속 1시간 전 리마인드 */
     APPOINTMENT_REMINDER_1H(NotificationCategory.REMINDER, true),
     /** 약속 10분 전 리마인드 */

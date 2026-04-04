@@ -3,6 +3,7 @@ package univ.airconnect.iap.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,6 +29,7 @@ import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/iap")
+@ConditionalOnProperty(value = "iap.enabled", havingValue = "true")
 public class IapController {
 
     private final IapProcessingService iapProcessingService;
