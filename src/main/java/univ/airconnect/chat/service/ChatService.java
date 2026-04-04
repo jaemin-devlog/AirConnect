@@ -567,7 +567,26 @@ public class ChatService {
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "상대 사용자 정보를 찾을 수 없습니다."));
 
-        return toCounterpartProfileResponse(counterpart);
+        return toParticipantProfileResponse(counterpart);
+    }
+
+    @Transactional(readOnly = true)
+    public MatchingCandidateResponse getParticipantProfile(Long roomId, Long userId, Long targetUserId) {
+        validateRoomAccess(roomId, userId);
+
+        if (Objects.equals(userId, targetUserId)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "본인 프로필은 이 API로 조회할 수 없습니다.");
+        }
+
+        if (!chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, targetUserId)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "선택한 사용자가 해당 채팅방 참여자가 아닙니다.");
+        }
+
+        User participant = userRepository.findAllByIdWithProfile(List.of(targetUserId)).stream()
+                .findFirst()
+                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+
+        return toParticipantProfileResponse(participant);
     }
 
     /**
@@ -883,7 +902,7 @@ public class ChatService {
         }
     }
 
-    private MatchingCandidateResponse toCounterpartProfileResponse(User user) {
+    private MatchingCandidateResponse toParticipantProfileResponse(User user) {
         UserProfile profile = user.getUserProfile();
         UserProfileResponse profileResponse = profile != null ? UserProfileResponse.from(profile, imageUrlBase) : null;
 
@@ -896,6 +915,7 @@ public class ChatService {
                 .socialId(user.getSocialId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
+                .profileImage(profile != null ? profile.getProfileImagePath() : null)
                 .studentNum(user.getStudentNum())
                 .age(profile != null ? profile.getAge() : null)
                 .status(user.getStatus())

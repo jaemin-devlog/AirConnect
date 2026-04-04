@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import univ.airconnect.analytics.domain.AnalyticsEventType;
+import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.user.domain.MilestoneType;
@@ -23,6 +25,9 @@ import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -33,6 +38,7 @@ public class UserService {
     private final UserProfileRepository userProfileRepository;
     private final UserMilestoneRepository userMilestoneRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final AnalyticsService analyticsService;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -93,6 +99,14 @@ public class UserService {
                 );
 
         log.info("✅ 회원가입/프로필 생성 완료: userId={}, name={}", userId, request.getName());
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("deptName", request.getDeptName());
+        payload.put("nickname", request.getNickname());
+        if (request.getGender() != null) {
+            payload.put("gender", request.getGender().name());
+        }
+        analyticsService.trackServerEvent(AnalyticsEventType.SIGN_UP_COMPLETED, userId, payload);
 
         return new SignUpResponse(
                 user.getId(),

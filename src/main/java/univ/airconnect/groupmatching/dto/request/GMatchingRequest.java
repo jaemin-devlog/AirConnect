@@ -1,8 +1,5 @@
 package univ.airconnect.groupmatching.dto.request;
 
-import jakarta.validation.constraints.AssertTrue;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -37,25 +34,6 @@ public final class GMatchingRequest {
 
         @NotNull(message = "공개/비공개 설정은 필수입니다.")
         private GTeamVisibility visibility;
-
-        @Min(value = 18, message = "최소 나이는 18 이상이어야 합니다.")
-        @Max(value = 99, message = "최소 나이는 99 이하여야 합니다.")
-        private Integer ageRangeMin;
-
-        @Min(value = 18, message = "최대 나이는 18 이상이어야 합니다.")
-        @Max(value = 99, message = "최대 나이는 99 이하여야 합니다.")
-        private Integer ageRangeMax;
-
-        @AssertTrue(message = "나이 범위는 최소/최대를 함께 입력해야 합니다.")
-        public boolean isAgeRangePairValid() {
-            return (ageRangeMin == null && ageRangeMax == null)
-                    || (ageRangeMin != null && ageRangeMax != null);
-        }
-
-        @AssertTrue(message = "ageRangeMin은 ageRangeMax보다 클 수 없습니다.")
-        public boolean isAgeRangeOrderValid() {
-            return ageRangeMin == null || ageRangeMax == null || ageRangeMin <= ageRangeMax;
-        }
     }
 
     @Getter

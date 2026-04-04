@@ -6,8 +6,9 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.domain.entity.ChatRoom;
@@ -21,8 +22,8 @@ import univ.airconnect.matching.domain.entity.MatchingConnection;
 import univ.airconnect.matching.domain.entity.MatchingExposure;
 import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 import univ.airconnect.matching.dto.response.MatchingConnectResponse;
-import univ.airconnect.matching.dto.response.MatchingRequestResponse;
 import univ.airconnect.matching.dto.response.MatchingRecommendationResponse;
+import univ.airconnect.matching.dto.response.MatchingRequestResponse;
 import univ.airconnect.matching.dto.response.MatchingRequestsResponse;
 import univ.airconnect.matching.dto.response.MatchingResponseResponse;
 import univ.airconnect.matching.exception.MatchingErrorCode;
@@ -79,8 +80,11 @@ class MatchingServiceTest {
     @MockitoBean
     private ChatService chatService;
 
+    @MockitoBean
+    private AnalyticsService analyticsService;
+
     @Test
-    @DisplayName("추천 후보가 2명 있으면 2명 반환되고 티켓이 1 차감된다")
+    @DisplayName("2 candidates cost 1 ticket")
     void recommend_returnsTwoAndConsumesOneTicket() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User c1 = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -95,8 +99,8 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("추천 후보가 1명만 있으면 1명 반환되고 티켓이 1 차감된다")
-    void recommend_returnsOneAndConsumesOneTicket() {
+    @DisplayName("1 candidate does not cost a ticket")
+    void recommend_returnsOneAndDoesNotConsumeTicket() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User c1 = saveUserWithProfile("u2", Gender.FEMALE, 100);
 
@@ -105,11 +109,11 @@ class MatchingServiceTest {
         User reloaded = userRepository.findById(requester.getId()).orElseThrow();
         assertThat(response.getCount()).isEqualTo(1);
         assertThat(response.getCandidates()).extracting("userId").containsExactly(c1.getId());
-        assertThat(reloaded.getTickets()).isEqualTo(99);
+        assertThat(reloaded.getTickets()).isEqualTo(100);
     }
 
     @Test
-    @DisplayName("추천 후보가 없으면 티켓이 차감되지 않는다")
+    @DisplayName("0 candidates does not cost a ticket")
     void recommend_noCandidate_noTicketConsumed() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
 
@@ -122,7 +126,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("추천 예외가 나면 티켓이 차감되지 않는다")
+    @DisplayName("recommend failure does not cost a ticket")
     void recommend_exception_noTicketConsumed() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 0);
         saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -137,7 +141,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("같은 추천 사이클 내에서는 중복 노출이 없다")
+    @DisplayName("no duplicates appear within one cycle")
     void recommend_noDuplicatesWithinCycle() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User c1 = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -147,30 +151,34 @@ class MatchingServiceTest {
         MatchingRecommendationResponse first = matchingService.recommend(requester.getId());
         MatchingRecommendationResponse second = matchingService.recommend(requester.getId());
 
-        List<Long> allShown = new ArrayList<>(first.getCandidates().stream().map(c -> c.getUserId()).toList());
-        allShown.addAll(second.getCandidates().stream().map(c -> c.getUserId()).toList());
+        List<Long> allShown = new ArrayList<>(first.getCandidates().stream().map(MatchingCandidateResponse::getUserId).toList());
+        allShown.addAll(second.getCandidates().stream().map(MatchingCandidateResponse::getUserId).toList());
 
         assertThat(allShown).doesNotHaveDuplicates();
         assertThat(allShown).contains(c1.getId(), c2.getId(), c3.getId());
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(reloaded.getTickets()).isEqualTo(99);
     }
 
     @Test
-    @DisplayName("한 사이클 소진 후에는 노출 이력이 리셋되어 재순환된다")
-    void recommend_resetsAfterCycle() {
+    @DisplayName("after cycle exhaustion recommendations reset automatically and consume a ticket when two are returned")
+    void recommend_resetsAfterCycleAndConsumesTicketWhenTwoCandidatesReturned() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
-        saveUserWithProfile("u2", Gender.FEMALE, 100);
-        saveUserWithProfile("u3", Gender.FEMALE, 100);
+        User c1 = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        User c2 = saveUserWithProfile("u3", Gender.FEMALE, 100);
 
-        matchingService.recommend(requester.getId());
-        matchingService.recommend(requester.getId());
+        MatchingRecommendationResponse first = matchingService.recommend(requester.getId());
+        MatchingRecommendationResponse second = matchingService.recommend(requester.getId());
 
-        MatchingRecommendationResponse third = matchingService.recommend(requester.getId());
-
-        assertThat(third.getCount()).isGreaterThan(0);
+        User reloaded = userRepository.findById(requester.getId()).orElseThrow();
+        assertThat(first.getCandidates()).extracting("userId").containsExactlyInAnyOrder(c1.getId(), c2.getId());
+        assertThat(second.getCount()).isEqualTo(2);
+        assertThat(second.getCandidates()).extracting("userId").containsExactlyInAnyOrder(c1.getId(), c2.getId());
+        assertThat(reloaded.getTickets()).isEqualTo(98);
     }
 
     @Test
-    @DisplayName("내가 보낸 PENDING 상대는 추천에서 제외된다")
+    @DisplayName("outgoing pending match is excluded from recommendations")
     void recommend_excludesMyPending() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -183,7 +191,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("상대가 보낸 PENDING 상대도 추천에서 제외된다")
+    @DisplayName("incoming pending match is excluded from recommendations")
     void recommend_excludesIncomingPending() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User other = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -196,7 +204,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("활성 채팅 상대는 추천에서 제외되고, 채팅 종료 상대와 거절 상대는 다시 추천된다")
+    @DisplayName("active chat is excluded while rejected or closed chat can reappear")
     void recommend_exclusionAndReexposurePolicy() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User activeChatUser = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -231,7 +239,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("요청 생성 성공 시 티켓이 2 차감된다")
+    @DisplayName("connect success costs two tickets")
     void connect_success_consumesTwoTickets() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -245,7 +253,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("PENDING 중복 요청은 티켓이 차감되지 않는다")
+    @DisplayName("duplicate pending request does not cost tickets")
     void connect_pendingDuplicate_noTicketConsumed() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -262,7 +270,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("이미 활성 연결이면 요청은 alreadyConnected로 처리되고 티켓이 차감되지 않는다")
+    @DisplayName("already connected users do not spend tickets again")
     void connect_activeConnection_noTicketConsumed() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -284,7 +292,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("노출되지 않은 상대 요청은 실패하고 티켓이 차감되지 않는다")
+    @DisplayName("requesting a non-exposed candidate fails without spending tickets")
     void connect_notExposed_noTicketConsumed() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -299,7 +307,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("실제 수신자는 요청을 수락할 수 있다")
+    @DisplayName("receiver can accept a request")
     void accept_receiverAllowed() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -308,7 +316,7 @@ class MatchingServiceTest {
         Mockito.when(chatService.createOrGetPersonalRoomForConnection(any(), any(), any(), any()))
                 .thenReturn(ChatRoomResponse.builder()
                         .id(99L)
-                        .name("소개팅 1:1")
+                        .name("1:1")
                         .type(ChatRoomType.PERSONAL)
                         .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
                         .build());
@@ -320,7 +328,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("실제 수신자는 요청을 거절할 수 있다")
+    @DisplayName("receiver can reject a request")
     void reject_receiverAllowed() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -333,7 +341,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("요청자는 자신의 요청을 수락/거절할 수 없다")
+    @DisplayName("requester cannot accept or reject own request")
     void requesterCannotAcceptOrReject() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -351,7 +359,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("제3자는 수락/거절할 수 없다")
+    @DisplayName("third party cannot accept or reject request")
     void thirdPartyCannotAcceptOrReject() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -370,7 +378,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("요청 목록 응답은 name/email/provider 없이 나머지 사용자 정보를 포함한다")
+    @DisplayName("request list excludes only name email and provider")
     void requestList_excludesOnlyNameEmailProvider() {
         User me = saveUserWithProfile("u1", Gender.MALE, 100);
         User requester = saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -391,7 +399,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("추천 응답은 name/email/provider를 제외한 사용자 정보를 포함한다")
+    @DisplayName("recommendation dto excludes only name email and provider")
     void recommendationDto_excludesOnlyNameEmailProvider() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         saveUserWithProfile("u2", Gender.FEMALE, 100);
@@ -415,9 +423,9 @@ class MatchingServiceTest {
                 .provider(SocialProvider.KAKAO)
                 .socialId(uniqueSocialId)
                 .email(uniqueSocialId + "@example.com")
-                .name("테스트")
-                .nickname("닉네임-" + socialId)
-                .deptName("컴퓨터공학과")
+                .name("test")
+                .nickname("nick-" + socialId)
+                .deptName("Computer Science")
                 .studentNum(20240001)
                 .status(UserStatus.ACTIVE)
                 .onboardingStatus(OnboardingStatus.FULL)
@@ -436,8 +444,8 @@ class MatchingServiceTest {
                 gender,
                 MilitaryStatus.NOT_APPLICABLE,
                 "NONE",
-                "서울",
-                "안녕하세요",
+                "Seoul",
+                "hello",
                 "insta"
         );
 

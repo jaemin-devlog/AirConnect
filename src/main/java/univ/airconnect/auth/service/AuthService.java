@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import univ.airconnect.analytics.domain.AnalyticsEventType;
+import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
@@ -23,6 +25,8 @@ import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
 
+import java.util.Map;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -35,6 +39,7 @@ public class AuthService {
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
     private final UserService userService;
+    private final AnalyticsService analyticsService;
 
     @Transactional
     public LoginResponse socialLogin(SocialLoginRequest request) {
@@ -54,6 +59,7 @@ public class AuthService {
                 });
 
         validateUserStatus(user);
+        user.markActive();
 
         String accessToken = jwtProvider.createAccessToken(user.getId());
         String refreshToken = jwtProvider.createRefreshToken(user.getId(), request.getDeviceId());
@@ -63,6 +69,14 @@ public class AuthService {
         );
 
         UserMeResponse userInfo = userService.getMe(user.getId());
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.USER_LOGGED_IN,
+                user.getId(),
+                Map.of(
+                        "provider", request.getProvider().name(),
+                        "deviceId", request.getDeviceId()
+                )
+        );
         log.info("Social login completed: userId={}", user.getId());
 
         return LoginResponse.builder()
@@ -102,6 +116,7 @@ public class AuthService {
                 .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
 
         validateUserStatus(user);
+        user.markActive();
 
         String newAccessToken = jwtProvider.createAccessToken(user.getId());
         String newRefreshToken = jwtProvider.createRefreshToken(user.getId(), request.getDeviceId());

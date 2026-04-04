@@ -1,5 +1,6 @@
 package univ.airconnect.user.repository;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +26,22 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.userProfile WHERE u.id IN :ids")
     List<User> findAllByIdWithProfile(@Param("ids") Collection<Long> ids);
+
+    @Query("""
+        SELECT count(u)
+        FROM User u
+        WHERE u.status = univ.airconnect.user.domain.UserStatus.ACTIVE
+          AND u.onboardingStatus = univ.airconnect.user.domain.OnboardingStatus.FULL
+    """)
+    long countActiveSignedUpUsers();
+
+    @Query("""
+        SELECT count(u)
+        FROM User u
+        WHERE u.status = univ.airconnect.user.domain.UserStatus.ACTIVE
+          AND u.lastActiveAt >= :startOfDay
+    """)
+    long countDailyActiveUsers(@Param("startOfDay") LocalDateTime startOfDay);
 
     // 프로필 기반 추천: 프로필이 있고 활성 상태인 사용자들
     // 제외 조건:
