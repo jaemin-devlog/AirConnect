@@ -44,6 +44,22 @@ public class AdRewardCallbackService {
         String customData = nullSafe(request.getParameter("custom_data"));
         String sessionKey = extractSessionKey(customData);
 
+        // AdMob 콘솔 URL 확인 요청은 핵심 파라미터 없이 들어올 수 있으므로 무해하게 200 처리한다.
+        if (sessionKey.isBlank() && transactionId.isBlank()
+                && nullSafe(request.getParameter("signature")).isBlank()
+                && nullSafe(request.getParameter("key_id")).isBlank()) {
+            return AdRewardCallbackResponse.builder()
+                    .sessionKey("")
+                    .transactionId("")
+                    .grantStatus("IGNORED")
+                    .grantedTickets(0)
+                    .beforeTickets(null)
+                    .afterTickets(null)
+                    .ledgerId(null)
+                    .processedAt(OffsetDateTime.now(ZoneOffset.UTC))
+                    .build();
+        }
+
         boolean signatureValid = admobSignatureVerifier.verify(request);
         adRewardCallbackRepository.save(AdRewardCallback.of(sessionKey, transactionId, truncate(rawQuery), signatureValid));
 
