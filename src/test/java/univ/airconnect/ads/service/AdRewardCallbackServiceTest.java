@@ -22,6 +22,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -79,6 +81,17 @@ class AdRewardCallbackServiceTest {
                 .isInstanceOf(AdsException.class)
                 .extracting(ex -> ((AdsException) ex).getErrorCode())
                 .isEqualTo(AdsErrorCode.AD_REWARD_INVALID_SIGNATURE);
+    }
+
+    @Test
+    void handleCallback_ignores_whenProbeRequestHasNoParams() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+
+        AdRewardCallbackResponse response = adRewardCallbackService.handleAdmobCallback(request);
+
+        assertThat(response.getGrantStatus()).isEqualTo("IGNORED");
+        assertThat(response.getGrantedTickets()).isEqualTo(0);
+        verify(adRewardCallbackRepository, never()).save(any());
     }
 }
 
