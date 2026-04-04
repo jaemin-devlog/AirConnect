@@ -75,3 +75,10 @@ iap:
     service-account-json-path: ${IAP_GOOGLE_SERVICE_ACCOUNT_JSON_PATH:}
     verify-enabled: ${IAP_GOOGLE_VERIFY_ENABLED:false}
 
+ads:
+  reward:
+    default-ticket: ${ADS_REWARD_DEFAULT_TICKET:1}
+    session-ttl-minutes: ${ADS_REWARD_SESSION_TTL_MINUTES:10}
+    daily-limit: ${ADS_REWARD_DAILY_LIMIT:10}
+    daily-limit-zone: ${ADS_REWARD_DAILY_LIMIT_ZONE:Asia/Seoul}
+

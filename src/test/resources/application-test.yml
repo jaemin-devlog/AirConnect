@@ -56,3 +56,10 @@ iap:
     service-account-json-path: /tmp/not-used.json
     verify-enabled: false
 
+ads:
+  reward:
+    default-ticket: 1
+    session-ttl-minutes: 10
+    daily-limit: 10
+    daily-limit-zone: Asia/Seoul
+

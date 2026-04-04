@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MultipartException;
+
+import univ.airconnect.ads.exception.AdsErrorCode;
+import univ.airconnect.ads.exception.AdsException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
@@ -218,6 +221,28 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(iec.getHttpStatus())
+                .body(ApiResponse.fail(body, traceId));
+    }
+
+    @ExceptionHandler(AdsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAds(
+            AdsException e,
+            HttpServletRequest request
+    ) {
+        AdsErrorCode aec = e.getErrorCode();
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+
+        log.warn("AdsException [{}] - {}", traceId, e.getMessage());
+
+        ErrorBody body = new ErrorBody(
+                aec.getCode(),
+                e.getMessage(),
+                aec.getHttpStatus().value(),
+                traceId,
+                null
+        );
+
+        return ResponseEntity.status(aec.getHttpStatus())
                 .body(ApiResponse.fail(body, traceId));
     }
 
