@@ -21,10 +21,13 @@ spring:
     default-property-inclusion: always
 
 app:
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
   upload:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/tmp/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE:http://localhost:8080/api/v1/users/profile-images}
   websocket:
+    allowed-origin-patterns: ${WS_ALLOWED_ORIGIN_PATTERNS:}
     inbound:
       core-pool-size: ${WS_INBOUND_CORE_POOL_SIZE:16}
       max-pool-size: ${WS_INBOUND_MAX_POOL_SIZE:64}
@@ -63,6 +66,7 @@ notification:
       credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
 
 iap:
+  enabled: ${IAP_ENABLED:false}
   apple:
     bundle-id: ${IAP_APPLE_BUNDLE_ID:com.airconnect.app}
     environment: ${IAP_APPLE_ENVIRONMENT:PRODUCTION}

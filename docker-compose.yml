@@ -7,13 +7,13 @@ services:
       dockerfile: Dockerfile
     container_name: airconnect-app
     ports:
-      - "${PORT}:${PORT}"
+      - "127.0.0.1:8080:8080"
     environment:
-      PORT: ${PORT}
+      SERVER_PORT: 8080
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
 
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
+      DB_HOST: mysql
+      DB_PORT: 3306
       DB_NAME: ${DB_NAME}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -40,6 +40,7 @@ services:
       FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH}
       FIREBASE_APP_NAME: ${FIREBASE_APP_NAME}
       NOTIFICATION_OUTBOX_WORKER_ENABLED: ${NOTIFICATION_OUTBOX_WORKER_ENABLED}
+      IAP_ENABLED: ${IAP_ENABLED:-false}
     volumes:
       - "./profile-images:${PROFILE_IMAGE_DIR}"
       - "./logs:/app/logs"
