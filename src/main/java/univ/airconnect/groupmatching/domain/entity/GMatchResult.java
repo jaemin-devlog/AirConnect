@@ -1,23 +1,26 @@
 package univ.airconnect.groupmatching.domain.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import univ.airconnect.global.error.BusinessException;
+import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.groupmatching.domain.GMatchResultStatus;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-/**
- * 두 임시 팀방의 매칭 결과
- *
- * 규칙
- * - 이 엔티티가 생성되었다는 것은 이미 매칭이 성사되었다는 뜻이다.
- * - 따라서 WAITING 같은 상태를 두지 않는다.
- * - team1RoomId, team2RoomId 는 항상 정규화된 순서(작은 ID 먼저)로 저장한다.
- */
 @Entity
 @Table(
         name = "matching_results",
@@ -71,10 +74,10 @@ public class GMatchResult {
     @Builder
     private GMatchResult(Long team1RoomId, Long team2RoomId) {
         if (team1RoomId == null || team2RoomId == null) {
-            throw new IllegalArgumentException("teamRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "teamRoomId는 필수입니다.");
         }
         if (Objects.equals(team1RoomId, team2RoomId)) {
-            throw new IllegalArgumentException("동일한 팀끼리는 매칭할 수 없습니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "동일한 팀끼리는 매칭할 수 없습니다.");
         }
 
         Long smaller = Math.min(team1RoomId, team2RoomId);
@@ -97,10 +100,10 @@ public class GMatchResult {
 
     public void completeFinalRoomCreation(Long finalGroupChatRoomId) {
         if (finalGroupChatRoomId == null) {
-            throw new IllegalArgumentException("finalGroupChatRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "finalGroupChatRoomId는 필수입니다.");
         }
         if (this.status != GMatchResultStatus.MATCHED) {
-            throw new IllegalStateException("매칭 성사 상태에서만 최종방 생성 완료 처리할 수 있습니다.");
+            throw new BusinessException(ErrorCode.MATCH_RESULT_STATE_INVALID, "매칭 성사 상태에서만 최종방 생성 완료 처리할 수 있습니다.");
         }
         this.finalGroupChatRoomId = finalGroupChatRoomId;
         this.status = GMatchResultStatus.FINAL_ROOM_CREATED;
@@ -110,7 +113,7 @@ public class GMatchResult {
 
     public void cancel() {
         if (this.status == GMatchResultStatus.FINAL_ROOM_CREATED) {
-            throw new IllegalStateException("이미 최종방 생성이 완료된 매칭 결과는 취소할 수 없습니다.");
+            throw new BusinessException(ErrorCode.MATCH_RESULT_STATE_INVALID, "이미 최종방 생성이 완료된 매칭 결과는 취소할 수 없습니다.");
         }
         this.status = GMatchResultStatus.CANCELLED;
         this.cancelledAt = LocalDateTime.now();

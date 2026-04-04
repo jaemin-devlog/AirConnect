@@ -24,6 +24,7 @@ public class MatchingCandidateResponse {
     private Integer tickets;
     private String nickname;
     private String deptName;
+    private String profileImage;
     private UserProfileResponse profile;
 }
 

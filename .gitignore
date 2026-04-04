@@ -101,7 +101,11 @@ coverage/
 docker-compose.local.yml
 application-test.yml
 
+/docs/
 .md
+
+# Local docs
+/docs/
 
 # Firebase service account (local)
 config/firebase-service-account.json

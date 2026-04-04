@@ -10,6 +10,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import univ.airconnect.analytics.web.UserActivityFilter;
 import univ.airconnect.global.security.jwt.JwtAuthenticationFilter;
 
 @Configuration
@@ -18,6 +19,7 @@ import univ.airconnect.global.security.jwt.JwtAuthenticationFilter;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final UserActivityFilter userActivityFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -38,6 +40,8 @@ public class SecurityConfig {
                         // 이메일 인증
                         .requestMatchers("/api/v1/verification/**").permitAll()
 
+                        .requestMatchers("/api/v1/statistics/**").permitAll()
+
                         // 프로필 이미지
                         .requestMatchers("/api/v1/users/profile-image").permitAll()
                         .requestMatchers("/api/v1/users/profile-images/**").permitAll()
@@ -51,6 +55,7 @@ public class SecurityConfig {
                         // AdMob SSV callback
                         .requestMatchers("/api/v1/ads/rewards/callback/admob").permitAll()
 
+
                         // Swagger
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/health").permitAll()
 
@@ -59,7 +64,8 @@ public class SecurityConfig {
 
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(userActivityFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

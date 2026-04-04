@@ -1,16 +1,22 @@
 package univ.airconnect.groupmatching.domain.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import univ.airconnect.global.error.BusinessException;
+import univ.airconnect.global.error.ErrorCode;
 
 import java.time.LocalDateTime;
 
-/**
- * 임시 팀방 내 팀원별 준비 상태
- */
 @Entity
 @Table(
         name = "matching_team_ready_states",
@@ -52,10 +58,10 @@ public class GTeamReadyState {
     @Builder
     private GTeamReadyState(Long teamRoomId, Long userId) {
         if (teamRoomId == null) {
-            throw new IllegalArgumentException("teamRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "teamRoomId는 필수입니다.");
         }
         if (userId == null) {
-            throw new IllegalArgumentException("userId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "userId는 필수입니다.");
         }
         this.teamRoomId = teamRoomId;
         this.userId = userId;

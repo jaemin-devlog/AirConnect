@@ -4,16 +4,22 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
+
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MultipartException;
+
 import univ.airconnect.ads.exception.AdsErrorCode;
 import univ.airconnect.ads.exception.AdsException;
+
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.global.response.ApiResponse;
@@ -57,8 +63,7 @@ public class GlobalExceptionHandler {
                 details
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -81,8 +86,7 @@ public class GlobalExceptionHandler {
                 details
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -109,8 +113,7 @@ public class GlobalExceptionHandler {
                 details
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(AuthException.class)
@@ -127,8 +130,7 @@ public class GlobalExceptionHandler {
                     traceId,
                     null
             );
-            return ResponseEntity.status(ec.getHttpStatus())
-                    .body(ApiResponse.fail(body, traceId));
+            return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
         }
 
         ErrorBody body = new ErrorBody(
@@ -139,8 +141,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(aec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(aec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(UserException.class)
@@ -156,8 +157,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(uec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(uec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(MatchingException.class)
@@ -178,8 +178,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(mec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(mec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(VerificationException.class)
@@ -200,8 +199,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(vec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(vec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(IapException.class)
@@ -266,8 +264,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
@@ -288,8 +285,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(e.getStatusCode())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(e.getStatusCode(), body, traceId);
     }
 
     @ExceptionHandler(MultipartException.class)
@@ -310,8 +306,77 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(
+            NoResourceFoundException e,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        ErrorCode ec = ErrorCode.NOT_FOUND;
+        String userAgent = headerOrDash(request, "User-Agent");
+        String origin = headerOrDash(request, "Origin");
+        String referer = headerOrDash(request, "Referer");
+        String forwardedFor = headerOrDash(request, "X-Forwarded-For");
+
+        log.warn("NoResourceFoundException [{}] - {} {} (ua='{}', origin='{}', referer='{}', xff='{}')",
+                traceId, request.getMethod(), request.getRequestURI(), userAgent, origin, referer, forwardedFor);
+
+        Map<String, Object> details = new HashMap<>();
+        details.put("method", request.getMethod());
+        details.put("path", request.getRequestURI());
+        details.put("userAgent", userAgent);
+        details.put("origin", origin);
+        details.put("referer", referer);
+        details.put("xForwardedFor", forwardedFor);
+
+        ErrorBody body = new ErrorBody(
+                ec.getCode(),
+                ec.getMessage(),
+                ec.getHttpStatus().value(),
+                traceId,
+                details
+        );
+
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException e,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        ErrorCode ec = ErrorCode.METHOD_NOT_ALLOWED;
+        String userAgent = headerOrDash(request, "User-Agent");
+        String origin = headerOrDash(request, "Origin");
+        String referer = headerOrDash(request, "Referer");
+        String forwardedFor = headerOrDash(request, "X-Forwarded-For");
+
+        log.warn("HttpRequestMethodNotSupportedException [{}] - {} {} (allowed={}, ua='{}', origin='{}', referer='{}', xff='{}')",
+                traceId, request.getMethod(), request.getRequestURI(), e.getSupportedMethods(),
+                userAgent, origin, referer, forwardedFor);
+
+        Map<String, Object> details = new HashMap<>();
+        details.put("method", request.getMethod());
+        details.put("path", request.getRequestURI());
+        details.put("supportedMethods", e.getSupportedMethods());
+        details.put("userAgent", userAgent);
+        details.put("origin", origin);
+        details.put("referer", referer);
+        details.put("xForwardedFor", forwardedFor);
+
+        ErrorBody body = new ErrorBody(
+                ec.getCode(),
+                ec.getMessage(),
+                ec.getHttpStatus().value(),
+                traceId,
+                details
+        );
+
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(Exception.class)
@@ -329,8 +394,7 @@ public class GlobalExceptionHandler {
                 null
         );
 
-        return ResponseEntity.status(ec.getHttpStatus())
-                .body(ApiResponse.fail(body, traceId));
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
     }
 
     private Map<String, String> fieldErrorToDetail(FieldError error) {
@@ -345,5 +409,20 @@ public class GlobalExceptionHandler {
         detail.put("path", String.valueOf(violation.getPropertyPath()));
         detail.put("message", violation.getMessage());
         return detail;
+    }
+
+    private ResponseEntity<ApiResponse<Void>> jsonErrorResponse(
+            HttpStatusCode status,
+            ErrorBody body,
+            String traceId
+    ) {
+        return ResponseEntity.status(status)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(ApiResponse.fail(body, traceId));
+    }
+
+    private String headerOrDash(HttpServletRequest request, String headerName) {
+        String value = request.getHeader(headerName);
+        return (value == null || value.isBlank()) ? "-" : value;
     }
 }
