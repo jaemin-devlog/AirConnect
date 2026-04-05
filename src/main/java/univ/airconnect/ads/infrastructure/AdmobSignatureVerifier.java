@@ -5,10 +5,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.PublicKey;
 import java.security.Signature;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -25,7 +28,7 @@ public class AdmobSignatureVerifier {
             }
 
             String signatureValue = getRawQueryParam(rawQuery, "signature");
-            String keyId = getRawQueryParam(rawQuery, "key_id");
+            String keyId = decodeValue(getRawQueryParam(rawQuery, "key_id"));
             if (signatureValue.isBlank() || keyId.isBlank()) {
                 return false;
             }
@@ -49,14 +52,19 @@ public class AdmobSignatureVerifier {
     }
 
     private String extractDataToVerify(String rawQuery) {
-        int signatureStartIndex = rawQuery.indexOf("&signature=");
-        if (signatureStartIndex >= 0) {
-            return rawQuery.substring(0, signatureStartIndex);
+        String[] parts = rawQuery.split("&");
+        List<String> signedParts = new ArrayList<>(parts.length);
+        for (String part : parts) {
+            if (part.startsWith("signature=")) {
+                break;
+            }
+            signedParts.add(part);
         }
-        if (rawQuery.startsWith("signature=")) {
+
+        if (signedParts.isEmpty()) {
             return "";
         }
-        return rawQuery;
+        return String.join("&", signedParts);
     }
 
     private String getRawQueryParam(String rawQuery, String key) {
@@ -70,10 +78,23 @@ public class AdmobSignatureVerifier {
     }
 
     private byte[] decodeSignature(String signatureValue) {
+        String decoded = decodeValue(signatureValue);
         try {
-            return Base64.getUrlDecoder().decode(signatureValue);
+            return Base64.getUrlDecoder().decode(decoded);
         } catch (IllegalArgumentException ignored) {
-            return Base64.getDecoder().decode(signatureValue);
+            return Base64.getDecoder().decode(decoded);
+        }
+    }
+
+    private String decodeValue(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        try {
+            // Query string values may be URL-encoded in callback delivery.
+            return URLDecoder.decode(value, StandardCharsets.UTF_8).replace(" ", "+");
+        } catch (Exception ignored) {
+            return value;
         }
     }
 }
