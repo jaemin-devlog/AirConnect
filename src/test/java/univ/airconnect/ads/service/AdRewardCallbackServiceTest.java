@@ -108,6 +108,20 @@ class AdRewardCallbackServiceTest {
         assertThat(response.getGrantedTickets()).isEqualTo(0);
         verify(adRewardCallbackRepository, never()).save(any());
     }
+
+    @Test
+    void handleCallback_ignores_whenProbeRequestHasOnlySignatureLikeParams() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setQueryString("signature=dummy&key_id=1");
+        request.addParameter("signature", "dummy");
+        request.addParameter("key_id", "1");
+
+        AdRewardCallbackResponse response = adRewardCallbackService.handleAdmobCallback(request);
+
+        assertThat(response.getGrantStatus()).isEqualTo("IGNORED");
+        assertThat(response.getGrantedTickets()).isEqualTo(0);
+        verify(adRewardCallbackRepository, never()).save(any());
+    }
 }
 
 

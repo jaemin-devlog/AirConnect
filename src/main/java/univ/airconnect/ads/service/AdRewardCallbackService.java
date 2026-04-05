@@ -53,8 +53,13 @@ public class AdRewardCallbackService {
                 !keyId.isBlank(),
                 rawQuery.length());
 
-        // AdMob 콘솔 URL 확인(probe)에서는 signature/key_id 없이 호출될 수 있다.
-        // 이 경우 지급 로직을 수행하지 않고 200으로 무해 응답한다.
+        // AdMob 콘솔 URL 확인(probe)에서는 세션/거래 식별자 없이 호출될 수 있다.
+        // 이 경우 signature 파라미터 유무와 무관하게 지급 로직을 수행하지 않고 200으로 무해 응답한다.
+        if (sessionKey.isBlank() && transactionId.isBlank()) {
+            return ignoredResponse("", "");
+        }
+
+        // 세션/거래 식별자는 있는데 signature/key_id가 없으면 검증 불가 요청으로 무해 처리한다.
         if (signature.isBlank() || keyId.isBlank()) {
             return ignoredResponse(sessionKey, transactionId);
         }
