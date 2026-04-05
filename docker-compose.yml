@@ -13,7 +13,7 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
 
       DB_HOST: mysql
-      DB_PORT: 3307
+      DB_PORT: 3306
       DB_NAME: ${DB_NAME}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -64,6 +64,8 @@ services:
       TZ: Asia/Seoul
     volumes:
       - "./mysql-data:/var/lib/mysql"
+    ports:
+          - "3307:3306"
     networks:
       - airconnect-network
     healthcheck:
