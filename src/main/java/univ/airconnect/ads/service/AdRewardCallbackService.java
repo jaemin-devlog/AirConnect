@@ -43,24 +43,27 @@ public class AdRewardCallbackService {
         String transactionId = nullSafe(request.getParameter("transaction_id"));
         String customData = nullSafe(request.getParameter("custom_data"));
         String sessionKey = extractSessionKey(customData);
+        String signature = nullSafe(request.getParameter("signature"));
+        String keyId = nullSafe(request.getParameter("key_id"));
 
-        // AdMob 콘솔 URL 확인 요청은 핵심 파라미터 없이 들어올 수 있으므로 무해하게 200 처리한다.
-        if (sessionKey.isBlank() && transactionId.isBlank()
-                && nullSafe(request.getParameter("signature")).isBlank()
-                && nullSafe(request.getParameter("key_id")).isBlank()) {
-            return AdRewardCallbackResponse.builder()
-                    .sessionKey("")
-                    .transactionId("")
-                    .grantStatus("IGNORED")
-                    .grantedTickets(0)
-                    .beforeTickets(null)
-                    .afterTickets(null)
-                    .ledgerId(null)
-                    .processedAt(OffsetDateTime.now(ZoneOffset.UTC))
-                    .build();
+        log.info("Ad reward callback inbound. txId={}, sessionKeyMasked={}, hasSignature={}, hasKeyId={}, queryLength={}",
+                mask(transactionId),
+                mask(sessionKey),
+                !signature.isBlank(),
+                !keyId.isBlank(),
+                rawQuery.length());
+
+        // AdMob 콘솔 URL 확인(probe)에서는 signature/key_id 없이 호출될 수 있다.
+        // 이 경우 지급 로직을 수행하지 않고 200으로 무해 응답한다.
+        if (signature.isBlank() || keyId.isBlank()) {
+            return ignoredResponse(sessionKey, transactionId);
         }
 
         boolean signatureValid = admobSignatureVerifier.verify(request);
+        log.info("Ad reward callback signature verification result. txId={}, sessionKeyMasked={}, valid={}",
+                mask(transactionId),
+                mask(sessionKey),
+                signatureValid);
         adRewardCallbackRepository.save(AdRewardCallback.of(sessionKey, transactionId, truncate(rawQuery), signatureValid));
 
         if (!signatureValid) {
@@ -126,6 +129,19 @@ public class AdRewardCallbackService {
                 .build();
     }
 
+    private AdRewardCallbackResponse ignoredResponse(String sessionKey, String transactionId) {
+        return AdRewardCallbackResponse.builder()
+                .sessionKey(sessionKey)
+                .transactionId(transactionId)
+                .grantStatus("IGNORED")
+                .grantedTickets(0)
+                .beforeTickets(null)
+                .afterTickets(null)
+                .ledgerId(null)
+                .processedAt(OffsetDateTime.now(ZoneOffset.UTC))
+                .build();
+    }
+
     private String extractSessionKey(String customData) {
         if (customData == null || customData.isBlank()) {
             return "";
@@ -148,6 +164,16 @@ public class AdRewardCallbackService {
             return value;
         }
         return value.substring(0, 2000);
+    }
+
+    private String mask(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        if (value.length() <= 6) {
+            return "***";
+        }
+        return value.substring(0, 3) + "***" + value.substring(value.length() - 3);
     }
 }
 
