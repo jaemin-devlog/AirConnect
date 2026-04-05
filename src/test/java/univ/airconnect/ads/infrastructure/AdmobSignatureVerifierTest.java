@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Signature;
+import java.net.URLEncoder;
 import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,6 +57,43 @@ class AdmobSignatureVerifierTest {
         AdmobSignatureVerifier verifier = new AdmobSignatureVerifier(admobVerifierKeyProvider);
 
         assertThat(verifier.verify(request)).isFalse();
+    }
+
+    @Test
+    void verify_returnsTrue_whenSignatureParamIsInMiddle() throws Exception {
+        KeyPair keyPair = generateEcKeyPair();
+
+        String dataToVerify = "ad_network=5450213213286189855&custom_data=sessionKey%3Dabc123&transaction_id=tx-001";
+        String signature = sign(dataToVerify, keyPair);
+        String query = dataToVerify + "&signature=" + signature + "&key_id=42";
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setQueryString(query);
+
+        when(admobVerifierKeyProvider.getPublicKey("42")).thenReturn(keyPair.getPublic());
+
+        AdmobSignatureVerifier verifier = new AdmobSignatureVerifier(admobVerifierKeyProvider);
+
+        assertThat(verifier.verify(request)).isTrue();
+    }
+
+    @Test
+    void verify_returnsTrue_whenSignatureIsUrlEncoded() throws Exception {
+        KeyPair keyPair = generateEcKeyPair();
+
+        String dataToVerify = "custom_data=sessionKey%3Dabc123&transaction_id=tx-001";
+        String signature = sign(dataToVerify, keyPair);
+        String encodedSignature = URLEncoder.encode(signature, StandardCharsets.UTF_8);
+        String query = dataToVerify + "&signature=" + encodedSignature + "&key_id=42";
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setQueryString(query);
+
+        when(admobVerifierKeyProvider.getPublicKey("42")).thenReturn(keyPair.getPublic());
+
+        AdmobSignatureVerifier verifier = new AdmobSignatureVerifier(admobVerifierKeyProvider);
+
+        assertThat(verifier.verify(request)).isTrue();
     }
 
     private KeyPair generateEcKeyPair() throws Exception {
