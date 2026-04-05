@@ -64,6 +64,8 @@ services:
       TZ: Asia/Seoul
     volumes:
       - "./mysql-data:/var/lib/mysql"
+    ports:
+          - "3307:3306"
     networks:
       - airconnect-network
     healthcheck:
