@@ -53,28 +53,67 @@ public class AdRewardCallbackService {
                 !keyId.isBlank(),
                 rawQuery.length());
 
-        // AdMob 콘솔 URL 확인(probe)에서는 세션/거래 식별자 없이 호출될 수 있다.
-        // 이 경우 signature 파라미터 유무와 무관하게 지급 로직을 수행하지 않고 200으로 무해 응답한다.
-        if (sessionKey.isBlank() && transactionId.isBlank()) {
-            return ignoredResponse("", "");
+        // AdMob 콘솔 URL 확인(probe) 또는 세션 없는 호출은 무해하게 200 응답
+        if (sessionKey.isBlank()) {
+            try {
+                adRewardCallbackRepository.save(
+                        AdRewardCallback.of(
+                                null,
+                                transactionId.isBlank() ? null : transactionId,
+                                truncate(rawQuery),
+                                false
+                        )
+                );
+            } catch (Exception e) {
+                log.error("Failed to save AdRewardCallback log for probe request", e);
+            }
+            return ignoredResponse("", transactionId);
         }
 
-        // 세션/거래 식별자는 있는데 signature/key_id가 없으면 검증 불가 요청으로 무해 처리한다.
+        // 실제 세션은 있지만 서명 메타데이터가 없으면 지급하지 않고 무시
         if (signature.isBlank() || keyId.isBlank()) {
+            log.warn("Ad reward callback ignored due to missing signature metadata. txId={}, sessionKeyMasked={}",
+                    mask(transactionId), mask(sessionKey));
+            try {
+                adRewardCallbackRepository.save(
+                        AdRewardCallback.of(
+                                sessionKey,
+                                transactionId.isBlank() ? null : transactionId,
+                                truncate(rawQuery),
+                                false
+                        )
+                );
+            } catch (Exception e) {
+                log.error("Failed to save AdRewardCallback log for missing signature metadata", e);
+            }
             return ignoredResponse(sessionKey, transactionId);
         }
 
         boolean signatureValid = admobSignatureVerifier.verify(request);
+
         log.info("Ad reward callback signature verification result. txId={}, sessionKeyMasked={}, valid={}",
                 mask(transactionId),
                 mask(sessionKey),
                 signatureValid);
-        adRewardCallbackRepository.save(AdRewardCallback.of(sessionKey, transactionId, truncate(rawQuery), signatureValid));
+
+        try {
+            adRewardCallbackRepository.save(
+                    AdRewardCallback.of(
+                            sessionKey,
+                            transactionId.isBlank() ? null : transactionId,
+                            truncate(rawQuery),
+                            signatureValid
+                    )
+            );
+        } catch (Exception e) {
+            log.error("Failed to save AdRewardCallback verification result", e);
+        }
 
         if (!signatureValid) {
             throw new AdsException(AdsErrorCode.AD_REWARD_INVALID_SIGNATURE);
         }
-        if (sessionKey.isBlank() || transactionId.isBlank()) {
+
+        if (transactionId.isBlank()) {
             throw new AdsException(AdsErrorCode.AD_REWARD_INVALID_CALLBACK);
         }
 
@@ -181,5 +220,3 @@ public class AdRewardCallbackService {
         return value.substring(0, 3) + "***" + value.substring(value.length() - 3);
     }
 }
-
-
