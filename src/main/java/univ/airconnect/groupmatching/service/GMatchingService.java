@@ -264,6 +264,14 @@ public class GMatchingService {
             throw new BusinessException(ErrorCode.READY_CHECK_REQUIRED);
         }
 
+        if (ready) {
+            ensureUserHasEnoughGroupMatchTickets(
+                    findUserOrThrow(userId),
+                    requiredTicketsFor(teamRoom.getTeamSize()),
+                    "과팅 준비 완료 실패"
+            );
+        }
+
         GTeamReadyState readyState = teamReadyStateRepository.findByTeamRoomIdAndUserId(teamRoomId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.READY_STATE_NOT_FOUND));
 
@@ -736,7 +744,7 @@ public class GMatchingService {
         finalMemberIds.addAll(extractUserIds(secondMembers));
 
         ChatRoom finalChatRoom = chatService.createGroupRoomWithMembers(
-                buildFinalRoomName(first, second),
+                buildFinalRoomName(finalMemberIds),
                 finalMemberIds
         );
 
@@ -750,6 +758,7 @@ public class GMatchingService {
                 )
         );
 
+        consumeGroupMatchTicketsAfterFinalRoomCreated(first.getTeamSize(), finalMemberIds);
         matchResult.completeFinalRoomCreation(finalGroupChatRoom.getId());
         QueueSnapshot firstMatchedSnapshot = QueueSnapshot.matched(first.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
         QueueSnapshot secondMatchedSnapshot = QueueSnapshot.matched(second.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
@@ -1301,9 +1310,89 @@ public class GMatchingService {
         return truncate(roomName, 100);
     }
 
-    private String buildFinalRoomName(GTemporaryTeamRoom first, GTemporaryTeamRoom second) {
-        String prefix = first.getTeamSize().getValue() + ":" + second.getTeamSize().getValue() + " Matched Room";
-        String roomName = prefix + " - " + first.getTeamName() + " & " + second.getTeamName();
+    private int requiredTicketsFor(GTeamSize teamSize) {
+        if (teamSize == null) {
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
+        }
+        return teamSize.getValue();
+    }
+
+    private void consumeGroupMatchTicketsAfterFinalRoomCreated(GTeamSize teamSize, Collection<Long> userIds) {
+        int requiredTickets = requiredTicketsFor(teamSize);
+        for (User user : findUsersForUpdateInOrder(userIds)) {
+            ensureUserHasEnoughGroupMatchTickets(user, requiredTickets, "과팅 매칭 완료 처리 실패");
+            user.consumeTickets(requiredTickets);
+            log.info(
+                    "과팅 매칭 티켓 차감 완료: userId={}, 차감 티켓={}, 남은 티켓={}",
+                    user.getId(),
+                    requiredTickets,
+                    user.getTickets()
+            );
+        }
+    }
+
+    private void ensureUserHasEnoughGroupMatchTickets(User user, int requiredTickets, String logContext) {
+        if (user.getTickets() >= requiredTickets) {
+            return;
+        }
+
+        log.warn(
+                "{}: 티켓이 부족합니다. userId={}, 현재 티켓={}, 필요 티켓={}",
+                logContext,
+                user.getId(),
+                user.getTickets(),
+                requiredTickets
+        );
+        throw new BusinessException(
+                ErrorCode.INVALID_REQUEST,
+                "과팅에 필요한 티켓이 부족합니다. 현재 티켓: " + user.getTickets() + ", 필요 티켓: " + requiredTickets
+        );
+    }
+
+    private List<User> findUsersForUpdateInOrder(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+
+        LinkedHashSet<Long> uniqueUserIds = userIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        List<User> users = new ArrayList<>(uniqueUserIds.size());
+        for (Long userId : uniqueUserIds) {
+            User user = userRepository.findByIdForUpdate(userId)
+                    .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+            users.add(user);
+        }
+        return users;
+    }
+
+    private String buildFinalRoomName(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "최종 채팅방 이름을 만들 멤버가 없습니다.");
+        }
+
+        LinkedHashSet<Long> orderedUserIds = userIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        Map<Long, User> userMap = userRepository.findAllById(orderedUserIds).stream()
+                .collect(Collectors.toMap(User::getId, user -> user));
+
+        String roomName = orderedUserIds.stream()
+                .map(userId -> {
+                    User user = userMap.get(userId);
+                    if (user == null) {
+                        throw new AuthException(AuthErrorCode.USER_NOT_FOUND);
+                    }
+                    String nickname = user.getNickname();
+                    if (nickname == null || nickname.isBlank()) {
+                        return "사용자" + userId;
+                    }
+                    return nickname.trim();
+                })
+                .collect(Collectors.joining(", "));
+
         return truncate(roomName, 100);
     }
 
