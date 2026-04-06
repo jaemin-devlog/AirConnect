@@ -75,6 +75,10 @@ dependencies {
     testRuntimeOnly 'com.h2database:h2'
 
     implementation 'org.springframework.boot:spring-boot-starter-mail'
+
+    //admod
+    implementation "com.google.crypto.tink:apps-rewardedads:1.14.0"
+    implementation "com.google.crypto.tink:tink:1.14.0"
 }
 
 tasks.named('test') {
