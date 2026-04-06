@@ -3,12 +3,17 @@ package univ.airconnect.user.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
+import univ.airconnect.auth.service.oauth.apple.AppleAccountRevocationService;
+import univ.airconnect.chat.service.ChatService;
+import univ.airconnect.notification.domain.entity.PushDevice;
+import univ.airconnect.notification.repository.PushDeviceRepository;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
@@ -25,7 +30,12 @@ import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -39,9 +49,18 @@ public class UserService {
     private final UserMilestoneRepository userMilestoneRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final AnalyticsService analyticsService;
+    private final ChatService chatService;
+    private final PushDeviceRepository pushDeviceRepository;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final AppleAccountRevocationService appleAccountRevocationService;
+
+    private static final String USER_ACTIVITY_TOUCH_KEY_PREFIX = "analytics:user:last-active:";
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
+
+    @Value("${app.upload.profile-image-dir:/tmp/airconnect/profile-images}")
+    private String profileImageDir;
 
     // ...existing code...
 
@@ -255,33 +274,136 @@ public class UserService {
 
     @Transactional
     public void deleteAccount(Long userId, DeleteAccountRequest request) {
-        String reason = request != null ? request.getReason() : null;
-        log.info("🗑️ 회원 탈퇴 처리 시작: userId={}, reason={}", userId, reason);
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
-
-        // 테스트 환경: 탈퇴 후 재가입 가능하도록 ACTIVE 유지하되, 기본 정보만 리셋
-        user.resetOnboarding();
-
-        userProfileRepository.findByUserId(userId)
-                .ifPresent(profile -> {
-                    profile.anonymize();
-                    log.debug("👤 프로필 정보를 익명화: userId={}", userId);
-                });
-
-        purgeRefreshTokens(userId);
-        log.info("✅ 회원 탈퇴 완료 (테스트 환경 - 재가입 가능): userId={}", userId);
+        deleteAccount(userId, request, null);
     }
 
-    private void purgeRefreshTokens(Long userId) {
-        Iterable<RefreshToken> tokens = refreshTokenRepository.findByUserId(userId);
-        for (RefreshToken token : tokens) {
-            if (token == null) {
-                continue;
+    @Transactional
+    public void deleteAccount(Long userId, DeleteAccountRequest request, String traceId) {
+        boolean reasonProvided = request != null
+                && request.getReason() != null
+                && !request.getReason().isBlank();
+        log.info("🗑️ 회원 탈퇴 처리 시작: userId={}, reasonProvided={}, traceId={}",
+                userId, reasonProvided, traceIdOrDash(traceId));
+
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+
+        revokeAppleTokenOnDelete(user, request, traceId);
+
+        if (user.getStatus() == UserStatus.DELETED) {
+            log.info("ℹ️ 이미 탈퇴된 사용자입니다. 후처리만 재시도합니다: userId={}", userId);
+        } else {
+            user.anonymizeForDeletion();
+            user.markDeleted();
+        }
+        anonymizeProfileAndDeleteImage(userId);
+
+        int refreshTokensRevoked = purgeRefreshTokens(userId);
+        int chatSessionsRevoked = purgeChatSessions(userId);
+        int pushDevicesRevoked = revokePushDevices(userId);
+        purgeUserActivityTouch(userId);
+
+        log.info("✅ 회원 탈퇴 완료: userId={}, status={}, refreshTokensRevoked={}, chatSessionsRevoked={}, pushDevicesRevoked={}",
+                userId,
+                user.getStatus(),
+                refreshTokensRevoked,
+                chatSessionsRevoked,
+                pushDevicesRevoked);
+    }
+
+    private void revokeAppleTokenOnDelete(User user, DeleteAccountRequest request, String traceId) {
+        try {
+            AppleAccountRevocationService.AppleRevocationResult revokeResult =
+                    appleAccountRevocationService.revokeOnAccountDeletion(user, request, traceId);
+            if (revokeResult.attempted() && !revokeResult.success()) {
+                log.warn("Apple revoke failed but account deletion will continue. traceId={}, userId={}, source={}, reason={}",
+                        traceIdOrDash(traceId),
+                        user != null ? user.getId() : null,
+                        revokeResult.source(),
+                        revokeResult.reason());
             }
-            refreshTokenRepository.deleteById(token.getId());
-            log.debug("🧹 RefreshToken 삭제: key={}", token.getId());
+        } catch (Exception ex) {
+            log.warn("Apple revoke process raised unexpected error but account deletion will continue. traceId={}, userId={}, reason={}",
+                    traceIdOrDash(traceId),
+                    user != null ? user.getId() : null,
+                    ex.getMessage());
+        }
+    }
+
+    private void anonymizeProfileAndDeleteImage(Long userId) {
+        userProfileRepository.findByUserId(userId).ifPresent(profile -> {
+            String profileImagePath = profile.getProfileImagePath();
+            profile.anonymize();
+            deleteProfileImageFile(profileImagePath);
+            log.debug("👤 프로필 정보를 익명화했습니다: userId={}", userId);
+        });
+    }
+
+    private int purgeRefreshTokens(Long userId) {
+        try {
+            Iterable<RefreshToken> tokens = refreshTokenRepository.findByUserId(userId);
+            List<String> tokenIds = new ArrayList<>();
+            for (RefreshToken token : tokens) {
+                if (token == null || token.getId() == null) {
+                    continue;
+                }
+                tokenIds.add(token.getId());
+            }
+            if (!tokenIds.isEmpty()) {
+                refreshTokenRepository.deleteAllById(tokenIds);
+            }
+            return tokenIds.size();
+        } catch (Exception ex) {
+            log.warn("RefreshToken 무효화에 실패했습니다. userId={}, reason={}", userId, ex.getMessage());
+            return 0;
+        }
+    }
+
+    private int purgeChatSessions(Long userId) {
+        try {
+            return chatService.invalidateSessionsByUserId(userId);
+        } catch (Exception ex) {
+            log.warn("채팅 세션 무효화에 실패했습니다. userId={}, reason={}", userId, ex.getMessage());
+            return 0;
+        }
+    }
+
+    private int revokePushDevices(Long userId) {
+        try {
+            List<PushDevice> devices = pushDeviceRepository.findByUserIdAndActiveTrue(userId);
+            for (PushDevice device : devices) {
+                device.releaseTokenOwnership();
+            }
+            return devices.size();
+        } catch (Exception ex) {
+            log.warn("푸시 디바이스 비활성화에 실패했습니다. userId={}, reason={}", userId, ex.getMessage());
+            return 0;
+        }
+    }
+
+    private void purgeUserActivityTouch(Long userId) {
+        try {
+            redisTemplate.delete(USER_ACTIVITY_TOUCH_KEY_PREFIX + userId);
+        } catch (Exception ex) {
+            log.warn("활동 터치 키 삭제에 실패했습니다. userId={}, reason={}", userId, ex.getMessage());
+        }
+    }
+
+    private void deleteProfileImageFile(String profileImagePath) {
+        if (profileImagePath == null || profileImagePath.isBlank()) {
+            return;
+        }
+
+        try {
+            Path uploadRoot = Paths.get(profileImageDir).toAbsolutePath().normalize();
+            Path target = uploadRoot.resolve(profileImagePath).normalize();
+            if (!target.startsWith(uploadRoot)) {
+                log.warn("프로필 이미지 삭제가 차단되었습니다. path={}", profileImagePath);
+                return;
+            }
+            Files.deleteIfExists(target);
+        } catch (Exception ex) {
+            log.warn("프로필 이미지 파일 삭제에 실패했습니다. imagePath={}, reason={}", profileImagePath, ex.getMessage());
         }
     }
 
@@ -292,6 +414,13 @@ public class UserService {
         if (user.getStatus() == UserStatus.DELETED) {
             throw new UserException(UserErrorCode.USER_DELETED);
         }
+    }
+
+    private String traceIdOrDash(String traceId) {
+        if (traceId == null || traceId.isBlank()) {
+            return "-";
+        }
+        return traceId;
     }
 
 }

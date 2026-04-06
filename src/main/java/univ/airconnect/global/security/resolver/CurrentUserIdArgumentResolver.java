@@ -9,9 +9,20 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
+import univ.airconnect.user.domain.UserStatus;
+import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.exception.UserErrorCode;
+import univ.airconnect.user.exception.UserException;
+import univ.airconnect.user.repository.UserRepository;
 
 @Component
 public class CurrentUserIdArgumentResolver implements HandlerMethodArgumentResolver {
+
+    private final UserRepository userRepository;
+
+    public CurrentUserIdArgumentResolver(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
     @Override
     public boolean supportsParameter(MethodParameter parameter) {
@@ -36,6 +47,14 @@ public class CurrentUserIdArgumentResolver implements HandlerMethodArgumentResol
             return null;
         }
 
-        return customUserPrincipal.getUserId();
+        Long userId = customUserPrincipal.getUserId();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new UserException(UserErrorCode.USER_DELETED);
+        }
+
+        return userId;
     }
 }

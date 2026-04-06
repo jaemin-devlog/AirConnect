@@ -9,6 +9,7 @@ import univ.airconnect.ads.exception.AdsException;
 import univ.airconnect.iap.domain.LedgerRefType;
 import univ.airconnect.iap.domain.entity.TicketLedger;
 import univ.airconnect.ticket.repository.AdTicketLedgerRepository;
+import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -37,6 +38,12 @@ public class AdTicketGrantService {
 
         User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new AdsException(AdsErrorCode.AD_REWARD_INVALID_SESSION));
+
+        if (user.getStatus() == UserStatus.DELETED) {
+            log.warn("Ad reward ticket grant blocked for deleted user. userId={}, status={}, sessionId={}",
+                    userId, user.getStatus(), sessionId);
+            throw new AdsException(AdsErrorCode.AD_REWARD_INVALID_SESSION);
+        }
 
         int before = user.getTickets();
         user.addTickets(amount);
@@ -72,4 +79,3 @@ public class AdTicketGrantService {
         }
     }
 }
-

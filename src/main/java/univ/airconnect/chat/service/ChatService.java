@@ -31,6 +31,7 @@ import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
+import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.dto.response.UserProfileResponse;
@@ -294,6 +295,35 @@ public class ChatService {
     }
 
     /**
+     * 사용자 탈퇴 등으로 특정 사용자의 활성 STOMP 세션 정보를 Redis에서 제거한다.
+     */
+    public int invalidateSessionsByUserId(Long userId) {
+        if (userId == null) {
+            return 0;
+        }
+
+        Set<String> sessionKeys = redisTemplate.keys(CHAT_SESSION_KEY + "*");
+        if (sessionKeys == null || sessionKeys.isEmpty()) {
+            return 0;
+        }
+
+        int removed = 0;
+        String targetUserId = String.valueOf(userId);
+        for (String sessionKey : sessionKeys) {
+            Object storedUserId = redisTemplate.opsForValue().get(sessionKey);
+            if (storedUserId == null || !targetUserId.equals(String.valueOf(storedUserId))) {
+                continue;
+            }
+
+            String sessionId = sessionKey.substring(CHAT_SESSION_KEY.length());
+            removeSessionInfo(sessionId);
+            removed++;
+        }
+
+        return removed;
+    }
+
+    /**
      * 세션-채팅방 매핑 저장
      */
     public void mapSessionToRoom(String sessionId, String roomId) {
@@ -434,7 +464,7 @@ public class ChatService {
     }
 
     private ChatMessageResponse sendMessageInternal(Long userId, Long roomId, String content, MessageType messageType) {
-        User user = findUserOrThrow(userId);
+        User user = findActiveUserOrThrow(userId);
         validateRoomAccess(roomId, userId);
 
         validateMessagePayload(content, messageType);
@@ -717,6 +747,14 @@ public class ChatService {
     private User findUserOrThrow(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+    }
+
+    private User findActiveUserOrThrow(Long userId) {
+        User user = findUserOrThrow(userId);
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new AuthException(AuthErrorCode.USER_DELETED);
+        }
+        return user;
     }
 
     private ChatRoom findRoomOrThrow(Long roomId) {

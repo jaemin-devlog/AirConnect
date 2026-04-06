@@ -102,7 +102,7 @@ public class UserController {
     ) {
         log.info("🗑️ 회원 탈퇴 요청: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
-        userService.deleteAccount(userId, request);
+        userService.deleteAccount(userId, request, traceId);
         log.info("🚪 회원 탈퇴 완료: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }

@@ -13,6 +13,8 @@ import org.springframework.data.redis.listener.Topic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.auth.exception.AuthErrorCode;
+import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.domain.entity.ChatMessage;
 import univ.airconnect.chat.domain.entity.ChatRoom;
@@ -37,6 +39,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -204,6 +207,27 @@ class ChatServiceTest {
 
         assertThat(response.isDeleted()).isTrue();
         assertThat(response.getContent()).isEqualTo("삭제된 메시지입니다.");
+    }
+
+    @Test
+    void sendMessage_throwsWhenUserDeleted() {
+        ChatService service = createService();
+        Long userId = 1L;
+        Long roomId = 10L;
+
+        User user = createUser(userId, "sender");
+        user.markDeleted();
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        ReflectionTestUtils.setField(request, "roomId", roomId);
+        ReflectionTestUtils.setField(request, "message", "hello");
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.sendMessage(userId, request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.USER_DELETED);
     }
 
     @Test

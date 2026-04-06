@@ -70,8 +70,21 @@ iap:
   apple:
     bundle-id: ${IAP_APPLE_BUNDLE_ID:com.airconnect.app}
     environment: ${IAP_APPLE_ENVIRONMENT:PRODUCTION}
+    allowed-product-ids: ${IAP_APPLE_ALLOWED_PRODUCT_IDS:}
   google:
     package-name: ${IAP_GOOGLE_PACKAGE_NAME:com.airconnect.app}
     service-account-json-path: ${IAP_GOOGLE_SERVICE_ACCOUNT_JSON_PATH:}
     verify-enabled: ${IAP_GOOGLE_VERIFY_ENABLED:false}
 
+apple:
+  team-id: ${APPLE_TEAM_ID:}
+  key-id: ${APPLE_KEY_ID:}
+  client-id: ${APPLE_CLIENT_ID:}
+  private-key-path: ${APPLE_PRIVATE_KEY_PATH:}
+  # backward compatibility for legacy key names
+  bundle-id: ${BUNDLE_ID:}
+  key-path: ${KEY_PATH:}
+  revoke:
+    enabled: ${APPLE_REVOKE_ENABLED:true}
+    endpoint: ${APPLE_REVOKE_ENDPOINT:https://appleid.apple.com/auth/revoke}
+    client-secret-ttl-seconds: ${APPLE_CLIENT_SECRET_TTL_SECONDS:300}

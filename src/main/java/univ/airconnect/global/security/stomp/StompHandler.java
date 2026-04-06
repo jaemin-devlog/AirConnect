@@ -17,6 +17,9 @@ import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
 import univ.airconnect.groupmatching.service.GMatchingService;
+import univ.airconnect.user.domain.UserStatus;
+import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.repository.UserRepository;
 
 import java.security.Principal;
 import java.util.Base64;
@@ -33,17 +36,20 @@ public class StompHandler implements ChannelInterceptor {
     private final ChatService chatService;
     private final GMatchingService matchingService;
     private final StompOpsMonitor stompOpsMonitor;
+    private final UserRepository userRepository;
 
     public StompHandler(
             JwtProvider jwtProvider,
             @Lazy ChatService chatService,
             @Lazy GMatchingService matchingService,
-            StompOpsMonitor stompOpsMonitor
+            StompOpsMonitor stompOpsMonitor,
+            UserRepository userRepository
     ) {
         this.jwtProvider = jwtProvider;
         this.chatService = chatService;
         this.matchingService = matchingService;
         this.stompOpsMonitor = stompOpsMonitor;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -88,6 +94,7 @@ public class StompHandler implements ChannelInterceptor {
         try {
             jwtProvider.validateAccessToken(token);
             Long userId = jwtProvider.getUserId(token);
+            ensureActiveUser(userId);
 
             CustomUserPrincipal principal = new CustomUserPrincipal(userId);
             Authentication authentication =
@@ -131,6 +138,7 @@ public class StompHandler implements ChannelInterceptor {
             stompOpsMonitor.recordSubscribeFailure(new AccessDeniedException("unauthenticated"));
             throw new AccessDeniedException("Unable to resolve authenticated user.");
         }
+        ensureActiveUser(userId);
 
         if (destination.startsWith(CHAT_ROOM_SUB_PREFIX)) {
             handleChatSubscribe(accessor, destination, userId);
@@ -284,5 +292,14 @@ public class StompHandler implements ChannelInterceptor {
         }
 
         return null;
+    }
+
+    private void ensureActiveUser(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AccessDeniedException("User not found."));
+
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new AccessDeniedException("Deleted user cannot use websocket.");
+        }
     }
 }

@@ -174,6 +174,21 @@ public class User {
         this.lastActiveAt = null;
     }
 
+    public void anonymizeForDeletion() {
+        this.email = null;
+        this.name = null;
+        this.nickname = null;
+        this.studentNum = null;
+        this.deptName = null;
+        this.onboardingStatus = OnboardingStatus.BASIC;
+        this.lastActiveAt = null;
+        this.suspendedUntil = null;
+        this.restrictedAt = null;
+        this.restrictedUntil = null;
+        this.restrictedReason = null;
+        this.iosAppAccountToken = UUID.randomUUID().toString();
+    }
+
     public void consumeTickets(int amount) {
         if (this.tickets < amount) {
             throw new IllegalArgumentException("티켓이 부족합니다. 현재: " + this.tickets + ", 필요: " + amount);

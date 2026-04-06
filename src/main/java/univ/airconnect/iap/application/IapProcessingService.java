@@ -5,6 +5,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.iap.domain.GrantStatus;
+import univ.airconnect.iap.domain.IapEnvironment;
+import univ.airconnect.iap.domain.IapOrderStatus;
 import univ.airconnect.iap.domain.IapProductPolicy;
 import univ.airconnect.iap.domain.IapStore;
 import univ.airconnect.iap.domain.entity.IapOrder;
@@ -140,29 +142,43 @@ public class IapProcessingService {
         }
 
         IapOrder existing = findExisting(result);
-        if (existing != null && existing.getStatus() == univ.airconnect.iap.domain.IapOrderStatus.GRANTED) {
-            log.info("IAP process already granted. userId={}, store={}, orderId={}, key={}",
-                    userId, result.getStore(), existing.getId(), existing.idempotencyKey());
-            return toAlreadyGranted(existing);
-        }
-
         IapOrder order = existing;
         if (order == null) {
             order = createPendingOrder(userId, result);
+        }
+        order = lockOrder(order.getId());
+        assertOrderOwnershipAndConsistency(order, userId, result);
+
+        if (order.getStatus() == IapOrderStatus.GRANTED) {
+            if (result.isTransactionRevoked()) {
+                order.markRevoked();
+                log.warn("IAP process transaction revoked after grant. userId={}, store={}, orderId={}, key={}",
+                        userId, result.getStore(), order.getId(), order.idempotencyKey());
+                return toRejected(order, result);
+            }
+            log.info("IAP process already granted. userId={}, store={}, orderId={}, key={}",
+                    userId, result.getStore(), order.getId(), order.idempotencyKey());
+            return toAlreadyGranted(order);
+        }
+
+        if (order.getStatus() == IapOrderStatus.REVOKED || order.getStatus() == IapOrderStatus.REFUNDED) {
+            log.info("IAP process already non-grantable. userId={}, store={}, orderId={}, status={}",
+                    userId, result.getStore(), order.getId(), order.getStatus());
+            return toRejected(order, result);
+        }
+
+        if (result.isTransactionRevoked()) {
+            order.markRevoked();
+            log.warn("IAP process revoked transaction. userId={}, store={}, orderId={}, key={}",
+                    userId, result.getStore(), order.getId(), order.idempotencyKey());
+            return toRejected(order, result);
         }
 
         if (!result.isValid()) {
             order.markRejected();
             log.warn("IAP process rejected. userId={}, store={}, orderId={}, key={}",
                     userId, result.getStore(), order.getId(), order.idempotencyKey());
-            return IapVerifyResponse.builder()
-                    .transactionId(result.getTransactionId())
-                    .purchaseToken(result.getPurchaseToken())
-                    .orderId(result.getOrderId())
-                    .productId(result.getProductId())
-                    .grantStatus(GrantStatus.REJECTED)
-                    .processedAt(order.getProcessedAt() == null ? null : order.getProcessedAt().atOffset(ZoneOffset.UTC))
-                    .build();
+            return toRejected(order, result);
         }
 
         order.markVerified();
@@ -186,6 +202,11 @@ public class IapProcessingService {
                 .ledgerId(grant.ledgerExternalId())
                 .processedAt(order.getProcessedAt().atOffset(ZoneOffset.UTC))
                 .build();
+    }
+
+    private IapOrder lockOrder(Long orderId) {
+        return iapOrderRepository.findByIdForUpdate(orderId)
+                .orElseThrow(() -> new IapException(IapErrorCode.IAP_ORDER_NOT_FOUND));
     }
 
     private IapOrder findExisting(StoreVerificationResult result) {
@@ -232,6 +253,53 @@ public class IapProcessingService {
         }
     }
 
+    private void assertOrderOwnershipAndConsistency(IapOrder order, Long userId, StoreVerificationResult result) {
+        if (!order.getUserId().equals(userId)) {
+            log.warn("IAP process forbidden: requester does not own order. requesterUserId={}, ownerUserId={}, orderId={}",
+                    userId, order.getUserId(), order.getId());
+            throw new IapException(IapErrorCode.IAP_FORBIDDEN);
+        }
+        if (result.getProductId() != null && order.getProductId() != null
+                && !result.getProductId().equals(order.getProductId())) {
+            log.warn("IAP process invalid: product mismatch on existing order. orderId={}, orderProductId={}, payloadProductId={}",
+                    order.getId(), order.getProductId(), result.getProductId());
+            throw new IapException(IapErrorCode.IAP_INVALID_TRANSACTION);
+        }
+        if (isKnownEnvironment(order.getEnvironment())
+                && isKnownEnvironment(result.getEnvironment())
+                && order.getEnvironment() != result.getEnvironment()) {
+            log.warn("IAP process invalid: environment mismatch on existing order. orderId={}, orderEnv={}, payloadEnv={}",
+                    order.getId(), order.getEnvironment(), result.getEnvironment());
+            throw new IapException(IapErrorCode.IAP_ENVIRONMENT_MISMATCH);
+        }
+        if (order.getStore() == IapStore.APPLE
+                && hasText(order.getAppAccountToken())
+                && hasText(result.getAppAccountToken())
+                && !order.getAppAccountToken().equals(result.getAppAccountToken())) {
+            log.warn("IAP process invalid: appAccountToken mismatch on existing Apple order. orderId={}", order.getId());
+            throw new IapException(IapErrorCode.IAP_ACCOUNT_TOKEN_MISMATCH);
+        }
+        if (order.getStore() == IapStore.APPLE
+                && hasText(order.getOriginalTransactionId())
+                && hasText(result.getOriginalTransactionId())
+                && !order.getOriginalTransactionId().equals(result.getOriginalTransactionId())) {
+            log.warn("IAP process invalid: originalTransactionId mismatch on existing Apple order. orderId={}, txId={}",
+                    order.getId(), order.getTransactionId());
+            throw new IapException(IapErrorCode.IAP_INVALID_TRANSACTION);
+        }
+    }
+
+    private IapVerifyResponse toRejected(IapOrder order, StoreVerificationResult result) {
+        return IapVerifyResponse.builder()
+                .transactionId(firstNotBlank(order.getTransactionId(), result.getTransactionId()))
+                .purchaseToken(firstNotBlank(order.getPurchaseToken(), result.getPurchaseToken()))
+                .orderId(firstNotBlank(order.getOrderId(), result.getOrderId()))
+                .productId(firstNotBlank(order.getProductId(), result.getProductId()))
+                .grantStatus(GrantStatus.REJECTED)
+                .processedAt(order.getProcessedAt() == null ? null : order.getProcessedAt().atOffset(ZoneOffset.UTC))
+                .build();
+    }
+
     private IapVerifyResponse toAlreadyGranted(IapOrder order) {
         log.info("IAP already granted response generated. orderId={}, store={}, key={}",
                 order.getId(), order.getStore(), order.idempotencyKey());
@@ -256,6 +324,18 @@ public class IapProcessingService {
         return result.getPurchaseToken() != null ? "PRESENT" : "MISSING";
     }
 
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private String firstNotBlank(String first, String second) {
+        if (hasText(first)) {
+            return first;
+        }
+        return hasText(second) ? second : null;
+    }
+
+    private boolean isKnownEnvironment(IapEnvironment environment) {
+        return environment != null && environment != IapEnvironment.UNKNOWN;
+    }
 }
-
-
