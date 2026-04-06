@@ -98,7 +98,9 @@ apple:
   login:
     issuer: ${APPLE_LOGIN_ISSUER:https://appleid.apple.com}
     jwks-url: ${APPLE_LOGIN_JWKS_URL:https://appleid.apple.com/auth/keys}
-    allowed-audiences: ${APPLE_LOGIN_ALLOWED_AUDIENCES:}
+    allowed-audiences:
+      - com.airconnect.app
+      - com.jiin.AirConnect
   revoke:
     enabled: ${APPLE_REVOKE_ENABLED:true}
     client-id: ${APPLE_REVOKE_CLIENT_ID:${APPLE_CLIENT_ID:${BUNDLE_ID}}}
