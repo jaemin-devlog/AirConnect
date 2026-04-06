@@ -68,11 +68,26 @@ class AdRewardCallbackServiceTest {
     }
 
     @Test
-    void handleCallback_fails_whenSignatureInvalid() {
+    void handleCallback_ignores_whenSignatureMissing() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setQueryString("custom_data=sess-1&transaction_id=tx-1");
         request.addParameter("custom_data", "sess-1");
         request.addParameter("transaction_id", "tx-1");
+
+        AdRewardCallbackResponse response = adRewardCallbackService.handleAdmobCallback(request);
+
+        assertThat(response.getGrantStatus()).isEqualTo("IGNORED");
+        verify(adRewardCallbackRepository, never()).save(any());
+    }
+
+    @Test
+    void handleCallback_fails_whenSignatureInvalid() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setQueryString("custom_data=sess-1&transaction_id=tx-1&signature=s&key_id=k");
+        request.addParameter("custom_data", "sess-1");
+        request.addParameter("transaction_id", "tx-1");
+        request.addParameter("signature", "s");
+        request.addParameter("key_id", "k");
 
         when(admobSignatureVerifier.verify(any())).thenReturn(false);
         when(adRewardCallbackRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -86,6 +101,20 @@ class AdRewardCallbackServiceTest {
     @Test
     void handleCallback_ignores_whenProbeRequestHasNoParams() {
         MockHttpServletRequest request = new MockHttpServletRequest();
+
+        AdRewardCallbackResponse response = adRewardCallbackService.handleAdmobCallback(request);
+
+        assertThat(response.getGrantStatus()).isEqualTo("IGNORED");
+        assertThat(response.getGrantedTickets()).isEqualTo(0);
+        verify(adRewardCallbackRepository, never()).save(any());
+    }
+
+    @Test
+    void handleCallback_ignores_whenProbeRequestHasOnlySignatureLikeParams() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setQueryString("signature=dummy&key_id=1");
+        request.addParameter("signature", "dummy");
+        request.addParameter("key_id", "1");
 
         AdRewardCallbackResponse response = adRewardCallbackService.handleAdmobCallback(request);
 
