@@ -31,7 +31,7 @@ public class RefreshToken {
     /** 클라이언트 기기 식별자 */
     private String deviceId;
 
-    /** 실제 RefreshToken 문자열 */
+    /** RefreshToken 해시값(평문 저장 금지) */
     private String token;
 
     /**
@@ -44,12 +44,12 @@ public class RefreshToken {
     /**
      * RefreshToken 생성 팩토리 메서드
      */
-    public static RefreshToken create(Long userId, String deviceId, String token) {
+    public static RefreshToken create(Long userId, String deviceId, String tokenHash) {
         return RefreshToken.builder()
                 .id(generateId(userId, deviceId))
                 .userId(userId)
                 .deviceId(deviceId)
-                .token(token)
+                .token(tokenHash)
                 .ttlSeconds(TTL_SECONDS)
                 .build();
     }

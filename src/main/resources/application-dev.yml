@@ -39,6 +39,9 @@ spring:
   data:
     redis:
       url: ${REDIS_URL}
+      timeout: ${REDIS_TIMEOUT:3s}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
 
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
@@ -74,6 +77,10 @@ jwt:
   secret: ${JWT_SECRET}
   access-token-expiration-seconds: ${JWT_ACCESS_TOKEN_EXPIRATION_SECONDS:3600}
   refresh-token-expiration-seconds: ${JWT_REFRESH_TOKEN_EXPIRATION_SECONDS:2592000}
+
+auth:
+  refresh-token:
+    hash-pepper: ${REFRESH_TOKEN_HASH_PEPPER:${JWT_SECRET}}
 
 iap:
   enabled: ${IAP_ENABLED:true}

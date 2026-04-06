@@ -19,6 +19,11 @@ spring:
       # null 값도 포함하여 직렬화
       write-null-map-values: true
     default-property-inclusion: always
+  data:
+    redis:
+      timeout: ${REDIS_TIMEOUT:3s}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
 
 app:
   cors:
@@ -68,6 +73,10 @@ notification:
       app-name: airconnect-notification
       project-id: ${FIREBASE_PROJECT_ID:}
       credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
+
+auth:
+  refresh-token:
+    hash-pepper: ${REFRESH_TOKEN_HASH_PEPPER:${JWT_SECRET:}}
 
 iap:
   enabled: ${IAP_ENABLED:false}

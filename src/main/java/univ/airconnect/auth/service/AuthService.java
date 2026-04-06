@@ -15,6 +15,7 @@ import univ.airconnect.auth.dto.response.TokenPairResponse;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
+import univ.airconnect.auth.security.TokenHashService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
@@ -38,6 +39,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final TokenHashService tokenHashService;
     private final UserService userService;
     private final AnalyticsService analyticsService;
 
@@ -53,8 +55,8 @@ public class AuthService {
 
         User user = userRepository.findByProviderAndSocialId(request.getProvider(), socialId)
                 .orElseGet(() -> {
-                    log.info("Creating new user for social login: provider={}, socialId={}",
-                            request.getProvider(), socialId);
+                    log.info("Creating new user for social login: provider={}, socialIdMasked={}",
+                            request.getProvider(), maskSocialId(socialId));
                     return userRepository.save(User.create(request.getProvider(), socialId, email));
                 });
 
@@ -63,9 +65,10 @@ public class AuthService {
 
         String accessToken = jwtProvider.createAccessToken(user.getId());
         String refreshToken = jwtProvider.createRefreshToken(user.getId(), request.getDeviceId());
+        String refreshTokenHash = tokenHashService.hash(refreshToken);
 
         refreshTokenRepository.save(
-                RefreshToken.create(user.getId(), request.getDeviceId(), refreshToken)
+                RefreshToken.create(user.getId(), request.getDeviceId(), refreshTokenHash)
         );
 
         UserMeResponse userInfo = userService.getMe(user.getId());
@@ -88,7 +91,7 @@ public class AuthService {
 
     @Transactional
     public TokenPairResponse refresh(TokenRefreshRequest request) {
-        log.info("Token refresh started: deviceId={}", request.getDeviceId());
+        log.info("Token refresh started: deviceIdMasked={}", maskDeviceId(request.getDeviceId()));
 
         validateRefreshRequest(request);
         jwtProvider.validateRefreshToken(request.getRefreshToken());
@@ -108,21 +111,33 @@ public class AuthService {
         RefreshToken savedToken = refreshTokenRepository.findById(refreshTokenKey)
                 .orElseThrow(() -> new AuthException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND));
 
-        if (!savedToken.getToken().equals(request.getRefreshToken())) {
-            throw new AuthException(AuthErrorCode.REFRESH_TOKEN_MISMATCH);
+        boolean hashMatched = tokenHashService.matches(request.getRefreshToken(), savedToken.getToken());
+        boolean legacyPlainMatched = request.getRefreshToken().equals(savedToken.getToken());
+        if (!hashMatched && !legacyPlainMatched) {
+            refreshTokenRepository.deleteById(refreshTokenKey);
+            log.warn("Refresh token reuse detected: userId={}, deviceIdMasked={}",
+                    userId, maskDeviceId(request.getDeviceId()));
+            throw new AuthException(AuthErrorCode.REFRESH_TOKEN_REUSE_DETECTED);
         }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+
+        if (isRestrictedStatus(user.getStatus())) {
+            refreshTokenRepository.deleteById(refreshTokenKey);
+            log.warn("Refresh token revoked due to blocked user status: userId={}, status={}",
+                    userId, user.getStatus());
+        }
 
         validateUserStatus(user);
         user.markActive();
 
         String newAccessToken = jwtProvider.createAccessToken(user.getId());
         String newRefreshToken = jwtProvider.createRefreshToken(user.getId(), request.getDeviceId());
+        String newRefreshTokenHash = tokenHashService.hash(newRefreshToken);
 
         refreshTokenRepository.save(
-                RefreshToken.create(user.getId(), request.getDeviceId(), newRefreshToken)
+                RefreshToken.create(user.getId(), request.getDeviceId(), newRefreshTokenHash)
         );
 
         log.info("Token refresh completed: userId={}", userId);
@@ -131,7 +146,7 @@ public class AuthService {
 
     @Transactional
     public void logout(Long userId, String deviceId) {
-        log.info("Logout requested: userId={}, deviceId={}", userId, deviceId);
+        log.info("Logout requested: userId={}, deviceIdMasked={}", userId, maskDeviceId(deviceId));
 
         if (userId == null || deviceId == null || deviceId.isBlank()) {
             throw new AuthException(AuthErrorCode.INVALID_LOGOUT_REQUEST);
@@ -182,9 +197,36 @@ public class AuthService {
         if (user.getStatus() == UserStatus.SUSPENDED) {
             throw new AuthException(AuthErrorCode.USER_SUSPENDED);
         }
+        if (user.getStatus() == UserStatus.RESTRICTED) {
+            throw new AuthException(AuthErrorCode.USER_RESTRICTED);
+        }
+    }
+
+    private boolean isRestrictedStatus(UserStatus status) {
+        return status == UserStatus.DELETED || status == UserStatus.SUSPENDED || status == UserStatus.RESTRICTED;
     }
 
     private String buildRefreshTokenKey(Long userId, String deviceId) {
         return userId + ":" + deviceId;
+    }
+
+    private String maskDeviceId(String deviceId) {
+        if (deviceId == null || deviceId.isBlank()) {
+            return "-";
+        }
+        if (deviceId.length() <= 8) {
+            return "***";
+        }
+        return deviceId.substring(0, 4) + "***" + deviceId.substring(deviceId.length() - 4);
+    }
+
+    private String maskSocialId(String socialId) {
+        if (socialId == null || socialId.isBlank()) {
+            return "***";
+        }
+        if (socialId.length() <= 8) {
+            return "***";
+        }
+        return socialId.substring(0, 2) + "***" + socialId.substring(socialId.length() - 2);
     }
 }
