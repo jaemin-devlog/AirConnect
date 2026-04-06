@@ -22,8 +22,12 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -65,6 +69,7 @@ class IapProcessingServiceTest {
         when(storePurchaseVerifier.verify(eq(userId), any())).thenReturn(verificationResult);
         when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-1")).thenReturn(Optional.empty());
         when(iapOrderRepository.save(any(IapOrder.class))).thenReturn(order);
+        when(iapOrderRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(order));
         when(ticketGrantService.grantTickets(any(IapOrder.class), eq(10)))
                 .thenReturn(new TicketGrantService.TicketGrantResult(17, 27, "TICKET_LEDGER_1"));
 
@@ -101,6 +106,7 @@ class IapProcessingServiceTest {
         when(storeVerifierResolver.resolve(IapStore.APPLE)).thenReturn(storePurchaseVerifier);
         when(storePurchaseVerifier.verify(eq(userId), any())).thenReturn(verificationResult);
         when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-dup")).thenReturn(Optional.of(existing));
+        when(iapOrderRepository.findByIdForUpdate(33L)).thenReturn(Optional.of(existing));
 
         IapVerifyResponse response = iapProcessingService.verifyIos(userId, request);
 
@@ -143,6 +149,7 @@ class IapProcessingServiceTest {
 
         when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-ok")).thenReturn(Optional.empty());
         when(iapOrderRepository.save(any(IapOrder.class))).thenReturn(order);
+        when(iapOrderRepository.findByIdForUpdate(99L)).thenReturn(Optional.of(order));
         when(ticketGrantService.grantTickets(any(IapOrder.class), eq(5)))
                 .thenReturn(new TicketGrantService.TicketGrantResult(10, 15, "TICKET_LEDGER_99"));
 
@@ -152,5 +159,112 @@ class IapProcessingServiceTest {
         assertThat(response.getSuccessCount()).isEqualTo(1);
         assertThat(response.getFailureCount()).isEqualTo(1);
     }
-}
 
+    @Test
+    void verifyIos_throwsForbidden_whenExistingTransactionOwnedByAnotherUser() {
+        Long requesterUserId = 1L;
+        Long ownerUserId = 99L;
+        IosTransactionVerifyRequest request = new IosTransactionVerifyRequest();
+        ReflectionTestUtils.setField(request, "signedTransactionInfo", "jws");
+
+        StoreVerificationResult verificationResult = StoreVerificationResult.builder()
+                .store(IapStore.APPLE)
+                .productId("com.airconnect.tickets.pack10")
+                .transactionId("tx-foreign")
+                .appAccountToken("app-token")
+                .environment(IapEnvironment.SANDBOX)
+                .verificationHash("hash")
+                .rawPayloadMasked("mask")
+                .valid(true)
+                .build();
+
+        IapOrder foreignOrder = IapOrder.createPending(ownerUserId, IapStore.APPLE, "com.airconnect.tickets.pack10",
+                "tx-foreign", null, null, null, "app-token", IapEnvironment.SANDBOX, "hash", "mask");
+        ReflectionTestUtils.setField(foreignOrder, "id", 44L);
+
+        when(storeVerifierResolver.resolve(IapStore.APPLE)).thenReturn(storePurchaseVerifier);
+        when(storePurchaseVerifier.verify(eq(requesterUserId), any())).thenReturn(verificationResult);
+        when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-foreign"))
+                .thenReturn(Optional.of(foreignOrder));
+        when(iapOrderRepository.findByIdForUpdate(44L)).thenReturn(Optional.of(foreignOrder));
+
+        assertThatThrownBy(() -> iapProcessingService.verifyIos(requesterUserId, request))
+                .isInstanceOf(IapException.class)
+                .extracting("errorCode")
+                .isEqualTo(IapErrorCode.IAP_FORBIDDEN);
+    }
+
+    @Test
+    void verifyIos_marksRevokedAndDoesNotGrant_whenTransactionRevoked() {
+        Long userId = 1L;
+        IosTransactionVerifyRequest request = new IosTransactionVerifyRequest();
+        ReflectionTestUtils.setField(request, "signedTransactionInfo", "jws");
+
+        StoreVerificationResult verificationResult = StoreVerificationResult.builder()
+                .store(IapStore.APPLE)
+                .productId("com.airconnect.tickets.pack10")
+                .transactionId("tx-revoked")
+                .appAccountToken("app-token")
+                .environment(IapEnvironment.SANDBOX)
+                .verificationHash("hash")
+                .rawPayloadMasked("mask")
+                .valid(false)
+                .transactionRevoked(true)
+                .build();
+
+        IapOrder order = IapOrder.createPending(userId, IapStore.APPLE, "com.airconnect.tickets.pack10",
+                "tx-revoked", null, null, null, "app-token", IapEnvironment.SANDBOX, "hash", "mask");
+        ReflectionTestUtils.setField(order, "id", 77L);
+
+        when(storeVerifierResolver.resolve(IapStore.APPLE)).thenReturn(storePurchaseVerifier);
+        when(storePurchaseVerifier.verify(eq(userId), any())).thenReturn(verificationResult);
+        when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-revoked")).thenReturn(Optional.empty());
+        when(iapOrderRepository.save(any(IapOrder.class))).thenReturn(order);
+        when(iapOrderRepository.findByIdForUpdate(77L)).thenReturn(Optional.of(order));
+
+        IapVerifyResponse response = iapProcessingService.verifyIos(userId, request);
+
+        assertThat(response.getGrantStatus()).isEqualTo(GrantStatus.REJECTED);
+        assertThat(order.getStatus()).isEqualTo(univ.airconnect.iap.domain.IapOrderStatus.REVOKED);
+        verify(ticketGrantService, never()).grantTickets(any(IapOrder.class), eq(10));
+    }
+
+    @Test
+    void verifyIos_isIdempotent_whenSameTransactionRequestedTwice() {
+        Long userId = 1L;
+        IosTransactionVerifyRequest request = new IosTransactionVerifyRequest();
+        ReflectionTestUtils.setField(request, "signedTransactionInfo", "jws");
+
+        StoreVerificationResult verificationResult = StoreVerificationResult.builder()
+                .store(IapStore.APPLE)
+                .productId("com.airconnect.tickets.pack5")
+                .transactionId("tx-repeat")
+                .appAccountToken("app-token")
+                .environment(IapEnvironment.SANDBOX)
+                .verificationHash("hash")
+                .rawPayloadMasked("mask")
+                .valid(true)
+                .build();
+
+        IapOrder order = IapOrder.createPending(userId, IapStore.APPLE, "com.airconnect.tickets.pack5",
+                "tx-repeat", null, null, null, "app-token", IapEnvironment.SANDBOX, "hash", "mask");
+        ReflectionTestUtils.setField(order, "id", 55L);
+
+        when(storeVerifierResolver.resolve(IapStore.APPLE)).thenReturn(storePurchaseVerifier);
+        when(storePurchaseVerifier.verify(eq(userId), any())).thenReturn(verificationResult);
+        when(iapOrderRepository.save(any(IapOrder.class))).thenReturn(order);
+        when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-repeat"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(order));
+        when(iapOrderRepository.findByIdForUpdate(55L)).thenReturn(Optional.of(order));
+        when(ticketGrantService.grantTickets(any(IapOrder.class), eq(5)))
+                .thenReturn(new TicketGrantService.TicketGrantResult(10, 15, "TICKET_LEDGER_55"));
+
+        IapVerifyResponse first = iapProcessingService.verifyIos(userId, request);
+        IapVerifyResponse second = iapProcessingService.verifyIos(userId, request);
+
+        assertThat(first.getGrantStatus()).isEqualTo(GrantStatus.GRANTED);
+        assertThat(second.getGrantStatus()).isEqualTo(GrantStatus.ALREADY_GRANTED);
+        verify(ticketGrantService, times(1)).grantTickets(any(IapOrder.class), eq(5));
+    }
+}

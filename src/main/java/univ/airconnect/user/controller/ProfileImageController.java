@@ -2,18 +2,27 @@ package univ.airconnect.user.controller;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import univ.airconnect.user.domain.UserStatus;
+import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.infrastructure.ProfileImageProperties;
+import univ.airconnect.user.repository.UserProfileRepository;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Controller
@@ -21,8 +30,10 @@ import java.nio.file.Paths;
 @RequiredArgsConstructor
 public class ProfileImageController {
 
-    @Value("${app.upload.profile-image-dir:/tmp/airconnect/profile-images}")
-    private String uploadDir;
+    private static final Pattern SAFE_FILE_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,120}$");
+
+    private final ProfileImageProperties profileImageProperties;
+    private final UserProfileRepository userProfileRepository;
 
     /**
      * 프로필 이미지를 다운로드합니다.
@@ -32,34 +43,113 @@ public class ProfileImageController {
      */
     @GetMapping("/{fileName}")
     public ResponseEntity<byte[]> getProfileImage(@PathVariable String fileName) {
-        log.info("🖼️ 프로필 이미지 다운로드 요청: fileName={}", fileName);
-
+        log.debug("프로필 이미지 조회 요청: key={}", maskFileKey(fileName));
         try {
-            // 보안: 상위 경로 접근 방지
-            if (fileName.contains("..") || fileName.contains("/")) {
-                log.warn("⚠️ 잘못된 파일 요청: fileName={}", fileName);
-                return ResponseEntity.badRequest().build();
+            if (!isSafeFileName(fileName)) {
+                return ResponseEntity.notFound().build();
             }
-
-            Path filePath = Paths.get(uploadDir, fileName);
-
-            // 파일 존재 여부 확인
-            if (!Files.exists(filePath)) {
-                log.warn("⚠️ 파일을 찾을 수 없음: filePath={}", filePath);
+            if (!isAllowedImageExtension(fileName)) {
                 return ResponseEntity.notFound().build();
             }
 
-            // 파일 읽기
+            UserProfile ownerProfile = userProfileRepository.findByProfileImagePathWithUser(fileName)
+                    .orElse(null);
+            if (ownerProfile == null || isHiddenByStatus(ownerProfile.getUser().getStatus())) {
+                return ResponseEntity.notFound().build();
+            }
+
+            Path filePath = resolveSafePath(fileName);
+            if (!Files.exists(filePath)) {
+                return ResponseEntity.notFound().build();
+            }
+
             byte[] imageData = Files.readAllBytes(filePath);
-            log.info("✅ 프로필 이미지 제공 완료: fileName={}, size={}", fileName, imageData.length);
+            MediaType mediaType = resolveMediaType(fileName);
+            log.debug("프로필 이미지 제공 완료: key={}, size={}", maskFileKey(fileName), imageData.length);
 
             return ResponseEntity.ok()
-                    .contentType(MediaType.IMAGE_JPEG)
+                    .header("X-Content-Type-Options", "nosniff")
+                    .cacheControl(CacheControl.maxAge(10, TimeUnit.MINUTES).cachePrivate())
+                    .contentType(mediaType)
                     .body(imageData);
         } catch (IOException e) {
-            log.error("❌ 이미지 파일 읽기 중 오류 발생: fileName={}, error={}", fileName, e.getMessage(), e);
+            log.warn("프로필 이미지 조회 실패: key={}, reason={}", maskFileKey(fileName), e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
-}
 
+    private boolean isSafeFileName(String fileName) {
+        return fileName != null
+                && !fileName.contains("..")
+                && SAFE_FILE_NAME_PATTERN.matcher(fileName).matches();
+    }
+
+    private boolean isHiddenByStatus(UserStatus status) {
+        if (status == null) {
+            return true;
+        }
+        return profileImageProperties.getProfileImageHiddenUserStatuses().contains(status);
+    }
+
+    private Path resolveSafePath(String fileName) throws IOException {
+        Path uploadRoot = Paths.get(profileImageProperties.getProfileImageDir()).toAbsolutePath().normalize();
+        Path target = uploadRoot.resolve(fileName).normalize();
+        if (!target.startsWith(uploadRoot)) {
+            throw new IOException("invalid path");
+        }
+        return target;
+    }
+
+    private MediaType resolveMediaType(String fileName) {
+        String lower = fileName.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".png")) {
+            return MediaType.IMAGE_PNG;
+        }
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+            return MediaType.IMAGE_JPEG;
+        }
+        return MediaType.APPLICATION_OCTET_STREAM;
+    }
+
+    private boolean isAllowedImageExtension(String fileName) {
+        String lower = fileName.toLowerCase(Locale.ROOT);
+        int index = lower.lastIndexOf('.');
+        if (index < 0 || index == lower.length() - 1) {
+            return false;
+        }
+        String extension = lower.substring(index + 1);
+        if ("jpeg".equals(extension)) {
+            extension = "jpg";
+        }
+
+        Set<String> allowed = new HashSet<>();
+        for (String format : profileImageProperties.getProfileImageAllowedFormats()) {
+            if (format == null || format.isBlank()) {
+                continue;
+            }
+            String normalized = format.trim().toLowerCase(Locale.ROOT);
+            if (normalized.startsWith(".")) {
+                normalized = normalized.substring(1);
+            }
+            if ("jpeg".equals(normalized)) {
+                normalized = "jpg";
+            }
+            allowed.add(normalized);
+        }
+        if (allowed.isEmpty()) {
+            allowed.add("jpg");
+            allowed.add("png");
+        }
+        return allowed.contains(extension);
+    }
+
+    private String maskFileKey(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "-";
+        }
+        if (fileName.length() <= 8) {
+            return "***";
+        }
+        return fileName.substring(0, 4) + "***" + fileName.substring(fileName.length() - 4);
+    }
+}

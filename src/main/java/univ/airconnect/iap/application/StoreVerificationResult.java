@@ -20,5 +20,5 @@ public class StoreVerificationResult {
     private String verificationHash;
     private String rawPayloadMasked;
     private boolean valid;
+    private boolean transactionRevoked;
 }
-

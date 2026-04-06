@@ -10,4 +10,8 @@ import lombok.Setter;
 public class DeleteAccountRequest {
 
     private String reason;
+    private String appleAuthorizationCode;
+    private String appleRefreshToken;
+    private String appleAccessToken;
+    private String appleIdentityToken;
 }

@@ -90,7 +90,7 @@ public class UserController {
         log.info("🖼️ 프로필 이미지 업로드 요청: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
         String imageUrl = userProfileImageService.saveProfileImage(userId, file);
-        log.info("✅ 프로필 이미지 업로드 완료: userId={}, imageUrl={}", userId, imageUrl);
+        log.info("✅ 프로필 이미지 업로드 완료: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(new ProfileImageUploadResponse(imageUrl), traceId));
     }
 
@@ -102,7 +102,7 @@ public class UserController {
     ) {
         log.info("🗑️ 회원 탈퇴 요청: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
-        userService.deleteAccount(userId, request);
+        userService.deleteAccount(userId, request, traceId);
         log.info("🚪 회원 탈퇴 완료: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }

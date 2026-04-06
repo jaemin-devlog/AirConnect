@@ -21,6 +21,7 @@ import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.repository.MatchingExposureRepository;
+import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
@@ -57,6 +58,8 @@ class MatchingServiceRaceTest {
     private AnalyticsService analyticsService;
     @Mock
     private NotificationService notificationService;
+    @Mock
+    private UserBlockPolicyService userBlockPolicyService;
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -79,6 +82,7 @@ class MatchingServiceRaceTest {
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(requester));
         when(userRepository.findById(targetUserId)).thenReturn(Optional.of(target));
+        when(userBlockPolicyService.hasBlockRelation(userId, targetUserId)).thenReturn(false);
         when(matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, targetUserId)).thenReturn(true);
         when(matchingConnectionRepository.findByUser1IdAndUser2Id(1L, 2L))
                 .thenReturn(Optional.empty())
@@ -107,6 +111,7 @@ class MatchingServiceRaceTest {
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(requester));
         when(userRepository.findById(targetUserId)).thenReturn(Optional.of(target));
+        when(userBlockPolicyService.hasBlockRelation(userId, targetUserId)).thenReturn(false);
         when(matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, targetUserId)).thenReturn(true);
         when(matchingConnectionRepository.findByUser1IdAndUser2Id(1L, 2L))
                 .thenReturn(Optional.empty())
@@ -133,4 +138,3 @@ class MatchingServiceRaceTest {
                 .build();
     }
 }
-

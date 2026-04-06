@@ -20,7 +20,8 @@ import java.time.LocalDateTime;
         },
         indexes = {
                 @Index(name = "idx_iap_orders_user_created", columnList = "user_id, created_at"),
-                @Index(name = "idx_iap_orders_store_product", columnList = "store, product_id")
+                @Index(name = "idx_iap_orders_store_product", columnList = "store, product_id"),
+                @Index(name = "idx_iap_orders_store_original_tx", columnList = "store, original_transaction_id")
         }
 )
 @Getter
@@ -164,6 +165,12 @@ public class IapOrder {
         this.updatedAt = this.processedAt;
     }
 
+    public void markRevoked() {
+        this.status = IapOrderStatus.REVOKED;
+        this.processedAt = LocalDateTime.now();
+        this.updatedAt = this.processedAt;
+    }
+
     public String idempotencyKey() {
         if (store == IapStore.APPLE) {
             return transactionId;
@@ -171,4 +178,3 @@ public class IapOrder {
         return purchaseToken;
     }
 }
-

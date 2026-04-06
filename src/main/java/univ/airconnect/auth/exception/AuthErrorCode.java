@@ -23,10 +23,12 @@ public enum AuthErrorCode {
     DEVICE_MISMATCH(HttpStatus.UNAUTHORIZED, "AUTH_DEVICE_MISMATCH", "디바이스 정보가 일치하지 않습니다."),
     REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_TOKEN_NOT_FOUND", "저장된 Refresh Token을 찾을 수 없습니다."),
     REFRESH_TOKEN_MISMATCH(HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_TOKEN_MISMATCH", "Refresh Token이 일치하지 않습니다."),
+    REFRESH_TOKEN_REUSE_DETECTED(HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_TOKEN_REUSE_DETECTED", "Refresh Token 재사용이 감지되었습니다."),
 
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "AUTH_USER_NOT_FOUND", "사용자를 찾을 수 없습니다."),
     USER_DELETED(HttpStatus.FORBIDDEN, "USER_DELETED", "삭제된 사용자입니다."),
-    USER_SUSPENDED(HttpStatus.FORBIDDEN, "USER_SUSPENDED", "정지된 사용자입니다.");
+    USER_SUSPENDED(HttpStatus.FORBIDDEN, "USER_SUSPENDED", "정지된 사용자입니다."),
+    USER_RESTRICTED(HttpStatus.FORBIDDEN, "USER_RESTRICTED", "제한된 사용자입니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

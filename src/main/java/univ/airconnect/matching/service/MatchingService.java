@@ -20,6 +20,7 @@ import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.repository.MatchingExposureRepository;
+import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.MilestoneType;
@@ -51,6 +52,7 @@ public class MatchingService {
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
     private final AnalyticsService analyticsService;
+    private final UserBlockPolicyService userBlockPolicyService;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -70,6 +72,7 @@ public class MatchingService {
         }
 
         List<User> allCandidates = userRepository.findActiveUsersWithProfileForMatching(userId);
+        allCandidates = excludeBlockedCandidates(userId, allCandidates);
 
         // 노출 이력을 사용해 새로고침 시 후보가 순환되도록 한다.
         Set<Long> exposedCandidateIds = new HashSet<>(
@@ -166,6 +169,7 @@ public class MatchingService {
 
         validateActiveUser(userId);
         validateActiveUser(targetUserId);
+        validateNotBlockedForMatching(userId, targetUserId);
 
         if (!matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, targetUserId)) {
             log.warn("⚠️ 노출되지 않은 사용자: userId={}, targetUserId={}", userId, targetUserId);
@@ -381,6 +385,7 @@ public class MatchingService {
         }
 
         Long otherUserId = connection.getOtherUserId(userId);
+        validateNotBlockedForMatching(userId, otherUserId);
 
         // ACCEPT 시점마다 새로운 PERSONAL 방을 생성한다.
         ChatRoomResponse room = chatService.createOrGetPersonalRoomForConnection(
@@ -647,5 +652,25 @@ public class MatchingService {
         }
     }
 
-}
+    private List<User> excludeBlockedCandidates(Long userId, List<User> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Long> candidateUserIds = candidates.stream().map(User::getId).toList();
+        Set<Long> blockedCounterparts = userBlockPolicyService.resolveBlockedCounterpartIds(userId, candidateUserIds);
+        if (blockedCounterparts.isEmpty()) {
+            return candidates;
+        }
 
+        return candidates.stream()
+                .filter(candidate -> !blockedCounterparts.contains(candidate.getId()))
+                .toList();
+    }
+
+    private void validateNotBlockedForMatching(Long userId, Long targetUserId) {
+        if (userBlockPolicyService.hasBlockRelation(userId, targetUserId)) {
+            throw new MatchingException(MatchingErrorCode.BLOCKED_USER_INTERACTION);
+        }
+    }
+
+}

@@ -19,6 +19,11 @@ spring:
       # null 값도 포함하여 직렬화
       write-null-map-values: true
     default-property-inclusion: always
+  data:
+    redis:
+      timeout: ${REDIS_TIMEOUT:3s}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
 
 app:
   cors:
@@ -26,6 +31,10 @@ app:
   upload:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/tmp/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE:http://localhost:8080/api/v1/users/profile-images}
+    profile-image-max-bytes: ${PROFILE_IMAGE_MAX_BYTES:5242880}
+    profile-image-max-pixels: ${PROFILE_IMAGE_MAX_PIXELS:25000000}
+    profile-image-allowed-formats: ${PROFILE_IMAGE_ALLOWED_FORMATS:jpg,jpeg,png}
+    profile-image-hidden-user-statuses: ${PROFILE_IMAGE_HIDDEN_USER_STATUSES:DELETED,SUSPENDED}
   websocket:
     allowed-origin-patterns: ${WS_ALLOWED_ORIGIN_PATTERNS:}
     inbound:
@@ -65,13 +74,44 @@ notification:
       project-id: ${FIREBASE_PROJECT_ID:}
       credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
 
+auth:
+  refresh-token:
+    hash-pepper: ${REFRESH_TOKEN_HASH_PEPPER:${JWT_SECRET:}}
+
 iap:
   enabled: ${IAP_ENABLED:false}
   apple:
     bundle-id: ${IAP_APPLE_BUNDLE_ID:com.airconnect.app}
     environment: ${IAP_APPLE_ENVIRONMENT:PRODUCTION}
+    allowed-product-ids: ${IAP_APPLE_ALLOWED_PRODUCT_IDS:}
   google:
     package-name: ${IAP_GOOGLE_PACKAGE_NAME:com.airconnect.app}
     service-account-json-path: ${IAP_GOOGLE_SERVICE_ACCOUNT_JSON_PATH:}
     verify-enabled: ${IAP_GOOGLE_VERIFY_ENABLED:false}
 
+apple:
+  team-id: ${APPLE_TEAM_ID:}
+  key-id: ${APPLE_KEY_ID:}
+  client-id: ${APPLE_CLIENT_ID:}
+  service-id: ${APPLE_SERVICE_ID:}
+  private-key-path: ${APPLE_PRIVATE_KEY_PATH:}
+  # backward compatibility for legacy key names
+  bundle-id: ${BUNDLE_ID:}
+  key-path: ${KEY_PATH:}
+  login:
+    issuer: ${APPLE_LOGIN_ISSUER:https://appleid.apple.com}
+    jwks-url: ${APPLE_LOGIN_JWKS_URL:https://appleid.apple.com/auth/keys}
+    allowed-audiences: ${APPLE_LOGIN_ALLOWED_AUDIENCES:}
+  revoke:
+    enabled: ${APPLE_REVOKE_ENABLED:true}
+    client-id: ${APPLE_REVOKE_CLIENT_ID:${APPLE_CLIENT_ID:}}
+    endpoint: ${APPLE_REVOKE_ENDPOINT:https://appleid.apple.com/auth/revoke}
+    client-secret-ttl-seconds: ${APPLE_CLIENT_SECRET_TTL_SECONDS:300}
+
+moderation:
+  report:
+    duplicate-window-minutes: ${MODERATION_REPORT_DUPLICATE_WINDOW_MINUTES:60}
+  support:
+    email: ${SUPPORT_EMAIL:}
+    url: ${SUPPORT_URL:}
+    contact-text: ${SUPPORT_CONTACT_TEXT:}

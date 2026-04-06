@@ -9,6 +9,7 @@ import univ.airconnect.iap.domain.entity.TicketLedger;
 import univ.airconnect.iap.exception.IapErrorCode;
 import univ.airconnect.iap.exception.IapException;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
+import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -41,6 +42,12 @@ public class TicketGrantService {
         User user = userRepository.findByIdForUpdate(order.getUserId())
                 .orElseThrow(() -> new IapException(IapErrorCode.IAP_UNAUTHORIZED));
 
+        if (user.getStatus() == UserStatus.DELETED) {
+            log.warn("IAP ticket grant blocked for deleted user. orderId={}, userId={}, status={}",
+                    order.getId(), order.getUserId(), user.getStatus());
+            throw new IapException(IapErrorCode.IAP_FORBIDDEN);
+        }
+
         int before = user.getTickets();
         user.addTickets(ticketAmount);
         int after = user.getTickets();
@@ -64,4 +71,3 @@ public class TicketGrantService {
     public record TicketGrantResult(int beforeTickets, int afterTickets, String ledgerExternalId) {
     }
 }
-

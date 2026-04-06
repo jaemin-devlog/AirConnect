@@ -13,6 +13,8 @@ import org.springframework.data.redis.listener.Topic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.auth.exception.AuthErrorCode;
+import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.domain.entity.ChatMessage;
 import univ.airconnect.chat.domain.entity.ChatRoom;
@@ -24,6 +26,7 @@ import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
+import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.entity.User;
@@ -37,6 +40,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -66,6 +70,8 @@ class ChatServiceTest {
     private ObjectMapper objectMapper;
     @Mock
     private NotificationService notificationService;
+    @Mock
+    private UserBlockPolicyService userBlockPolicyService;
     @Mock
     private ValueOperations<String, Object> valueOperations;
     @Mock
@@ -207,6 +213,27 @@ class ChatServiceTest {
     }
 
     @Test
+    void sendMessage_throwsWhenUserDeleted() {
+        ChatService service = createService();
+        Long userId = 1L;
+        Long roomId = 10L;
+
+        User user = createUser(userId, "sender");
+        user.markDeleted();
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        ReflectionTestUtils.setField(request, "roomId", roomId);
+        ReflectionTestUtils.setField(request, "message", "hello");
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.sendMessage(userId, request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.USER_DELETED);
+    }
+
+    @Test
     void findAllRooms_returnsRoomListWithCounterpartInfo() {
         ChatService service = createService();
         Long myUserId = 1L;
@@ -258,9 +285,34 @@ class ChatServiceTest {
         assertThat(response.get(1).getId()).isEqualTo(20L);
     }
 
+    @Test
+    void sendMessage_throwsWhenUsersAreBlockedInRoom() {
+        ChatService service = createService();
+        Long userId = 1L;
+        Long roomId = 700L;
+        Long otherUserId = 2L;
+        User user = createUser(userId, "sender");
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        ReflectionTestUtils.setField(request, "roomId", roomId);
+        ReflectionTestUtils.setField(request, "message", "hello");
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)).thenReturn(true);
+        when(chatRoomMemberRepository.findUserIdsByChatRoomId(roomId)).thenReturn(List.of(userId, otherUserId));
+        when(userBlockPolicyService.findAnyBlockedCounterpart(userId, List.of(otherUserId))).thenReturn(Optional.of(otherUserId));
+
+        assertThatThrownBy(() -> service.sendMessage(userId, request))
+                .isInstanceOf(univ.airconnect.global.error.BusinessException.class)
+                .extracting(ex -> ((univ.airconnect.global.error.BusinessException) ex).getErrorCode())
+                .isEqualTo(univ.airconnect.global.error.ErrorCode.USER_BLOCKED_INTERACTION);
+    }
+
     private ChatService createService() {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        lenient().when(userBlockPolicyService.hasBlockRelation(any(), any())).thenReturn(false);
+        lenient().when(userBlockPolicyService.findAnyBlockedCounterpart(any(), any())).thenReturn(Optional.empty());
         ChatService service = new ChatService(
                 chatRoomRepository,
                 chatMessageRepository,
@@ -270,7 +322,8 @@ class ChatServiceTest {
                 redisSubscriber,
                 redisTemplate,
                 objectMapper,
-                notificationService
+                notificationService,
+                userBlockPolicyService
         );
         ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
         return service;

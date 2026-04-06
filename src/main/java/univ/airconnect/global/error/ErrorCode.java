@@ -43,6 +43,8 @@ public enum ErrorCode {
     MATCH_RESULT_STATE_INVALID(HttpStatus.BAD_REQUEST, "GMATCH-031", "매칭 결과 상태가 올바르지 않습니다."),
     FINAL_GROUP_ROOM_STATE_INVALID(HttpStatus.BAD_REQUEST, "GMATCH-032", "최종 그룹방 상태가 올바르지 않습니다."),
 
+    USER_BLOCKED_INTERACTION(HttpStatus.FORBIDDEN, "MOD-001", "차단된 사용자와는 상호작용할 수 없습니다."),
+
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON-999", "서버 오류가 발생했습니다.");
 
     private final HttpStatus httpStatus;
