@@ -117,6 +117,10 @@ app:
   upload:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/var/lib/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE}
+    profile-image-max-bytes: ${PROFILE_IMAGE_MAX_BYTES:5242880}
+    profile-image-max-pixels: ${PROFILE_IMAGE_MAX_PIXELS:25000000}
+    profile-image-allowed-formats: ${PROFILE_IMAGE_ALLOWED_FORMATS:jpg,jpeg,png}
+    profile-image-hidden-user-statuses: ${PROFILE_IMAGE_HIDDEN_USER_STATUSES:DELETED,SUSPENDED}
   websocket:
     inbound:
       core-pool-size: ${WS_INBOUND_CORE_POOL_SIZE:16}

@@ -42,9 +42,8 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/v1/statistics/**").permitAll()
 
-                        // 프로필 이미지
-                        .requestMatchers("/api/v1/users/profile-image").permitAll()
-                        .requestMatchers("/api/v1/users/profile-images/**").permitAll()
+                        // 프로필 이미지 조회
+                        .requestMatchers(HttpMethod.GET, "/api/v1/users/profile-images/**").permitAll()
 
                         // WebSocket
                         .requestMatchers("/ws-stomp/**").permitAll()
