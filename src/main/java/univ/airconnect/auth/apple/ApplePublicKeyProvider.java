@@ -2,20 +2,23 @@ package univ.airconnect.auth.apple;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import univ.airconnect.auth.service.oauth.apple.AppleAuthProperties;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.spec.RSAPublicKeySpec;
 import java.util.Base64;
 
 @Component
+@RequiredArgsConstructor
 public class ApplePublicKeyProvider {
 
-    private static final String APPLE_KEYS_URL =
-            "https://appleid.apple.com/auth/keys";
+    private final AppleAuthProperties appleAuthProperties;
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -26,19 +29,33 @@ public class ApplePublicKeyProvider {
 
             String header = identityToken.split("\\.")[0];
             String decodedHeader =
-                    new String(Base64.getUrlDecoder().decode(header));
+                    new String(Base64.getUrlDecoder().decode(header), StandardCharsets.UTF_8);
 
             JsonNode headerNode =
                     objectMapper.readTree(decodedHeader);
 
-            String kid = headerNode.get("kid").asText();
-            String alg = headerNode.get("alg").asText();
+            JsonNode kidNode = headerNode.get("kid");
+            JsonNode algNode = headerNode.get("alg");
+            if (kidNode == null || algNode == null) {
+                throw new IllegalStateException("Apple identity token header is invalid");
+            }
+            String kid = kidNode.asText();
+            String alg = algNode.asText();
 
-            String keysJson =
-                    restTemplate.getForObject(APPLE_KEYS_URL, String.class);
+            String keysUrl = appleAuthProperties.resolveLoginJwksUrl();
+            if (keysUrl == null || keysUrl.isBlank()) {
+                throw new IllegalStateException("Missing required property: apple.login.jwks-url");
+            }
+            String keysJson = restTemplate.getForObject(keysUrl, String.class);
+            if (keysJson == null || keysJson.isBlank()) {
+                throw new IllegalStateException("Apple jwks response is empty");
+            }
 
             JsonNode keys =
                     objectMapper.readTree(keysJson).get("keys");
+            if (keys == null || !keys.isArray()) {
+                throw new IllegalStateException("Apple jwks payload is invalid");
+            }
 
             for (JsonNode key : keys) {
 

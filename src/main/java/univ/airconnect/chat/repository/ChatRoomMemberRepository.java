@@ -29,6 +29,9 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
     @Query("SELECT m FROM ChatRoomMember m JOIN FETCH m.user u LEFT JOIN FETCH u.userProfile WHERE m.chatRoom.id IN :roomIds")
     List<ChatRoomMember> findByChatRoomIdInWithUser(@Param("roomIds") List<Long> roomIds);
 
+    @Query("SELECT m.user.id FROM ChatRoomMember m WHERE m.chatRoom.id = :chatRoomId")
+    List<Long> findUserIdsByChatRoomId(@Param("chatRoomId") Long chatRoomId);
+
     /**
      * 특정 채팅방의 특정 참여자 조회
      */

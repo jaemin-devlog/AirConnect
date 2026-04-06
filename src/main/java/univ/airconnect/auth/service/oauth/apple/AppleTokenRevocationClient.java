@@ -26,9 +26,9 @@ public class AppleTokenRevocationClient {
             throw new IllegalStateException("Missing required property: apple.revoke.endpoint");
         }
 
-        String clientId = appleAuthProperties.resolveClientId();
+        String clientId = appleAuthProperties.resolveRevokeClientId();
         if (clientId == null || clientId.isBlank()) {
-            throw new IllegalStateException("Missing required property: apple.client-id");
+            throw new IllegalStateException("Missing required property: apple.revoke.client-id");
         }
 
         HttpHeaders headers = new HttpHeaders();

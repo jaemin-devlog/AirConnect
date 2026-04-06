@@ -30,6 +30,9 @@ import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.repository.MatchingExposureRepository;
+import univ.airconnect.moderation.domain.entity.UserBlock;
+import univ.airconnect.moderation.repository.UserBlockRepository;
+import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.MilitaryStatus;
 import univ.airconnect.user.domain.OnboardingStatus;
@@ -53,7 +56,7 @@ import static org.mockito.ArgumentMatchers.any;
 
 @DataJpaTest
 @ActiveProfiles("test")
-@Import({MatchingService.class, TestNotificationConfig.class})
+@Import({MatchingService.class, UserBlockPolicyService.class, TestNotificationConfig.class})
 class MatchingServiceTest {
 
     @Autowired
@@ -76,6 +79,9 @@ class MatchingServiceTest {
 
     @Autowired
     private ChatRoomMemberRepository chatRoomMemberRepository;
+
+    @Autowired
+    private UserBlockRepository userBlockRepository;
 
     @MockitoBean
     private ChatService chatService;
@@ -415,6 +421,34 @@ class MatchingServiceTest {
                 .map(field -> field.getName())
                 .toList();
         assertThat(fields).doesNotContain("name", "email", "provider");
+    }
+
+    @Test
+    @DisplayName("blocked users are excluded from recommendations")
+    void recommend_excludesBlockedUsers() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User blockedCandidate = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        saveUserWithProfile("u3", Gender.FEMALE, 100);
+
+        userBlockRepository.save(UserBlock.create(requester.getId(), blockedCandidate.getId()));
+
+        MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
+
+        assertThat(response.getCandidates()).extracting("userId").doesNotContain(blockedCandidate.getId());
+    }
+
+    @Test
+    @DisplayName("connect fails when users are in a block relation")
+    void connect_failsWhenBlockedRelationExists() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        matchingExposureRepository.save(MatchingExposure.create(requester.getId(), target.getId()));
+        userBlockRepository.save(UserBlock.create(target.getId(), requester.getId()));
+
+        assertThatThrownBy(() -> matchingService.connect(requester.getId(), target.getId()))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.BLOCKED_USER_INTERACTION);
     }
 
     private User saveUserWithProfile(String socialId, Gender gender, int tickets) {

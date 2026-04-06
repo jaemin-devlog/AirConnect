@@ -80,11 +80,25 @@ apple:
   team-id: ${APPLE_TEAM_ID:}
   key-id: ${APPLE_KEY_ID:}
   client-id: ${APPLE_CLIENT_ID:}
+  service-id: ${APPLE_SERVICE_ID:}
   private-key-path: ${APPLE_PRIVATE_KEY_PATH:}
   # backward compatibility for legacy key names
   bundle-id: ${BUNDLE_ID:}
   key-path: ${KEY_PATH:}
+  login:
+    issuer: ${APPLE_LOGIN_ISSUER:https://appleid.apple.com}
+    jwks-url: ${APPLE_LOGIN_JWKS_URL:https://appleid.apple.com/auth/keys}
+    allowed-audiences: ${APPLE_LOGIN_ALLOWED_AUDIENCES:}
   revoke:
     enabled: ${APPLE_REVOKE_ENABLED:true}
+    client-id: ${APPLE_REVOKE_CLIENT_ID:${APPLE_CLIENT_ID:}}
     endpoint: ${APPLE_REVOKE_ENDPOINT:https://appleid.apple.com/auth/revoke}
     client-secret-ttl-seconds: ${APPLE_CLIENT_SECRET_TTL_SECONDS:300}
+
+moderation:
+  report:
+    duplicate-window-minutes: ${MODERATION_REPORT_DUPLICATE_WINDOW_MINUTES:60}
+  support:
+    email: ${SUPPORT_EMAIL:}
+    url: ${SUPPORT_URL:}
+    contact-text: ${SUPPORT_CONTACT_TEXT:}

@@ -29,6 +29,7 @@ import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
+import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.UserStatus;
@@ -57,6 +58,7 @@ public class ChatService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
     private final NotificationService notificationService;
+    private final UserBlockPolicyService userBlockPolicyService;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -79,6 +81,7 @@ public class ChatService {
             if (targetUserId == null) {
                 throw new BusinessException(ErrorCode.INVALID_REQUEST, "1:1 채팅은 대상 사용자가 필요합니다.");
             }
+            ensureNotBlockedPair(creatorUserId, targetUserId);
 
             List<Long> existingRoomIds = chatRoomMemberRepository.findCommonPersonalRoomIds(creatorUserId, targetUserId);
             if (!existingRoomIds.isEmpty()) {
@@ -102,6 +105,7 @@ public class ChatService {
                                                                  String roomName) {
         findUserOrThrow(userAId);
         findUserOrThrow(userBId);
+        ensureNotBlockedPair(userAId, userBId);
 
         if (connectionId != null) {
             Optional<ChatRoom> byConnection = chatRoomRepository.findByConnectionId(connectionId);
@@ -139,6 +143,7 @@ public class ChatService {
                                                                String roomName) {
         findUserOrThrow(userAId);
         findUserOrThrow(userBId);
+        ensureNotBlockedPair(userAId, userBId);
 
         if (connectionId != null) {
             Optional<ChatRoom> byConnection = chatRoomRepository.findByConnectionId(connectionId);
@@ -967,6 +972,26 @@ public class ChatService {
     }
 
     private void validateNotBlocked(Long roomId, Long userId) {
-        // TODO: 차단 엔티티/테이블 도입 시 room 참여자 간 block 관계 검증을 연결한다.
+        List<Long> participantUserIds = chatRoomMemberRepository.findUserIdsByChatRoomId(roomId);
+        if (participantUserIds == null || participantUserIds.isEmpty()) {
+            return;
+        }
+
+        List<Long> counterpartIds = participantUserIds.stream()
+                .filter(participantUserId -> !Objects.equals(participantUserId, userId))
+                .toList();
+        if (counterpartIds.isEmpty()) {
+            return;
+        }
+
+        if (userBlockPolicyService.findAnyBlockedCounterpart(userId, counterpartIds).isPresent()) {
+            throw new BusinessException(ErrorCode.USER_BLOCKED_INTERACTION, "차단 관계에서는 메시지를 보낼 수 없습니다.");
+        }
+    }
+
+    private void ensureNotBlockedPair(Long userAId, Long userBId) {
+        if (userBlockPolicyService.hasBlockRelation(userAId, userBId)) {
+            throw new BusinessException(ErrorCode.USER_BLOCKED_INTERACTION, "차단 관계에서는 1:1 채팅방을 생성할 수 없습니다.");
+        }
     }
 }

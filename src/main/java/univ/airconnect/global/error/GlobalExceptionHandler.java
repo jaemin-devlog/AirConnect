@@ -29,6 +29,8 @@ import univ.airconnect.iap.exception.IapErrorCode;
 import univ.airconnect.iap.exception.IapException;
 import univ.airconnect.matching.exception.MatchingErrorCode;
 import univ.airconnect.matching.exception.MatchingException;
+import univ.airconnect.moderation.exception.ModerationErrorCode;
+import univ.airconnect.moderation.exception.ModerationException;
 import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
 import univ.airconnect.verification.exception.VerificationErrorCode;
@@ -244,6 +246,28 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(aec.getHttpStatus())
+                .body(ApiResponse.fail(body, traceId));
+    }
+
+    @ExceptionHandler(ModerationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleModeration(
+            ModerationException e,
+            HttpServletRequest request
+    ) {
+        ModerationErrorCode mec = e.getErrorCode();
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+
+        log.warn("ModerationException [{}] - {}", traceId, e.getMessage());
+
+        ErrorBody body = new ErrorBody(
+                mec.getCode(),
+                e.getMessage(),
+                mec.getHttpStatus().value(),
+                traceId,
+                null
+        );
+
+        return ResponseEntity.status(mec.getHttpStatus())
                 .body(ApiResponse.fail(body, traceId));
     }
 

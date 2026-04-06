@@ -30,7 +30,7 @@ public class AppleClientSecretService {
     public String createClientSecret() {
         String teamId = requireValue(appleAuthProperties.getTeamId(), "apple.team-id");
         String keyId = requireValue(appleAuthProperties.getKeyId(), "apple.key-id");
-        String clientId = requireValue(appleAuthProperties.resolveClientId(), "apple.client-id");
+        String clientId = requireValue(appleAuthProperties.resolveRevokeClientId(), "apple.revoke.client-id");
         long ttlSeconds = appleAuthProperties.getRevoke().getClientSecretTtlSeconds();
         if (ttlSeconds <= 0) {
             throw new IllegalStateException("apple.revoke.client-secret-ttl-seconds must be positive");
