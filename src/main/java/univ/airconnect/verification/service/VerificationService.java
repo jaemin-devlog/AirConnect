@@ -48,7 +48,12 @@ public class VerificationService {
         saveCooldown(normalizedEmail);
 
         try {
-            mailService.sendVerificationCode(normalizedEmail, code);
+            mailService.sendVerificationCode(
+                    normalizedEmail,
+                    code,
+                    CODE_EXPIRATION_MINUTES,
+                    SCHOOL_DOMAIN
+            );
             log.info("Verification code issued. email={}", normalizedEmail);
         } catch (VerificationException e) {
             clearVerificationData(normalizedEmail);
