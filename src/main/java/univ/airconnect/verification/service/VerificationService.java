@@ -10,6 +10,7 @@ import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.entity.UserMilestone;
 import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
+import univ.airconnect.user.infrastructure.MilestoneRewardProperties;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.verification.exception.VerificationErrorCode;
@@ -28,6 +29,7 @@ public class VerificationService {
     private final StringRedisTemplate redisTemplate;
     private final UserRepository userRepository;
     private final UserMilestoneRepository userMilestoneRepository;
+    private final MilestoneRewardProperties milestoneRewardProperties;
 
     private static final String VERIFICATION_PREFIX = "email_verification:";
     private static final String COOLDOWN_PREFIX = "email_verification_cooldown:";
@@ -162,11 +164,15 @@ public class VerificationService {
             return;
         }
 
-        user.addTickets(1);
+        int rewardTickets = Math.max(0, milestoneRewardProperties.getEmailVerifiedTickets());
+        if (rewardTickets > 0) {
+            user.addTickets(rewardTickets);
+        }
         log.info(
-                "Milestone granted. userId={}, verifiedEmail={}, milestoneType=EMAIL_VERIFIED, rewardedTickets=1, totalTickets={}",
+                "Milestone granted. userId={}, verifiedEmail={}, milestoneType=EMAIL_VERIFIED, rewardedTickets={}, totalTickets={}",
                 userId,
                 verifiedEmail,
+                rewardTickets,
                 user.getTickets()
         );
     }

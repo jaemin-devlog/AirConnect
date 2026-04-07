@@ -14,11 +14,12 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
      * 특정 사용자가 특정 채팅방의 참여자인지 확인
      */
     boolean existsByChatRoomIdAndUserId(Long chatRoomId, Long userId);
+    boolean existsByChatRoomIdAndUserIdAndHiddenAtIsNull(Long chatRoomId, Long userId);
 
     /**
      * 특정 사용자가 참여 중인 채팅방 목록 조회 (N+1 방지를 위해 ChatRoom Fetch Join)
      */
-    @Query("SELECT m FROM ChatRoomMember m JOIN FETCH m.chatRoom WHERE m.user.id = :userId ORDER BY m.joinedAt DESC")
+    @Query("SELECT m FROM ChatRoomMember m JOIN FETCH m.chatRoom WHERE m.user.id = :userId AND m.hiddenAt IS NULL ORDER BY m.joinedAt DESC")
     List<ChatRoomMember> findByUser_IdWithRoom(@Param("userId") Long userId);
 
     /**

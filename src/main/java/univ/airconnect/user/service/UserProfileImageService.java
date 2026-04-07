@@ -15,6 +15,7 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
+import univ.airconnect.user.infrastructure.MilestoneRewardProperties;
 import univ.airconnect.user.infrastructure.ProfileImageProperties;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
@@ -48,6 +49,7 @@ public class UserProfileImageService {
     private final UserRepository userRepository;
     private final UserMilestoneRepository userMilestoneRepository;
     private final ProfileImageProperties profileImageProperties;
+    private final MilestoneRewardProperties milestoneRewardProperties;
 
     /**
      * 사용자 프로필 이미지를 저장하고 이미지 URL을 반환합니다.
@@ -390,13 +392,29 @@ public class UserProfileImageService {
             return;
         }
 
-        // 사용자 티켓 1개 추가
+        int rewardTickets = resolveRewardTickets(milestoneType);
+        if (rewardTickets <= 0) {
+            log.info("ℹ️ 마일리스톤 기록만 반영됨(티켓 보상 없음): userId={}, milestoneType={}", userId, milestoneType);
+            return;
+        }
+
+        // 사용자 티켓 추가
         var user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
-        user.addTickets(1);
+        user.addTickets(rewardTickets);
 
-        log.info("🎫 마일리스톤 지급 완료: userId={}, milestoneType={}, 부여 티켓=1, 총 티켓={}", 
-                userId, milestoneType, user.getTickets());
+        log.info("🎫 마일리스톤 지급 완료: userId={}, milestoneType={}, 부여 티켓={}, 총 티켓={}",
+                userId, milestoneType, rewardTickets, user.getTickets());
+    }
+
+    private int resolveRewardTickets(MilestoneType milestoneType) {
+        if (milestoneType == MilestoneType.PROFILE_IMAGE_UPLOADED) {
+            return Math.max(0, milestoneRewardProperties.getProfileImageUploadedTickets());
+        }
+        if (milestoneType == MilestoneType.EMAIL_VERIFIED) {
+            return Math.max(0, milestoneRewardProperties.getEmailVerifiedTickets());
+        }
+        return 0;
     }
 
     private record SanitizedImage(byte[] bytes, String extension) {

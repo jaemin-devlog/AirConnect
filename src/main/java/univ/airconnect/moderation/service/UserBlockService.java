@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.moderation.domain.entity.UserBlock;
 import univ.airconnect.moderation.dto.response.UserBlockCreateResponse;
 import univ.airconnect.moderation.dto.response.UserBlockDeleteResponse;
@@ -25,6 +26,9 @@ public class UserBlockService {
 
     private final UserRepository userRepository;
     private final UserBlockRepository userBlockRepository;
+    private final ChatRoomMemberRepository chatRoomMemberRepository;
+
+    private static final String HIDDEN_REASON_BLOCKED_USER = "BLOCKED_USER";
 
     @Transactional
     public UserBlockCreateResponse block(Long blockerUserId, Long blockedUserId) {
@@ -33,15 +37,18 @@ public class UserBlockService {
         UserBlock existing = userBlockRepository.findByBlockerUserIdAndBlockedUserId(blockerUserId, blockedUserId)
                 .orElse(null);
         if (existing != null) {
+            hidePersonalRoomsForBlocker(blockerUserId, blockedUserId);
             return UserBlockCreateResponse.alreadyExists(existing);
         }
 
         try {
             UserBlock created = userBlockRepository.save(UserBlock.create(blockerUserId, blockedUserId));
+            hidePersonalRoomsForBlocker(blockerUserId, blockedUserId);
             return UserBlockCreateResponse.created(created);
         } catch (DataIntegrityViolationException e) {
             UserBlock recovered = userBlockRepository.findByBlockerUserIdAndBlockedUserId(blockerUserId, blockedUserId)
                     .orElseThrow(() -> e);
+            hidePersonalRoomsForBlocker(blockerUserId, blockedUserId);
             return UserBlockCreateResponse.alreadyExists(recovered);
         }
     }
@@ -59,6 +66,7 @@ public class UserBlockService {
         }
 
         userBlockRepository.delete(existing);
+        unhidePersonalRoomsForBlocker(blockerUserId, blockedUserId);
         return new UserBlockDeleteResponse(blockerUserId, blockedUserId, true);
     }
 
@@ -114,6 +122,26 @@ public class UserBlockService {
                 .orElseThrow(() -> new ModerationException(ModerationErrorCode.BLOCK_TARGET_NOT_FOUND));
         if (blocked.getStatus() == UserStatus.DELETED) {
             throw new ModerationException(ModerationErrorCode.BLOCK_TARGET_NOT_FOUND);
+        }
+    }
+
+    private void hidePersonalRoomsForBlocker(Long blockerUserId, Long blockedUserId) {
+        List<Long> personalRoomIds = chatRoomMemberRepository.findCommonPersonalRoomIds(blockerUserId, blockedUserId);
+        for (Long roomId : personalRoomIds) {
+            chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, blockerUserId)
+                    .ifPresent(member -> member.hide(HIDDEN_REASON_BLOCKED_USER));
+        }
+    }
+
+    private void unhidePersonalRoomsForBlocker(Long blockerUserId, Long blockedUserId) {
+        List<Long> personalRoomIds = chatRoomMemberRepository.findCommonPersonalRoomIds(blockerUserId, blockedUserId);
+        for (Long roomId : personalRoomIds) {
+            chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, blockerUserId)
+                    .ifPresent(member -> {
+                        if (member.isHidden()) {
+                            member.unhide();
+                        }
+                    });
         }
     }
 }
