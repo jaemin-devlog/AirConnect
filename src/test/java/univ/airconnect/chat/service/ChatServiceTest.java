@@ -89,7 +89,7 @@ class ChatServiceTest {
         ReflectionTestUtils.setField(request, "message", "hello");
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)).thenReturn(true);
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)).thenReturn(true);
         when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(ChatRoom.create("r-99", ChatRoomType.PERSONAL)));
         when(objectMapper.writeValueAsString(any())).thenThrow(new JsonProcessingException("boom") {
         });
@@ -156,7 +156,7 @@ class ChatServiceTest {
         User targetUser = createUser(targetUserId, "target");
         createProfile(targetUser, Gender.FEMALE);
 
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, requestUserId)).thenReturn(true);
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, requestUserId)).thenReturn(true);
         when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, targetUserId)).thenReturn(true);
         when(userRepository.findAllByIdWithProfile(List.of(targetUserId))).thenReturn(List.of(targetUser));
 
@@ -202,7 +202,7 @@ class ChatServiceTest {
         ChatMessage message = ChatMessage.create(roomId, userId, "sender", "hello", univ.airconnect.chat.domain.MessageType.TEXT);
         ReflectionTestUtils.setField(message, "id", messageId);
 
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)).thenReturn(true);
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)).thenReturn(true);
         when(chatMessageRepository.findById(messageId)).thenReturn(Optional.of(message));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -273,7 +273,7 @@ class ChatServiceTest {
         ReflectionTestUtils.setField(newer, "id", 20L);
         ReflectionTestUtils.setField(older, "id", 10L);
 
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)).thenReturn(true);
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)).thenReturn(true);
         when(chatMessageRepository.findMessagesCursor(eq(roomId), eq(null), any())).thenReturn(List.of(newer, older));
         when(userRepository.findAllByIdWithProfile(Set.of(sender.getId()))).thenReturn(List.of(sender));
         when(chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)).thenReturn(Optional.empty());
@@ -298,7 +298,7 @@ class ChatServiceTest {
         ReflectionTestUtils.setField(request, "message", "hello");
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)).thenReturn(true);
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)).thenReturn(true);
         when(chatRoomMemberRepository.findUserIdsByChatRoomId(roomId)).thenReturn(List.of(userId, otherUserId));
         when(userBlockPolicyService.findAnyBlockedCounterpart(userId, List.of(otherUserId))).thenReturn(Optional.of(otherUserId));
 

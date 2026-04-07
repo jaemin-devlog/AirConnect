@@ -878,7 +878,7 @@ public class ChatService {
      * 채팅방 접근 권한 확인
      */
     private void validateRoomAccess(Long roomId, Long userId) {
-        if (!chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)) {
+        if (!chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "해당 채팅방에 접근할 수 없습니다.");
         }
     }

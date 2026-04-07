@@ -15,6 +15,7 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
+import univ.airconnect.user.infrastructure.MilestoneRewardProperties;
 import univ.airconnect.user.infrastructure.ProfileImageProperties;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
@@ -30,6 +31,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,7 +57,16 @@ class UserProfileImageServiceTest {
         properties.setProfileImageMaxBytes(5L * 1024L * 1024L);
         properties.setProfileImageMaxPixels(25_000_000L);
         properties.setProfileImageAllowedFormats(List.of("jpg", "jpeg", "png"));
-        service = new UserProfileImageService(userProfileRepository, userRepository, userMilestoneRepository, properties);
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        rewardProperties.setProfileImageUploadedTickets(2);
+        rewardProperties.setEmailVerifiedTickets(0);
+        service = new UserProfileImageService(
+                userProfileRepository,
+                userRepository,
+                userMilestoneRepository,
+                properties,
+                rewardProperties
+        );
     }
 
     @Test
@@ -130,11 +141,15 @@ class UserProfileImageServiceTest {
         tinyLimit.setProfileImageUrlBase("http://localhost:8080/api/v1/users/profile-images");
         tinyLimit.setProfileImageMaxBytes(10);
         tinyLimit.setProfileImageAllowedFormats(List.of("jpg", "jpeg", "png"));
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        rewardProperties.setProfileImageUploadedTickets(2);
+        rewardProperties.setEmailVerifiedTickets(0);
         UserProfileImageService tinyLimitService = new UserProfileImageService(
                 userProfileRepository,
                 userRepository,
                 userMilestoneRepository,
-                tinyLimit
+                tinyLimit,
+                rewardProperties
         );
 
         Long userId = 5L;
@@ -162,6 +177,26 @@ class UserProfileImageServiceTest {
                 .isInstanceOf(UserException.class)
                 .extracting(ex -> ((UserException) ex).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_SUSPENDED);
+    }
+
+    @Test
+    void saveProfileImage_grantsTwoTicketsForProfileImageMilestone() throws Exception {
+        Long userId = 7L;
+        User user = activeUser(userId);
+        UserProfile profile = profile(user);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
+        when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.PROFILE_IMAGE_UPLOADED))
+                .thenReturn(false);
+
+        int before = user.getTickets();
+        MockMultipartFile file = new MockMultipartFile("file", "profile.jpg", "image/jpeg", createImageBytes("jpg"));
+
+        service.saveProfileImage(userId, file);
+
+        assertThat(user.getTickets()).isEqualTo(before + 2);
+        verify(userMilestoneRepository).save(org.mockito.ArgumentMatchers.any());
     }
 
     private User activeUser(Long id) {

@@ -36,6 +36,12 @@ public class ChatRoomMember {
     @Column
     private Long lastReadMessageId;
 
+    @Column(name = "hidden_at")
+    private LocalDateTime hiddenAt;
+
+    @Column(name = "hidden_reason", length = 40)
+    private String hiddenReason;
+
     private ChatRoomMember(ChatRoom chatRoom, User user) {
         this.chatRoom = chatRoom;
         this.user = user;
@@ -44,6 +50,23 @@ public class ChatRoomMember {
 
     public void updateLastReadMessageId(Long messageId) {
         this.lastReadMessageId = messageId;
+    }
+
+    public void hide(String reason) {
+        if (this.hiddenAt != null) {
+            return;
+        }
+        this.hiddenAt = LocalDateTime.now();
+        this.hiddenReason = reason;
+    }
+
+    public void unhide() {
+        this.hiddenAt = null;
+        this.hiddenReason = null;
+    }
+
+    public boolean isHidden() {
+        return hiddenAt != null;
     }
 
     public static ChatRoomMember create(ChatRoom chatRoom, User user) {

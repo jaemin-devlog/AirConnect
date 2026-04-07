@@ -123,6 +123,10 @@ moderation:
     contact-text: ${SUPPORT_CONTACT_TEXT:}
 
 app:
+  rewards:
+    milestone:
+      profile-image-uploaded-tickets: ${PROFILE_IMAGE_UPLOADED_REWARD_TICKETS:2}
+      email-verified-tickets: ${EMAIL_VERIFIED_REWARD_TICKETS:0}
   upload:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/var/lib/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE}
