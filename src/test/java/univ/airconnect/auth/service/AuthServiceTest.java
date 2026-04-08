@@ -6,10 +6,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.auth.dto.request.EmailLoginRequest;
+import univ.airconnect.auth.dto.request.EmailSignUpRequest;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
 import univ.airconnect.auth.dto.response.LoginResponse;
@@ -27,6 +30,7 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
+import univ.airconnect.verification.service.VerificationService;
 
 import java.util.Optional;
 
@@ -60,18 +64,23 @@ class AuthServiceTest {
     private AnalyticsService analyticsService;
     @Mock
     private SocialAuthClient socialAuthClient;
+    @Mock
+    private VerificationService verificationService;
+    @Mock
+    private PasswordEncoder passwordEncoder;
 
     @InjectMocks
     private AuthService authService;
 
     @Test
     void socialLogin_savesHashedRefreshToken() {
-        SocialLoginRequest request = new SocialLoginRequest(SocialProvider.KAKAO, "kakao-social-token", "device-12345678");
+        SocialLoginRequest request = new SocialLoginRequest(SocialProvider.APPLE, "apple-identity-token", "device-12345678");
         User user = createUser(11L);
 
-        when(socialAuthResolver.getClient(SocialProvider.KAKAO)).thenReturn(socialAuthClient);
-        when(socialAuthClient.getSocialId("kakao-social-token")).thenReturn("kakao-social-id");
-        when(userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, "kakao-social-id"))
+        when(socialAuthResolver.getClient(SocialProvider.APPLE)).thenReturn(socialAuthClient);
+        when(socialAuthClient.getSocialId("apple-identity-token")).thenReturn("apple-social-id");
+        when(appleAuthClient.getEmail("apple-identity-token")).thenReturn("u11@airconnect.test");
+        when(userRepository.findByProviderAndSocialId(SocialProvider.APPLE, "apple-social-id"))
                 .thenReturn(Optional.of(user));
         when(jwtProvider.createAccessToken(11L)).thenReturn("access-token");
         when(jwtProvider.createRefreshToken(11L, "device-12345678")).thenReturn("refresh-token-raw");
@@ -166,8 +175,45 @@ class AuthServiceTest {
         verify(refreshTokenRepository).deleteById(refreshTokenKey);
     }
 
+    @Test
+    void socialLogin_kakaoDisabled_throws() {
+        SocialLoginRequest request = new SocialLoginRequest(SocialProvider.KAKAO, "kakao-token", "device-1");
+
+        assertThatThrownBy(() -> authService.socialLogin(request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.KAKAO_LOGIN_DISABLED);
+    }
+
+    @Test
+    void emailSignUp_requiresVerificationToken() {
+        EmailSignUpRequest request = new EmailSignUpRequest(null, "Passw0rd1", "device-1");
+
+        assertThatThrownBy(() -> authService.emailSignUp(request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.INVALID_LOGIN_REQUEST);
+    }
+
+    @Test
+    void emailLogin_failsWhenPasswordMismatch() {
+        EmailLoginRequest request = new EmailLoginRequest("verify-token", "wrong-password", "device-1");
+        User user = User.createEmailUser("user@office.hanseo.ac.kr", "encoded-password");
+        ReflectionTestUtils.setField(user, "id", 77L);
+
+        when(verificationService.resolveVerifiedEmail("verify-token")).thenReturn("user@office.hanseo.ac.kr");
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "user@office.hanseo.ac.kr"))
+                .thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("wrong-password", "encoded-password")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.emailLogin(request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.EMAIL_LOGIN_FAILED);
+    }
+
     private User createUser(Long userId) {
-        User user = User.create(SocialProvider.KAKAO, "social-" + userId, "u" + userId + "@airconnect.test");
+        User user = User.create(SocialProvider.APPLE, "social-" + userId, "u" + userId + "@airconnect.test");
         ReflectionTestUtils.setField(user, "id", userId);
         return user;
     }

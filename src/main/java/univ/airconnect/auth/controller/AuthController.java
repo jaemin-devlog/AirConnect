@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import univ.airconnect.auth.dto.request.LogoutRequest;
+import univ.airconnect.auth.dto.request.EmailLoginRequest;
+import univ.airconnect.auth.dto.request.EmailSignUpRequest;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
 import univ.airconnect.auth.dto.response.LoginResponse;
@@ -28,6 +30,22 @@ public class AuthController {
         log.info("Social login request: provider={}", request.getProvider());
         LoginResponse response = authService.socialLogin(request);
         log.info("Social login succeeded");
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/email/sign-up")
+    public ResponseEntity<LoginResponse> emailSignUp(@RequestBody EmailSignUpRequest request) {
+        log.info("Email sign-up request");
+        LoginResponse response = authService.emailSignUp(request);
+        log.info("Email sign-up succeeded");
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/email/login")
+    public ResponseEntity<LoginResponse> emailLogin(@RequestBody EmailLoginRequest request) {
+        log.info("Email login request");
+        LoginResponse response = authService.emailLogin(request);
+        log.info("Email login succeeded");
         return ResponseEntity.ok(response);
     }
 

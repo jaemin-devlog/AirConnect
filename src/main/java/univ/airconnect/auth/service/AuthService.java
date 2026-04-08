@@ -2,12 +2,16 @@ package univ.airconnect.auth.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.auth.dto.request.EmailLoginRequest;
+import univ.airconnect.auth.dto.request.EmailSignUpRequest;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
 import univ.airconnect.auth.dto.response.LoginResponse;
@@ -25,6 +29,7 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
+import univ.airconnect.verification.service.VerificationService;
 
 import java.util.Map;
 
@@ -42,6 +47,11 @@ public class AuthService {
     private final TokenHashService tokenHashService;
     private final UserService userService;
     private final AnalyticsService analyticsService;
+    private final VerificationService verificationService;
+    private final PasswordEncoder passwordEncoder;
+
+    private static final int PASSWORD_MIN_LENGTH = 8;
+    private static final int PASSWORD_MAX_LENGTH = 72;
 
     @Transactional
     public LoginResponse socialLogin(SocialLoginRequest request) {
@@ -63,30 +73,59 @@ public class AuthService {
         validateUserStatus(user);
         user.markActive();
 
-        String accessToken = jwtProvider.createAccessToken(user.getId());
-        String refreshToken = jwtProvider.createRefreshToken(user.getId(), request.getDeviceId());
-        String refreshTokenHash = tokenHashService.hash(refreshToken);
-
-        refreshTokenRepository.save(
-                RefreshToken.create(user.getId(), request.getDeviceId(), refreshTokenHash)
-        );
-
-        UserMeResponse userInfo = userService.getMe(user.getId());
-        analyticsService.trackServerEvent(
-                AnalyticsEventType.USER_LOGGED_IN,
-                user.getId(),
-                Map.of(
-                        "provider", request.getProvider().name(),
-                        "deviceId", request.getDeviceId()
-                )
-        );
         log.info("Social login completed: userId={}", user.getId());
+        return issueLoginResponse(user, request.getDeviceId(), request.getProvider().name());
+    }
 
-        return LoginResponse.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .user(userInfo)
-                .build();
+    @Transactional
+    public LoginResponse emailSignUp(EmailSignUpRequest request) {
+        validateEmailSignUpRequest(request);
+
+        String verifiedEmail = verificationService.resolveVerifiedEmail(request.getVerificationToken());
+        String normalizedEmail = normalizeEmail(verifiedEmail);
+
+        if (userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail).isPresent()) {
+            throw new AuthException(AuthErrorCode.EMAIL_ALREADY_REGISTERED);
+        }
+
+        User created;
+        try {
+            created = userRepository.save(
+                    User.createEmailUser(normalizedEmail, passwordEncoder.encode(request.getPassword()))
+            );
+        } catch (DataIntegrityViolationException ex) {
+            throw new AuthException(AuthErrorCode.EMAIL_ALREADY_REGISTERED);
+        }
+
+        verificationService.consumeVerifiedEmail(request.getVerificationToken());
+        created.markActive();
+
+        log.info("Email sign-up completed: userId={}, emailMasked={}", created.getId(), maskEmail(normalizedEmail));
+        return issueLoginResponse(created, request.getDeviceId(), SocialProvider.EMAIL.name());
+    }
+
+    @Transactional
+    public LoginResponse emailLogin(EmailLoginRequest request) {
+        validateEmailLoginRequest(request);
+
+        String verifiedEmail = verificationService.resolveVerifiedEmail(request.getVerificationToken());
+        String normalizedEmail = normalizeEmail(verifiedEmail);
+
+        User user = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
+                .orElseThrow(() -> new AuthException(AuthErrorCode.EMAIL_LOGIN_FAILED));
+
+        validateUserStatus(user);
+
+        String savedPasswordHash = user.getPasswordHash();
+        if (savedPasswordHash == null || !passwordEncoder.matches(request.getPassword(), savedPasswordHash)) {
+            throw new AuthException(AuthErrorCode.EMAIL_LOGIN_FAILED);
+        }
+
+        verificationService.consumeVerifiedEmail(request.getVerificationToken());
+        user.markActive();
+
+        log.info("Email login completed: userId={}, emailMasked={}", user.getId(), maskEmail(normalizedEmail));
+        return issueLoginResponse(user, request.getDeviceId(), SocialProvider.EMAIL.name());
     }
 
     @Transactional
@@ -170,8 +209,42 @@ public class AuthService {
         if (request.getProvider() == null) {
             throw new AuthException(AuthErrorCode.SOCIAL_PROVIDER_REQUIRED);
         }
+        if (request.getProvider() == SocialProvider.KAKAO) {
+            throw new AuthException(AuthErrorCode.KAKAO_LOGIN_DISABLED);
+        }
+        if (request.getProvider() == SocialProvider.EMAIL) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
+        }
         if (request.getSocialToken() == null || request.getSocialToken().isBlank()) {
             throw new AuthException(AuthErrorCode.SOCIAL_TOKEN_REQUIRED);
+        }
+        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
+            throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
+        }
+    }
+
+    private void validateEmailSignUpRequest(EmailSignUpRequest request) {
+        if (request == null) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
+        }
+        if (request.getVerificationToken() == null || request.getVerificationToken().isBlank()) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
+        }
+        validatePasswordFormat(request.getPassword());
+        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
+            throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
+        }
+    }
+
+    private void validateEmailLoginRequest(EmailLoginRequest request) {
+        if (request == null) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
+        }
+        if (request.getVerificationToken() == null || request.getVerificationToken().isBlank()) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
+        }
+        if (request.getPassword() == null || request.getPassword().isBlank()) {
+            throw new AuthException(AuthErrorCode.EMAIL_PASSWORD_REQUIRED);
         }
         if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
             throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
@@ -206,6 +279,57 @@ public class AuthService {
         return status == UserStatus.DELETED || status == UserStatus.SUSPENDED || status == UserStatus.RESTRICTED;
     }
 
+    private LoginResponse issueLoginResponse(User user, String deviceId, String providerName) {
+        String accessToken = jwtProvider.createAccessToken(user.getId());
+        String refreshToken = jwtProvider.createRefreshToken(user.getId(), deviceId);
+        String refreshTokenHash = tokenHashService.hash(refreshToken);
+
+        refreshTokenRepository.save(
+                RefreshToken.create(user.getId(), deviceId, refreshTokenHash)
+        );
+
+        UserMeResponse userInfo = userService.getMe(user.getId());
+        analyticsService.trackServerEvent(
+                AnalyticsEventType.USER_LOGGED_IN,
+                user.getId(),
+                Map.of(
+                        "provider", providerName,
+                        "deviceId", deviceId
+                )
+        );
+
+        return LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .user(userInfo)
+                .build();
+    }
+
+    private void validatePasswordFormat(String password) {
+        if (password == null || password.isBlank()) {
+            throw new AuthException(AuthErrorCode.EMAIL_PASSWORD_REQUIRED);
+        }
+        if (password.length() < PASSWORD_MIN_LENGTH || password.length() > PASSWORD_MAX_LENGTH) {
+            throw new AuthException(AuthErrorCode.INVALID_PASSWORD_FORMAT);
+        }
+        boolean hasLetter = password.chars().anyMatch(Character::isLetter);
+        boolean hasDigit = password.chars().anyMatch(Character::isDigit);
+        if (!hasLetter || !hasDigit) {
+            throw new AuthException(AuthErrorCode.INVALID_PASSWORD_FORMAT);
+        }
+    }
+
+    private String normalizeEmail(String email) {
+        if (email == null) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
+        }
+        String normalized = email.trim().toLowerCase();
+        if (normalized.isBlank() || normalized.length() > 100) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
+        }
+        return normalized;
+    }
+
     private String buildRefreshTokenKey(Long userId, String deviceId) {
         return userId + ":" + deviceId;
     }
@@ -228,5 +352,16 @@ public class AuthService {
             return "***";
         }
         return socialId.substring(0, 2) + "***" + socialId.substring(socialId.length() - 2);
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return "***";
+        }
+        int at = email.indexOf('@');
+        if (at <= 1) {
+            return "***";
+        }
+        return email.charAt(0) + "***" + email.substring(at);
     }
 }

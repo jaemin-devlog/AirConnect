@@ -65,8 +65,10 @@ class VerificationServiceTest {
 
         int before = user.getTickets();
 
-        service.verifyCode(userId, email, code);
+        VerifiedEmailSession session = service.verifyCode(userId, email, code);
 
+        assertThat(session.verificationToken()).isNotBlank();
+        assertThat(session.email()).isEqualTo(email);
         assertThat(user.getTickets()).isEqualTo(before);
         verify(userMilestoneRepository).save(any());
         verify(redisTemplate).delete(eq("email_verification:" + email));

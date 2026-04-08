@@ -79,6 +79,9 @@ jwt:
   refresh-token-expiration-seconds: ${JWT_REFRESH_TOKEN_EXPIRATION_SECONDS:2592000}
 
 auth:
+  social:
+    kakao:
+      enabled: ${AUTH_SOCIAL_KAKAO_ENABLED:false}
   refresh-token:
     hash-pepper: ${REFRESH_TOKEN_HASH_PEPPER:${JWT_SECRET}}
 

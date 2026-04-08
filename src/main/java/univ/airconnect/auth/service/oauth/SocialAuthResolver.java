@@ -7,6 +7,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 
 /**
@@ -33,8 +34,7 @@ public class SocialAuthResolver {
     public SocialAuthClient getClient(SocialProvider provider) {
         SocialAuthClient client = clientMap.get(provider);
         if (client == null) {
-            // 현재는 AuthException을 사용하지만, 필요하면 UnsupportedProviderException으로 분리할 수 있다.
-            throw new AuthException("Unsupported social provider: " + provider);
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
         }
         return client;
     }

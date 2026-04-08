@@ -37,6 +37,9 @@ public class User {
     @Column(length = 255)
     private String email;
 
+    @Column(name = "password_hash", length = 255)
+    private String passwordHash;
+
     @Column(length = 100)
     private String name;
 
@@ -93,6 +96,7 @@ public class User {
             SocialProvider provider,
             String socialId,
             String email,
+            String passwordHash,
             String name,
             String nickname,
             String deptName,
@@ -113,6 +117,7 @@ public class User {
         this.provider = provider;
         this.socialId = socialId;
         this.email = email;
+        this.passwordHash = passwordHash;
         this.name = name;
         this.nickname = nickname;
         this.deptName = deptName;
@@ -149,6 +154,20 @@ public class User {
                 .build();
     }
 
+    public static User createEmailUser(String email, String passwordHash) {
+        return User.builder()
+                .provider(SocialProvider.EMAIL)
+                .socialId(email)
+                .email(email)
+                .passwordHash(passwordHash)
+                .status(UserStatus.ACTIVE)
+                .onboardingStatus(OnboardingStatus.BASIC)
+                .tickets(100)
+                .iosAppAccountToken(UUID.randomUUID().toString())
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
     public String ensureIosAppAccountToken() {
         if (this.iosAppAccountToken == null || this.iosAppAccountToken.isBlank()) {
             this.iosAppAccountToken = UUID.randomUUID().toString();
@@ -176,6 +195,7 @@ public class User {
 
     public void anonymizeForDeletion() {
         this.email = null;
+        this.passwordHash = null;
         this.name = null;
         this.nickname = null;
         this.studentNum = null;
@@ -214,5 +234,14 @@ public class User {
         this.status = UserStatus.DELETED;
         this.deletedAt = LocalDateTime.now();
         this.lastActiveAt = null;
+    }
+
+    public boolean isEmailProvider() {
+        return this.provider == SocialProvider.EMAIL;
+    }
+
+    public void changePasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+        this.lastActiveAt = LocalDateTime.now();
     }
 }

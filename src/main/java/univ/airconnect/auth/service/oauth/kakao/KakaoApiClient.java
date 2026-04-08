@@ -2,12 +2,14 @@ package univ.airconnect.auth.service.oauth.kakao;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import univ.airconnect.auth.exception.SocialApiException;
 
 @Component
+@ConditionalOnProperty(prefix = "auth.social.kakao", name = "enabled", havingValue = "true")
 public class KakaoApiClient {
 
     private final RestClient restClient;
