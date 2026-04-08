@@ -10,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
 import univ.airconnect.user.dto.request.DeleteAccountRequest;
+import univ.airconnect.user.dto.request.ChangePasswordRequest;
 import univ.airconnect.user.dto.request.SignUpRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
 import univ.airconnect.user.dto.response.ProfileImageUploadResponse;
@@ -104,6 +105,19 @@ public class UserController {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
         userService.deleteAccount(userId, request, traceId);
         log.info("🚪 회원 탈퇴 완료: userId={}", userId);
+        return ResponseEntity.ok(ApiResponse.ok(null, traceId));
+    }
+
+    @PatchMapping("/me/password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @CurrentUserId Long userId,
+            @RequestBody ChangePasswordRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        log.info("🔐 비밀번호 변경 요청: userId={}", userId);
+        String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
+        userService.changePassword(userId, request);
+        log.info("✅ 비밀번호 변경 완료: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }
 }

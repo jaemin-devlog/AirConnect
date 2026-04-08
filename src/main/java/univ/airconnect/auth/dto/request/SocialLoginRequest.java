@@ -10,7 +10,6 @@ import univ.airconnect.auth.domain.entity.SocialProvider;
  * 소셜 로그인 요청 DTO
  *
  * 사용 예시:
- * - Kakao: provider=KAKAO, socialToken={카카오 accessToken}
  * - Apple: provider=APPLE, socialToken={Apple identityToken}
  *
  * deviceId는 앱에서 생성해서 고정 저장 (UUID 추천)

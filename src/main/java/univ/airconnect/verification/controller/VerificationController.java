@@ -10,6 +10,8 @@ import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
 import univ.airconnect.verification.dto.request.EmailVerificationRequest;
 import univ.airconnect.verification.dto.request.EmailVerifyRequest;
+import univ.airconnect.verification.dto.response.EmailVerifyResponse;
+import univ.airconnect.verification.service.VerifiedEmailSession;
 import univ.airconnect.verification.service.VerificationService;
 
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
@@ -29,25 +31,41 @@ public class VerificationController {
     ) {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
 
-        log.info("Email verification code send requested. email={}", request.getEmail());
+        log.info("Email verification code send requested. email={}", maskEmail(request.getEmail()));
         verificationService.sendCode(request.getEmail());
-        log.info("Email verification code send completed. email={}", request.getEmail());
+        log.info("Email verification code send completed. email={}", maskEmail(request.getEmail()));
 
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }
 
     @PostMapping("/email/verify")
-    public ResponseEntity<ApiResponse<Void>> verifyCode(
+    public ResponseEntity<ApiResponse<EmailVerifyResponse>> verifyCode(
             @CurrentUserId Long userId,
             @Valid @RequestBody EmailVerifyRequest request,
             HttpServletRequest httpRequest
     ) {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
 
-        log.info("Email verification requested. userId={}, email={}", userId, request.getEmail());
-        verificationService.verifyCode(userId, request.getEmail(), request.getCode());
-        log.info("Email verification completed. userId={}, email={}", userId, request.getEmail());
+        log.info("Email verification requested. userId={}, email={}", userId, maskEmail(request.getEmail()));
+        VerifiedEmailSession verified = verificationService.verifyCode(userId, request.getEmail(), request.getCode());
+        EmailVerifyResponse response = EmailVerifyResponse.builder()
+                .verifiedEmail(verified.email())
+                .verificationToken(verified.verificationToken())
+                .expiresAt(verified.expiresAt())
+                .build();
+        log.info("Email verification completed. userId={}, email={}", userId, maskEmail(request.getEmail()));
 
-        return ResponseEntity.ok(ApiResponse.ok(null, traceId));
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return "***";
+        }
+        int at = email.indexOf('@');
+        if (at <= 1) {
+            return "***";
+        }
+        return email.charAt(0) + "***" + email.substring(at);
     }
 }

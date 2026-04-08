@@ -17,7 +17,10 @@ import univ.airconnect.verification.exception.VerificationErrorCode;
 import univ.airconnect.verification.exception.VerificationException;
 
 import java.security.SecureRandom;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -33,8 +36,10 @@ public class VerificationService {
 
     private static final String VERIFICATION_PREFIX = "email_verification:";
     private static final String COOLDOWN_PREFIX = "email_verification_cooldown:";
+    private static final String VERIFIED_TOKEN_PREFIX = "email_verified_token:";
     private static final long CODE_EXPIRATION_MINUTES = 5;
     private static final long RESEND_COOLDOWN_SECONDS = 60;
+    private static final long VERIFIED_TOKEN_EXPIRATION_MINUTES = 20;
     private static final String SCHOOL_DOMAIN = "office.hanseo.ac.kr";
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -49,19 +54,19 @@ public class VerificationService {
 
         try {
             mailService.sendVerificationCode(normalizedEmail, code);
-            log.info("Verification code issued. email={}", normalizedEmail);
+            log.info("Verification code issued. email={}", maskEmail(normalizedEmail));
         } catch (VerificationException e) {
             clearVerificationData(normalizedEmail);
             throw e;
         } catch (Exception e) {
             clearVerificationData(normalizedEmail);
-            log.error("Unexpected error while sending verification code. email={}", normalizedEmail, e);
+            log.error("Unexpected error while sending verification code. email={}", maskEmail(normalizedEmail), e);
             throw new VerificationException(VerificationErrorCode.MAIL_SEND_FAILED);
         }
     }
 
     @Transactional
-    public void verifyCode(Long userId, String email, String code) {
+    public VerifiedEmailSession verifyCode(Long userId, String email, String code) {
         String normalizedEmail = normalizeEmail(email);
         validateEmailDomain(normalizedEmail);
 
@@ -75,8 +80,31 @@ public class VerificationService {
 
         clearVerificationData(normalizedEmail);
         grantMilestoneIfNotAlreadyGranted(userId, normalizedEmail);
+        VerifiedEmailSession verifiedSession = issueVerifiedSession(normalizedEmail);
 
-        log.info("Email verification succeeded. userId={}, email={}", userId, normalizedEmail);
+        log.info("Email verification succeeded. userId={}, email={}, tokenMasked={}",
+                userId, maskEmail(normalizedEmail), maskToken(verifiedSession.verificationToken()));
+        return verifiedSession;
+    }
+
+    public String resolveVerifiedEmail(String verificationToken) {
+        String token = normalizeVerificationToken(verificationToken);
+        String email = redisTemplate.opsForValue().get(VERIFIED_TOKEN_PREFIX + token);
+        if (email == null || email.isBlank()) {
+            throw new VerificationException(VerificationErrorCode.VERIFIED_EMAIL_TOKEN_EXPIRED);
+        }
+        return email;
+    }
+
+    public String consumeVerifiedEmail(String verificationToken) {
+        String token = normalizeVerificationToken(verificationToken);
+        String key = VERIFIED_TOKEN_PREFIX + token;
+        String email = redisTemplate.opsForValue().get(key);
+        if (email == null || email.isBlank()) {
+            throw new VerificationException(VerificationErrorCode.VERIFIED_EMAIL_TOKEN_EXPIRED);
+        }
+        redisTemplate.delete(key);
+        return email;
     }
 
     private String normalizeEmail(String email) {
@@ -86,6 +114,9 @@ public class VerificationService {
 
         String normalized = email.trim().toLowerCase(Locale.ROOT);
         if (normalized.isBlank() || !normalized.contains("@")) {
+            throw new VerificationException(VerificationErrorCode.INVALID_EMAIL_FORMAT);
+        }
+        if (normalized.length() > 100) {
             throw new VerificationException(VerificationErrorCode.INVALID_EMAIL_FORMAT);
         }
         return normalized;
@@ -138,9 +169,31 @@ public class VerificationService {
         redisTemplate.delete(COOLDOWN_PREFIX + email);
     }
 
+    private VerifiedEmailSession issueVerifiedSession(String email) {
+        String token = UUID.randomUUID().toString();
+        redisTemplate.opsForValue().set(
+                VERIFIED_TOKEN_PREFIX + token,
+                email,
+                VERIFIED_TOKEN_EXPIRATION_MINUTES,
+                TimeUnit.MINUTES
+        );
+        return new VerifiedEmailSession(
+                email,
+                token,
+                OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(VERIFIED_TOKEN_EXPIRATION_MINUTES)
+        );
+    }
+
+    private String normalizeVerificationToken(String verificationToken) {
+        if (verificationToken == null || verificationToken.isBlank()) {
+            throw new VerificationException(VerificationErrorCode.VERIFIED_EMAIL_TOKEN_REQUIRED);
+        }
+        return verificationToken.trim();
+    }
+
     private void grantMilestoneIfNotAlreadyGranted(Long userId, String verifiedEmail) {
         if (userId == null) {
-            log.warn("Email verified without authenticated user. milestone skipped. email={}", verifiedEmail);
+            log.info("Email verified without authenticated user. milestone skipped. email={}", maskEmail(verifiedEmail));
             return;
         }
 
@@ -171,9 +224,30 @@ public class VerificationService {
         log.info(
                 "Milestone granted. userId={}, verifiedEmail={}, milestoneType=EMAIL_VERIFIED, rewardedTickets={}, totalTickets={}",
                 userId,
-                verifiedEmail,
+                maskEmail(verifiedEmail),
                 rewardTickets,
                 user.getTickets()
         );
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return "***";
+        }
+        int at = email.indexOf('@');
+        if (at <= 1) {
+            return "***";
+        }
+        return email.charAt(0) + "***" + email.substring(at);
+    }
+
+    private String maskToken(String token) {
+        if (token == null || token.isBlank()) {
+            return "***";
+        }
+        if (token.length() < 8) {
+            return "***";
+        }
+        return token.substring(0, 4) + "***" + token.substring(token.length() - 4);
     }
 }

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
@@ -19,6 +20,7 @@ import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.dto.request.DeleteAccountRequest;
+import univ.airconnect.user.dto.request.ChangePasswordRequest;
 import univ.airconnect.user.dto.request.SignUpRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
 import univ.airconnect.user.dto.response.SignUpResponse;
@@ -29,6 +31,9 @@ import univ.airconnect.user.exception.UserException;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
+import univ.airconnect.verification.exception.VerificationErrorCode;
+import univ.airconnect.verification.exception.VerificationException;
+import univ.airconnect.verification.service.VerificationService;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,8 +58,12 @@ public class UserService {
     private final PushDeviceRepository pushDeviceRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     private final AppleAccountRevocationService appleAccountRevocationService;
+    private final VerificationService verificationService;
+    private final PasswordEncoder passwordEncoder;
 
     private static final String USER_ACTIVITY_TOUCH_KEY_PREFIX = "analytics:user:last-active:";
+    private static final int PASSWORD_MIN_LENGTH = 8;
+    private static final int PASSWORD_MAX_LENGTH = 72;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -273,6 +282,34 @@ public class UserService {
     }
 
     @Transactional
+    public void changePassword(Long userId, ChangePasswordRequest request) {
+        if (request == null) {
+            throw new UserException(UserErrorCode.INVALID_INPUT);
+        }
+
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+        ensureUserActive(user);
+
+        if (!user.isEmailProvider()) {
+            throw new UserException(UserErrorCode.PASSWORD_CHANGE_NOT_ALLOWED);
+        }
+
+        validatePasswordFormat(request.getNewPassword());
+
+        String verifiedEmail = verificationService.resolveVerifiedEmail(request.getVerificationToken());
+        if (user.getEmail() == null || !user.getEmail().trim().equalsIgnoreCase(verifiedEmail)) {
+            throw new VerificationException(VerificationErrorCode.VERIFIED_EMAIL_MISMATCH);
+        }
+
+        verificationService.consumeVerifiedEmail(request.getVerificationToken());
+        user.changePasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        purgeRefreshTokens(userId);
+
+        log.info("✅ 비밀번호 변경 완료(토큰 무효화 포함): userId={}, emailMasked={}", userId, maskEmail(verifiedEmail));
+    }
+
+    @Transactional
     public void deleteAccount(Long userId, DeleteAccountRequest request) {
         deleteAccount(userId, request, null);
     }
@@ -421,6 +458,31 @@ public class UserService {
             return "-";
         }
         return traceId;
+    }
+
+    private void validatePasswordFormat(String password) {
+        if (password == null || password.isBlank()) {
+            throw new UserException(UserErrorCode.PASSWORD_REQUIRED);
+        }
+        if (password.length() < PASSWORD_MIN_LENGTH || password.length() > PASSWORD_MAX_LENGTH) {
+            throw new UserException(UserErrorCode.PASSWORD_INVALID_FORMAT);
+        }
+        boolean hasLetter = password.chars().anyMatch(Character::isLetter);
+        boolean hasDigit = password.chars().anyMatch(Character::isDigit);
+        if (!hasLetter || !hasDigit) {
+            throw new UserException(UserErrorCode.PASSWORD_INVALID_FORMAT);
+        }
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return "***";
+        }
+        int at = email.indexOf('@');
+        if (at <= 1) {
+            return "***";
+        }
+        return email.charAt(0) + "***" + email.substring(at);
     }
 
 }
