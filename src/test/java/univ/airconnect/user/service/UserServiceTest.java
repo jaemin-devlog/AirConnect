@@ -34,6 +34,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -176,6 +178,24 @@ class UserServiceTest {
 
         assertThatThrownBy(() -> service.changePassword(userId, request))
                 .isInstanceOf(UserException.class);
+    }
+
+    @Test
+    void changePassword_requiresSpecialCharacter() {
+        UserService service = createService();
+        Long userId = 101L;
+        User emailUser = User.createEmailUser("user@office.hanseo.ac.kr", "encoded-password");
+        ReflectionTestUtils.setField(emailUser, "id", userId);
+
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(emailUser));
+
+        ChangePasswordRequest request = new ChangePasswordRequest();
+        ReflectionTestUtils.setField(request, "verificationToken", "verified-token");
+        ReflectionTestUtils.setField(request, "newPassword", "Passw0rd123");
+
+        assertThatThrownBy(() -> service.changePassword(userId, request))
+                .isInstanceOf(UserException.class);
+        verify(verificationService, never()).resolveVerifiedEmail(anyString());
     }
 
     private UserService createService() {

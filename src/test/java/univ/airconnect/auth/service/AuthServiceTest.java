@@ -196,6 +196,16 @@ class AuthServiceTest {
     }
 
     @Test
+    void emailSignUp_requiresSpecialCharacterInPassword() {
+        EmailSignUpRequest request = new EmailSignUpRequest("verify-token", "Passw0rd1", "device-1");
+
+        assertThatThrownBy(() -> authService.emailSignUp(request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.INVALID_PASSWORD_FORMAT);
+    }
+
+    @Test
     void emailLogin_failsWhenPasswordMismatch() {
         EmailLoginRequest request = new EmailLoginRequest("verify-token", "wrong-password", "device-1");
         User user = User.createEmailUser("user@office.hanseo.ac.kr", "encoded-password");
