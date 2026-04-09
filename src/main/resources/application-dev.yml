@@ -165,3 +165,4 @@ notification:
       app-name: ${FIREBASE_APP_NAME:airconnect-notification}
       project-id: ${FIREBASE_PROJECT_ID:}
       credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
+

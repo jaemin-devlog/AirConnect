@@ -13,6 +13,8 @@ import univ.airconnect.user.exception.UserException;
 import univ.airconnect.user.infrastructure.MilestoneRewardProperties;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserRepository;
+import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.verification.domain.VerificationPurpose;
 import univ.airconnect.verification.exception.VerificationErrorCode;
 import univ.airconnect.verification.exception.VerificationException;
 
@@ -44,10 +46,12 @@ public class VerificationService {
     private static final String SCHOOL_DOMAIN = "office.hanseo.ac.kr";
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    public void sendCode(String email) {
+    public void sendCode(String email, VerificationPurpose purpose) {
         String normalizedEmail = normalizeEmail(email);
         validateEmailDomain(normalizedEmail);
-        assertNoActiveVerifiedSession(normalizedEmail);
+        VerificationPurpose resolvedPurpose = resolvePurpose(normalizedEmail, purpose);
+        assertSignUpEmailAvailability(normalizedEmail, resolvedPurpose);
+        clearActiveVerifiedSession(normalizedEmail);
         checkResendCooldown(normalizedEmail);
 
         String code = generateCode();
@@ -68,10 +72,11 @@ public class VerificationService {
     }
 
     @Transactional
-    public VerifiedEmailSession verifyCode(Long userId, String email, String code) {
+    public VerifiedEmailSession verifyCode(Long userId, String email, String code, VerificationPurpose purpose) {
         String normalizedEmail = normalizeEmail(email);
         validateEmailDomain(normalizedEmail);
-        assertNoActiveVerifiedSession(normalizedEmail);
+        VerificationPurpose resolvedPurpose = resolvePurpose(normalizedEmail, purpose);
+        assertSignUpEmailAvailability(normalizedEmail, resolvedPurpose);
 
         String savedCode = redisTemplate.opsForValue().get(VERIFICATION_PREFIX + normalizedEmail);
         if (savedCode == null) {
@@ -82,6 +87,7 @@ public class VerificationService {
         }
 
         clearVerificationData(normalizedEmail);
+        clearActiveVerifiedSession(normalizedEmail);
         grantMilestoneIfNotAlreadyGranted(userId, normalizedEmail);
         VerifiedEmailSession verifiedSession = issueVerifiedSession(normalizedEmail);
 
@@ -194,19 +200,35 @@ public class VerificationService {
         );
     }
 
-    private void assertNoActiveVerifiedSession(String email) {
+    private void clearActiveVerifiedSession(String email) {
         String activeToken = redisTemplate.opsForValue().get(VERIFIED_ACTIVE_PREFIX + email);
         if (activeToken == null || activeToken.isBlank()) {
             return;
         }
 
-        String mappedEmail = redisTemplate.opsForValue().get(VERIFIED_TOKEN_PREFIX + activeToken);
-        if (mappedEmail == null || mappedEmail.isBlank()) {
-            redisTemplate.delete(VERIFIED_ACTIVE_PREFIX + email);
+        redisTemplate.delete(VERIFIED_ACTIVE_PREFIX + email);
+        redisTemplate.delete(VERIFIED_TOKEN_PREFIX + activeToken);
+    }
+
+    private void assertSignUpEmailAvailability(String normalizedEmail, VerificationPurpose purpose) {
+        if (purpose != VerificationPurpose.SIGN_UP) {
             return;
         }
+        boolean existsEmailAccount = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
+                .isPresent();
+        if (existsEmailAccount) {
+            throw new VerificationException(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
+        }
+    }
 
-        throw new VerificationException(VerificationErrorCode.VERIFIED_EMAIL_ALREADY_ISSUED);
+    private VerificationPurpose resolvePurpose(String normalizedEmail, VerificationPurpose purpose) {
+        if (purpose != null) {
+            return purpose;
+        }
+
+        boolean existsEmailAccount = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
+                .isPresent();
+        return existsEmailAccount ? VerificationPurpose.LOGIN : VerificationPurpose.SIGN_UP;
     }
 
     private String normalizeVerificationToken(String verificationToken) {

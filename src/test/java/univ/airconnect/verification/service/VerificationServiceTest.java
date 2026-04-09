@@ -13,6 +13,7 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.infrastructure.MilestoneRewardProperties;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserRepository;
+import univ.airconnect.verification.domain.VerificationPurpose;
 import univ.airconnect.verification.exception.VerificationErrorCode;
 import univ.airconnect.verification.exception.VerificationException;
 
@@ -71,7 +72,7 @@ class VerificationServiceTest {
 
         int before = user.getTickets();
 
-        VerifiedEmailSession session = service.verifyCode(userId, email, code);
+        VerifiedEmailSession session = service.verifyCode(userId, email, code, VerificationPurpose.SIGN_UP);
 
         assertThat(session.verificationToken()).isNotBlank();
         assertThat(session.email()).isEqualTo(email);
@@ -82,7 +83,7 @@ class VerificationServiceTest {
     }
 
     @Test
-    void sendCode_failsWhenVerifiedTokenAlreadyIssuedForEmail() {
+    void sendCode_reissues_whenVerifiedTokenAlreadyIssuedForEmail() {
         MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
         VerificationService service = new VerificationService(
                 mailService,
@@ -95,13 +96,38 @@ class VerificationServiceTest {
         String email = "student@office.hanseo.ac.kr";
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.hasKey("email_verification_cooldown:" + email)).thenReturn(false);
         when(valueOperations.get("email_verified_active:" + email)).thenReturn("active-token");
-        when(valueOperations.get("email_verified_token:active-token")).thenReturn(email);
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.sendCode(email))
+        service.sendCode(email, VerificationPurpose.SIGN_UP);
+
+        verify(redisTemplate).delete("email_verified_active:" + email);
+        verify(redisTemplate).delete("email_verified_token:active-token");
+        verify(mailService).sendVerificationCode(eq(email), anyString());
+    }
+
+    @Test
+    void sendCode_signupPurpose_failsWhenEmailAlreadyRegistered() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                rewardProperties
+        );
+
+        String email = "student@office.hanseo.ac.kr";
+        User existing = User.createEmailUser(email, "encoded-password");
+        ReflectionTestUtils.setField(existing, "id", 101L);
+
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.sendCode(email, VerificationPurpose.SIGN_UP))
                 .isInstanceOf(VerificationException.class)
                 .extracting(ex -> ((VerificationException) ex).getErrorCode())
-                .isEqualTo(VerificationErrorCode.VERIFIED_EMAIL_ALREADY_ISSUED);
+                .isEqualTo(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
 
         verify(mailService, never()).sendVerificationCode(any(), any());
     }

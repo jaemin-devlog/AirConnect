@@ -32,7 +32,7 @@ public class VerificationController {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
 
         log.info("Email verification code send requested. email={}", maskEmail(request.getEmail()));
-        verificationService.sendCode(request.getEmail());
+        verificationService.sendCode(request.getEmail(), request.getPurpose());
         log.info("Email verification code send completed. email={}", maskEmail(request.getEmail()));
 
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
@@ -47,7 +47,12 @@ public class VerificationController {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
 
         log.info("Email verification requested. userId={}, email={}", userId, maskEmail(request.getEmail()));
-        VerifiedEmailSession verified = verificationService.verifyCode(userId, request.getEmail(), request.getCode());
+        VerifiedEmailSession verified = verificationService.verifyCode(
+                userId,
+                request.getEmail(),
+                request.getCode(),
+                request.getPurpose()
+        );
         EmailVerifyResponse response = EmailVerifyResponse.builder()
                 .verifiedEmail(verified.email())
                 .verificationToken(verified.verificationToken())

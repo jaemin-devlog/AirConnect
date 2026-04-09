@@ -10,6 +10,7 @@ public enum VerificationErrorCode {
     INVALID_EMAIL_FORMAT(HttpStatus.BAD_REQUEST, "VERIFY_INVALID_EMAIL_FORMAT", "올바른 이메일 형식이 아닙니다."),
     CODE_EXPIRED(HttpStatus.BAD_REQUEST, "VERIFY_CODE_EXPIRED", "인증 코드가 만료되었거나 존재하지 않습니다."),
     CODE_MISMATCH(HttpStatus.BAD_REQUEST, "VERIFY_CODE_MISMATCH", "인증 코드가 일치하지 않습니다."),
+    ALREADY_REGISTERED_EMAIL(HttpStatus.CONFLICT, "VERIFY_ALREADY_REGISTERED_EMAIL", "이미 가입된 이메일입니다. 로그인으로 진행해주세요."),
     VERIFIED_EMAIL_ALREADY_ISSUED(HttpStatus.CONFLICT, "VERIFY_VERIFIED_EMAIL_ALREADY_ISSUED", "이미 인증 완료된 이메일입니다. 발급된 인증 토큰을 사용해주세요."),
     VERIFIED_EMAIL_TOKEN_REQUIRED(HttpStatus.BAD_REQUEST, "VERIFY_VERIFIED_EMAIL_TOKEN_REQUIRED", "인증 완료 토큰이 필요합니다."),
     VERIFIED_EMAIL_TOKEN_EXPIRED(HttpStatus.BAD_REQUEST, "VERIFY_VERIFIED_EMAIL_TOKEN_EXPIRED", "인증 완료 토큰이 만료되었거나 유효하지 않습니다."),

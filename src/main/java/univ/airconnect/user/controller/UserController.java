@@ -1,5 +1,6 @@
 package univ.airconnect.user.controller;
 
+import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -11,13 +12,16 @@ import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
 import univ.airconnect.user.dto.request.DeleteAccountRequest;
 import univ.airconnect.user.dto.request.ChangePasswordRequest;
+import univ.airconnect.user.dto.request.SchoolConsentUpsertRequest;
 import univ.airconnect.user.dto.request.SignUpRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
 import univ.airconnect.user.dto.response.ProfileImageUploadResponse;
+import univ.airconnect.user.dto.response.SchoolConsentResponse;
 import univ.airconnect.user.dto.response.SignUpResponse;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.service.UserProfileImageService;
+import univ.airconnect.user.service.UserSchoolConsentService;
 import univ.airconnect.user.service.UserService;
 
 
@@ -31,6 +35,7 @@ public class UserController {
 
     private final UserService userService;
     private final UserProfileImageService userProfileImageService;
+    private final UserSchoolConsentService userSchoolConsentService;
 
     @PostMapping("/sign-up")
     public ResponseEntity<ApiResponse<SignUpResponse>> signUp(
@@ -119,5 +124,26 @@ public class UserController {
         userService.changePassword(userId, request);
         log.info("✅ 비밀번호 변경 완료: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
+    }
+
+    @GetMapping("/school-consent")
+    public ResponseEntity<ApiResponse<SchoolConsentResponse>> getSchoolConsent(
+            @CurrentUserId Long userId,
+            HttpServletRequest httpRequest
+    ) {
+        String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
+        SchoolConsentResponse response = userSchoolConsentService.get(userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    @PutMapping("/school-consent")
+    public ResponseEntity<ApiResponse<SchoolConsentResponse>> upsertSchoolConsent(
+            @CurrentUserId Long userId,
+            @Valid @RequestBody SchoolConsentUpsertRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
+        SchoolConsentResponse response = userSchoolConsentService.upsert(userId, request);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 }
