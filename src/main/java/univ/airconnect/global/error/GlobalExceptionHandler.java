@@ -23,6 +23,8 @@ import univ.airconnect.ads.exception.AdsException;
 
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
+import univ.airconnect.compatibility.exception.CompatibilityErrorCode;
+import univ.airconnect.compatibility.exception.CompatibilityException;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.response.ErrorBody;
 import univ.airconnect.iap.exception.IapErrorCode;
@@ -269,6 +271,27 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(mec.getHttpStatus())
                 .body(ApiResponse.fail(body, traceId));
+    }
+
+    @ExceptionHandler(CompatibilityException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCompatibility(
+            CompatibilityException e,
+            HttpServletRequest request
+    ) {
+        CompatibilityErrorCode cec = e.getErrorCode();
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+
+        log.warn("CompatibilityException [{}] - {}", traceId, e.getMessage());
+
+        ErrorBody body = new ErrorBody(
+                cec.getCode(),
+                e.getMessage(),
+                cec.getHttpStatus().value(),
+                traceId,
+                null
+        );
+
+        return jsonErrorResponse(cec.getHttpStatus(), body, traceId);
     }
 
     @ExceptionHandler(BusinessException.class)

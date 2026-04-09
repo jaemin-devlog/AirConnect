@@ -166,3 +166,11 @@ notification:
       project-id: ${FIREBASE_PROJECT_ID:}
       credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
 
+openai:
+  compatibility:
+    enabled: ${OPENAI_ENABLED:false}
+    api-key: ${OPENAI_API_KEY:}
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    model: ${OPENAI_MODEL:gpt-5-nano}
+    connect-timeout: ${OPENAI_CONNECT_TIMEOUT:2s}
+    read-timeout: ${OPENAI_READ_TIMEOUT:5s}
