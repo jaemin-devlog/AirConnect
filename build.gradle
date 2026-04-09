@@ -79,6 +79,11 @@ dependencies {
     //admod
     implementation "com.google.crypto.tink:apps-rewardedads:1.14.0"
     implementation "com.google.crypto.tink:tink:1.14.0"
+
+    //openai
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
 }
 
 tasks.named('test') {

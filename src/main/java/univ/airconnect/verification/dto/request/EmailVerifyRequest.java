@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import univ.airconnect.verification.domain.VerificationPurpose;
 
 @Getter
 @NoArgsConstructor
@@ -15,4 +16,6 @@ public class EmailVerifyRequest {
 
     @NotBlank(message = "인증 코드는 필수입니다.")
     private String code;
+
+    private VerificationPurpose purpose;
 }
