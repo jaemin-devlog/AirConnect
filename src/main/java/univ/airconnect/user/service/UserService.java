@@ -469,7 +469,9 @@ public class UserService {
         }
         boolean hasLetter = password.chars().anyMatch(Character::isLetter);
         boolean hasDigit = password.chars().anyMatch(Character::isDigit);
-        if (!hasLetter || !hasDigit) {
+        boolean hasSpecial = password.chars()
+                .anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
+        if (!hasLetter || !hasDigit || !hasSpecial) {
             throw new UserException(UserErrorCode.PASSWORD_INVALID_FORMAT);
         }
     }

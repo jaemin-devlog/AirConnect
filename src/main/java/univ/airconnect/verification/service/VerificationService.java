@@ -37,6 +37,7 @@ public class VerificationService {
     private static final String VERIFICATION_PREFIX = "email_verification:";
     private static final String COOLDOWN_PREFIX = "email_verification_cooldown:";
     private static final String VERIFIED_TOKEN_PREFIX = "email_verified_token:";
+    private static final String VERIFIED_ACTIVE_PREFIX = "email_verified_active:";
     private static final long CODE_EXPIRATION_MINUTES = 5;
     private static final long RESEND_COOLDOWN_SECONDS = 60;
     private static final long VERIFIED_TOKEN_EXPIRATION_MINUTES = 20;
@@ -46,6 +47,7 @@ public class VerificationService {
     public void sendCode(String email) {
         String normalizedEmail = normalizeEmail(email);
         validateEmailDomain(normalizedEmail);
+        assertNoActiveVerifiedSession(normalizedEmail);
         checkResendCooldown(normalizedEmail);
 
         String code = generateCode();
@@ -69,6 +71,7 @@ public class VerificationService {
     public VerifiedEmailSession verifyCode(Long userId, String email, String code) {
         String normalizedEmail = normalizeEmail(email);
         validateEmailDomain(normalizedEmail);
+        assertNoActiveVerifiedSession(normalizedEmail);
 
         String savedCode = redisTemplate.opsForValue().get(VERIFICATION_PREFIX + normalizedEmail);
         if (savedCode == null) {
@@ -104,6 +107,7 @@ public class VerificationService {
             throw new VerificationException(VerificationErrorCode.VERIFIED_EMAIL_TOKEN_EXPIRED);
         }
         redisTemplate.delete(key);
+        redisTemplate.delete(VERIFIED_ACTIVE_PREFIX + email);
         return email;
     }
 
@@ -177,11 +181,32 @@ public class VerificationService {
                 VERIFIED_TOKEN_EXPIRATION_MINUTES,
                 TimeUnit.MINUTES
         );
+        redisTemplate.opsForValue().set(
+                VERIFIED_ACTIVE_PREFIX + email,
+                token,
+                VERIFIED_TOKEN_EXPIRATION_MINUTES,
+                TimeUnit.MINUTES
+        );
         return new VerifiedEmailSession(
                 email,
                 token,
                 OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(VERIFIED_TOKEN_EXPIRATION_MINUTES)
         );
+    }
+
+    private void assertNoActiveVerifiedSession(String email) {
+        String activeToken = redisTemplate.opsForValue().get(VERIFIED_ACTIVE_PREFIX + email);
+        if (activeToken == null || activeToken.isBlank()) {
+            return;
+        }
+
+        String mappedEmail = redisTemplate.opsForValue().get(VERIFIED_TOKEN_PREFIX + activeToken);
+        if (mappedEmail == null || mappedEmail.isBlank()) {
+            redisTemplate.delete(VERIFIED_ACTIVE_PREFIX + email);
+            return;
+        }
+
+        throw new VerificationException(VerificationErrorCode.VERIFIED_EMAIL_ALREADY_ISSUED);
     }
 
     private String normalizeVerificationToken(String verificationToken) {

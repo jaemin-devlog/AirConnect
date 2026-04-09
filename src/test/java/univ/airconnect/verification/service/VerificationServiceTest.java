@@ -13,12 +13,17 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.infrastructure.MilestoneRewardProperties;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserRepository;
+import univ.airconnect.verification.exception.VerificationErrorCode;
+import univ.airconnect.verification.exception.VerificationException;
 
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -58,6 +63,7 @@ class VerificationServiceTest {
         ReflectionTestUtils.setField(user, "id", userId);
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn(null);
         when(valueOperations.get("email_verification:" + email)).thenReturn(code);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.EMAIL_VERIFIED))
@@ -73,5 +79,30 @@ class VerificationServiceTest {
         verify(userMilestoneRepository).save(any());
         verify(redisTemplate).delete(eq("email_verification:" + email));
         verify(redisTemplate).delete(eq("email_verification_cooldown:" + email));
+    }
+
+    @Test
+    void sendCode_failsWhenVerifiedTokenAlreadyIssuedForEmail() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                rewardProperties
+        );
+
+        String email = "student@office.hanseo.ac.kr";
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("email_verified_active:" + email)).thenReturn("active-token");
+        when(valueOperations.get("email_verified_token:active-token")).thenReturn(email);
+
+        assertThatThrownBy(() -> service.sendCode(email))
+                .isInstanceOf(VerificationException.class)
+                .extracting(ex -> ((VerificationException) ex).getErrorCode())
+                .isEqualTo(VerificationErrorCode.VERIFIED_EMAIL_ALREADY_ISSUED);
+
+        verify(mailService, never()).sendVerificationCode(any(), any());
     }
 }
