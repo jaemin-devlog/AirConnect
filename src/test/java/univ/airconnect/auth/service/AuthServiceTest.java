@@ -68,6 +68,8 @@ class AuthServiceTest {
     private VerificationService verificationService;
     @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private ReviewAccountService reviewAccountService;
 
     @InjectMocks
     private AuthService authService;
@@ -220,6 +222,28 @@ class AuthServiceTest {
                 .isInstanceOf(AuthException.class)
                 .extracting(ex -> ((AuthException) ex).getErrorCode())
                 .isEqualTo(AuthErrorCode.EMAIL_LOGIN_FAILED);
+    }
+
+    @Test
+    void emailLogin_allowsReviewAccountWithoutVerificationToken() {
+        EmailLoginRequest request = new EmailLoginRequest(null, "Passw0rd!@", "device-1", "review@airconnect.test");
+        User user = User.createEmailUser("review@airconnect.test", "encoded-password");
+        ReflectionTestUtils.setField(user, "id", 88L);
+
+        when(reviewAccountService.isReviewLoginRequest(request)).thenReturn(true);
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "review@airconnect.test"))
+                .thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Passw0rd!@", "encoded-password")).thenReturn(true);
+        when(jwtProvider.createAccessToken(88L)).thenReturn("access-token");
+        when(jwtProvider.createRefreshToken(88L, "device-1")).thenReturn("refresh-token-raw");
+        when(tokenHashService.hash("refresh-token-raw")).thenReturn("refresh-token-hash");
+        when(userService.getMe(88L)).thenReturn(UserMeResponse.builder().userId(88L).build());
+
+        LoginResponse response = authService.emailLogin(request);
+
+        assertThat(response.getAccessToken()).isEqualTo("access-token");
+        verify(verificationService, never()).resolveVerifiedEmail(any());
+        verify(verificationService, never()).consumeVerifiedEmail(any());
     }
 
     private User createUser(Long userId) {

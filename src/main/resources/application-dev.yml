@@ -84,6 +84,24 @@ auth:
       enabled: ${AUTH_SOCIAL_KAKAO_ENABLED:false}
   refresh-token:
     hash-pepper: ${REFRESH_TOKEN_HASH_PEPPER:${JWT_SECRET}}
+  review-account:
+    enabled: ${AUTH_REVIEW_ACCOUNT_ENABLED:false}
+    email: ${AUTH_REVIEW_ACCOUNT_EMAIL:}
+    password: ${AUTH_REVIEW_ACCOUNT_PASSWORD:}
+    name: ${AUTH_REVIEW_ACCOUNT_NAME:Apple Review}
+    nickname: ${AUTH_REVIEW_ACCOUNT_NICKNAME:reviewer}
+    dept-name: ${AUTH_REVIEW_ACCOUNT_DEPT_NAME:컴퓨터공학과}
+    student-num: ${AUTH_REVIEW_ACCOUNT_STUDENT_NUM:20240001}
+    height: ${AUTH_REVIEW_ACCOUNT_HEIGHT:168}
+    age: ${AUTH_REVIEW_ACCOUNT_AGE:24}
+    mbti: ${AUTH_REVIEW_ACCOUNT_MBTI:ENFP}
+    smoking: ${AUTH_REVIEW_ACCOUNT_SMOKING:NO}
+    gender: ${AUTH_REVIEW_ACCOUNT_GENDER:FEMALE}
+    military: ${AUTH_REVIEW_ACCOUNT_MILITARY:NOT_APPLICABLE}
+    religion: ${AUTH_REVIEW_ACCOUNT_RELIGION:NONE}
+    residence: ${AUTH_REVIEW_ACCOUNT_RESIDENCE:서울 강남구}
+    intro: ${AUTH_REVIEW_ACCOUNT_INTRO:애플 심사용 계정입니다.}
+    instagram: ${AUTH_REVIEW_ACCOUNT_INSTAGRAM:}
 
 iap:
   enabled: ${IAP_ENABLED:true}
