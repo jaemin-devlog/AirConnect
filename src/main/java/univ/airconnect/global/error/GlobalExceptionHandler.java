@@ -126,6 +126,11 @@ public class GlobalExceptionHandler {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         AuthErrorCode aec = e.getErrorCode();
 
+        log.warn("AuthException [{}] - code={}, message={}",
+                traceId,
+                aec != null ? aec.getCode() : "null",
+                e.getMessage());
+
         if (aec == null) {
             ErrorCode ec = ErrorCode.INTERNAL_ERROR;
             ErrorBody body = new ErrorBody(
