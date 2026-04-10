@@ -35,7 +35,7 @@ public class StatisticsService {
 
     public MainStatisticsResponse getMainStatistics() {
         long totalRegisteredUsers = userRepository.countActiveSignedUpUsers();
-        long dailyActiveUsers = userRepository.countDailyActiveUsers(LocalDate.now().atStartOfDay());
+        long dailyActiveUsers = userRepository.countDailyActiveSignedUpUsers(LocalDate.now().atStartOfDay());
 
         MainStatisticsResponse.GenderRatio genderRatio = buildGenderRatio(totalRegisteredUsers);
 

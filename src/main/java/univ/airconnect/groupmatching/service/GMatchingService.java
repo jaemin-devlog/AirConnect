@@ -122,13 +122,15 @@ public class GMatchingService {
         User leader = findUserOrThrow(leaderUserId);
         ensureUserHasNoActiveTeamRoom(leaderUserId);
         validateUserTeamGender(leaderUserId, teamGender);
+        String normalizedTeamName = normalizeTeamName(teamName);
+        ensureActiveTeamRoomNameAvailable(normalizedTeamName);
 
-        String tempChatRoomName = buildTempRoomName(teamName, teamSize);
+        String tempChatRoomName = buildTempRoomName(normalizedTeamName, teamSize);
         ChatRoom tempChatRoom = chatService.createGroupRoomWithMembers(tempChatRoomName, List.of(leaderUserId));
 
         GTemporaryTeamRoom teamRoom = GTemporaryTeamRoom.create(
                 leaderUserId,
-                teamName,
+                normalizedTeamName,
                 teamGender,
                 teamSize,
                 opponentGenderFilter,
@@ -179,7 +181,7 @@ public class GMatchingService {
 
     @Transactional(readOnly = true)
     public long countRecruitableTeamRooms() {
-        return temporaryTeamRoomRepository.countRecruitableRooms(GTemporaryTeamRoomStatus.OPEN);
+        return temporaryTeamRoomRepository.countActiveRooms(ACTIVE_ROOM_STATUSES);
     }
 
     /**
@@ -1190,6 +1192,12 @@ public class GMatchingService {
         }
     }
 
+    private void ensureActiveTeamRoomNameAvailable(String teamName) {
+        if (temporaryTeamRoomRepository.existsActiveRoomByTeamName(teamName, ACTIVE_ROOM_STATUSES)) {
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "이미 사용 중인 임시방 이름입니다.");
+        }
+    }
+
     private List<Long> extractUserIds(Collection<GTemporaryTeamMember> members) {
         return members.stream()
                 .map(GTemporaryTeamMember::getUserId)
@@ -1308,6 +1316,13 @@ public class GMatchingService {
         String baseName = (teamName == null || teamName.isBlank()) ? "Temporary Team Room" : teamName.trim();
         String roomName = baseName + " (" + teamSize.getValue() + " team)";
         return truncate(roomName, 100);
+    }
+
+    private String normalizeTeamName(String teamName) {
+        if (teamName == null) {
+            return null;
+        }
+        return teamName.trim();
     }
 
     private int requiredTicketsFor(GTeamSize teamSize) {

@@ -62,6 +62,17 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
             @Param("activeStatuses") Collection<GTemporaryTeamRoomStatus> activeStatuses
     );
 
+    @Query("""
+            select case when count(t) > 0 then true else false end
+            from GTemporaryTeamRoom t
+            where lower(trim(t.teamName)) = lower(:teamName)
+              and t.status in :activeStatuses
+            """)
+    boolean existsActiveRoomByTeamName(
+            @Param("teamName") String teamName,
+            @Param("activeStatuses") Collection<GTemporaryTeamRoomStatus> activeStatuses
+    );
+
     /**
      * 특정 유저가 현재 속한 살아 있는 임시 팀방 조회
      * - leftAt is null 인 활성 멤버 기준
@@ -123,6 +134,13 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
               )
             """)
     long countRecruitableRooms(@Param("status") GTemporaryTeamRoomStatus status);
+
+    @Query("""
+            select count(t)
+            from GTemporaryTeamRoom t
+            where t.status in :activeStatuses
+            """)
+    long countActiveRooms(@Param("activeStatuses") Collection<GTemporaryTeamRoomStatus> activeStatuses);
 
     /**
      * 큐 대기 중인 팀 후보를 오래 기다린 순으로 조회

@@ -44,7 +44,7 @@ class StatisticsServiceTest {
     @Test
     void getMainStatistics_returnsAggregatedValues() {
         when(userRepository.countActiveSignedUpUsers()).thenReturn(120L);
-        when(userRepository.countDailyActiveUsers(any())).thenReturn(34L);
+        when(userRepository.countDailyActiveSignedUpUsers(any())).thenReturn(34L);
         when(userProfileRepository.countActiveSignedUpUsersByGender()).thenReturn(List.of(
                 genderCount(Gender.MALE, 70L),
                 genderCount(Gender.FEMALE, 50L)

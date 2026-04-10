@@ -17,7 +17,6 @@ import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.domain.entity.ChatRoom;
-import univ.airconnect.chat.domain.entity.ChatRoomMember;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
@@ -27,7 +26,6 @@ import univ.airconnect.groupmatching.domain.GTeamSize;
 import univ.airconnect.groupmatching.domain.GTeamVisibility;
 import univ.airconnect.groupmatching.domain.entity.GFinalGroupChatRoom;
 import univ.airconnect.groupmatching.domain.entity.GMatchResult;
-import univ.airconnect.groupmatching.domain.entity.GTeamReadyState;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamMember;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamRoom;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
@@ -36,9 +34,11 @@ import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
 import univ.airconnect.notification.service.NotificationService;
+import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -52,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -107,7 +108,7 @@ class GMatchingServiceTest {
     }
 
     @Test
-    @DisplayName("준비완료 시 요구 티켓보다 적으면 에러가 발생한다")
+    @DisplayName("ready fails when user does not have enough tickets")
     void updateReadyState_whenTicketsAreInsufficient_throwsError() {
         Long teamRoomId = 10L;
         Long userId = 2L;
@@ -116,7 +117,7 @@ class GMatchingServiceTest {
         teamRoom.leaveQueue();
         when(temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)).thenReturn(Optional.of(teamRoom));
         when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(teamRoomId, userId)).thenReturn(true);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser(userId, "지인", 1)));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser(userId, "user-2", 1)));
 
         assertThatThrownBy(() -> matchingService.updateReadyState(teamRoomId, userId, true))
                 .isInstanceOf(BusinessException.class)
@@ -125,12 +126,12 @@ class GMatchingServiceTest {
     }
 
     @Test
-    @DisplayName("2대2 매칭 완료 시 각 멤버 티켓이 2개 차감되고 채팅방 이름은 닉네임 목록이다")
+    @DisplayName("2v2 match consumes two tickets and uses member nicknames for room name")
     void completeMatch_twoByTwo_consumesTwoTicketsAndUsesNicknameRoomName() {
-        User user1 = testUser(1L, "재민", 5);
-        User user2 = testUser(2L, "지인", 5);
-        User user3 = testUser(3L, "강현", 5);
-        User user4 = testUser(4L, "서연", 5);
+        User user1 = testUser(1L, "min", 5);
+        User user2 = testUser(2L, "jin", 5);
+        User user3 = testUser(3L, "kang", 5);
+        User user4 = testUser(4L, "seo", 5);
 
         GTemporaryTeamRoom firstRoom = createQueueReadyRoom(101L, 1L, 1001L, GTeamSize.TWO, GTeamGender.M);
         GTemporaryTeamRoom secondRoom = createQueueReadyRoom(202L, 3L, 2002L, GTeamSize.TWO, GTeamGender.F);
@@ -164,7 +165,7 @@ class GMatchingServiceTest {
         ArgumentCaptor<String> roomNameCaptor = ArgumentCaptor.forClass(String.class);
         verify(chatService).createGroupRoomWithMembers(roomNameCaptor.capture(), anyCollection());
 
-        assertThat(roomNameCaptor.getValue()).isEqualTo("재민, 지인, 강현, 서연");
+        assertThat(roomNameCaptor.getValue()).isEqualTo("min, jin, kang, seo");
         assertThat(user1.getTickets()).isEqualTo(3);
         assertThat(user2.getTickets()).isEqualTo(3);
         assertThat(user3.getTickets()).isEqualTo(3);
@@ -174,14 +175,14 @@ class GMatchingServiceTest {
     }
 
     @Test
-    @DisplayName("3대3 매칭 완료 시 각 멤버 티켓이 3개 차감된다")
+    @DisplayName("3v3 match consumes three tickets per member")
     void completeMatch_threeByThree_consumesThreeTickets() {
-        User user1 = testUser(11L, "하나", 5);
-        User user2 = testUser(12L, "둘", 5);
-        User user3 = testUser(13L, "셋", 5);
-        User user4 = testUser(21L, "넷", 5);
-        User user5 = testUser(22L, "다섯", 5);
-        User user6 = testUser(23L, "여섯", 5);
+        User user1 = testUser(11L, "one", 5);
+        User user2 = testUser(12L, "two", 5);
+        User user3 = testUser(13L, "three", 5);
+        User user4 = testUser(21L, "four", 5);
+        User user5 = testUser(22L, "five", 5);
+        User user6 = testUser(23L, "six", 5);
 
         GTemporaryTeamRoom firstRoom = createQueueReadyRoom(301L, 11L, 3001L, GTeamSize.THREE, GTeamGender.M);
         GTemporaryTeamRoom secondRoom = createQueueReadyRoom(302L, 21L, 3002L, GTeamSize.THREE, GTeamGender.F);
@@ -215,6 +216,40 @@ class GMatchingServiceTest {
         assertThat(user4.getTickets()).isEqualTo(2);
         assertThat(user5.getTickets()).isEqualTo(2);
         assertThat(user6.getTickets()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("duplicate active room names are rejected")
+    void createTemporaryTeamRoom_whenActiveRoomNameExists_throwsError() {
+        Long leaderUserId = 41L;
+        User leader = testUser(leaderUserId, "leader", 5);
+
+        when(userRepository.findById(leaderUserId)).thenReturn(Optional.of(leader));
+        when(temporaryTeamRoomRepository.findActiveRoomsByUserId(leaderUserId, anyCollection())).thenReturn(List.of());
+        when(userProfileRepository.findByUserId(leaderUserId)).thenReturn(Optional.of(profileWithGender(leader, Gender.MALE)));
+        when(temporaryTeamRoomRepository.existsActiveRoomByTeamName(eq("dup-room"), anyCollection())).thenReturn(true);
+
+        assertThatThrownBy(() -> matchingService.createTemporaryTeamRoom(
+                leaderUserId,
+                "  dup-room  ",
+                GTeamGender.M,
+                GTeamSize.TWO,
+                GGenderFilter.ANY,
+                GTeamVisibility.PUBLIC
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID);
+    }
+
+    @Test
+    @DisplayName("main count returns all active temporary rooms")
+    void countRecruitableTeamRooms_returnsActiveRoomCountForMain() {
+        when(temporaryTeamRoomRepository.countActiveRooms(anyCollection())).thenReturn(7L);
+
+        long count = matchingService.countRecruitableTeamRooms();
+
+        assertThat(count).isEqualTo(7L);
     }
 
     private void stubCompleteMatchCommon(
@@ -293,5 +328,21 @@ class GMatchingServiceTest {
                 .createdAt(LocalDateTime.now())
                 .tickets(tickets)
                 .build();
+    }
+
+    private UserProfile profileWithGender(User user, Gender gender) {
+        return UserProfile.create(
+                user,
+                null,
+                null,
+                null,
+                null,
+                gender,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 }

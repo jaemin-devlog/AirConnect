@@ -39,9 +39,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
         SELECT count(u)
         FROM User u
         WHERE u.status = univ.airconnect.user.domain.UserStatus.ACTIVE
+          AND u.onboardingStatus = univ.airconnect.user.domain.OnboardingStatus.FULL
           AND u.lastActiveAt >= :startOfDay
     """)
-    long countDailyActiveUsers(@Param("startOfDay") LocalDateTime startOfDay);
+    long countDailyActiveSignedUpUsers(@Param("startOfDay") LocalDateTime startOfDay);
 
     // 프로필 기반 추천: 프로필이 있고 활성 상태인 사용자들
     // 제외 조건:
