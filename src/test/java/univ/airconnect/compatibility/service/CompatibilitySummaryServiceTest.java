@@ -25,7 +25,7 @@ class CompatibilitySummaryServiceTest {
                 .score(88)
                 .grade(CompatibilityGrade.AMAZING)
                 .mbtiTier(MbtiCompatibilityTier.IDEAL)
-                .reasons(List.of("MBTI 표에서 IDEAL로 분류된 조합이에요."))
+                .reasons(List.of("MBTI 흐름이 잘 맞아 편하게 대화를 이어가기 좋은 조합이에요."))
                 .cautions(List.of("생활 패턴은 직접 확인해 보세요."))
                 .build();
 
@@ -34,6 +34,6 @@ class CompatibilitySummaryServiceTest {
         String summary = service.summarize(result);
 
         assertThat(summary).contains("공통점");
-        assertThat(summary).contains("IDEAL");
+        assertThat(summary).contains("대화를 이어가기 좋은 조합");
     }
 }

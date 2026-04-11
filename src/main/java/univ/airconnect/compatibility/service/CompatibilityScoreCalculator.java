@@ -178,16 +178,16 @@ public class CompatibilityScoreCalculator {
 
         if (tier == MbtiCompatibilityTier.IDEAL) {
             score = 25;
-            reason = myMbti + "와 " + targetMbti + "는 MBTI 표에서 IDEAL로 분류된 조합이에요.";
+            reason = myMbti + "와 " + targetMbti + "는 성향 흐름이 잘 맞아 편하게 대화를 이어가기 좋은 조합이에요.";
             caution = "MBTI가 좋아도 실제 대화의 결은 직접 확인해야 해요.";
         } else if (tier == MbtiCompatibilityTier.POTENTIAL) {
             score = 17;
-            reason = "MBTI가 POTENTIAL 조합이라 서로 맞춰갈 여지가 있어요.";
+            reason = "MBTI 성향이 완전히 같지는 않지만, 대화를 나누면서 충분히 맞춰갈 수 있는 조합이에요.";
             caution = "성향 차이가 매력으로 느껴지는 지점을 천천히 찾아보세요.";
         } else {
             score = 7;
             reason = "MBTI 표에서는 신중하게 맞춰가야 하는 조합이에요.";
-            caution = "MBTI 궁합이 BAD로 분류되어 소통 방식 차이를 초반에 살펴보세요.";
+            caution = "대화 방식과 표현 차이를 초반에 천천히 살펴보세요.";
         }
 
         return detail(CompatibilityFactor.MBTI, score, MBTI_MAX, reason, caution);
