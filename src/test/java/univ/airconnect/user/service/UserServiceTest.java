@@ -18,10 +18,14 @@ import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.PushProvider;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.PushDeviceRepository;
+import univ.airconnect.user.domain.Gender;
+import univ.airconnect.user.domain.MilitaryStatus;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.dto.request.ChangePasswordRequest;
+import univ.airconnect.user.dto.request.UpdateProfileRequest;
+import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.exception.UserException;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
@@ -196,6 +200,55 @@ class UserServiceTest {
         assertThatThrownBy(() -> service.changePassword(userId, request))
                 .isInstanceOf(UserException.class);
         verify(verificationService, never()).resolveVerifiedEmail(anyString());
+    }
+
+    @Test
+    void updateProfile_updatesOnlyRequestedFields() {
+        UserService service = createService();
+        Long userId = 6L;
+
+        User user = User.createEmailUser("review@airconnect.test", "encoded-password");
+        ReflectionTestUtils.setField(user, "id", userId);
+
+        UserProfile profile = UserProfile.create(
+                user,
+                180,
+                24,
+                "ENFP",
+                "NO",
+                Gender.FEMALE,
+                MilitaryStatus.NOT_APPLICABLE,
+                "NONE",
+                "서울 강남구",
+                "기존 소개",
+                "old_insta"
+        );
+        ReflectionTestUtils.setField(profile, "userId", userId);
+
+        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
+
+        UpdateProfileRequest request = new UpdateProfileRequest(
+                186,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+
+        UserProfileResponse response = service.updateProfile(userId, request);
+
+        assertThat(profile.getHeight()).isEqualTo(186);
+        assertThat(profile.getAge()).isEqualTo(24);
+        assertThat(profile.getGender()).isEqualTo(Gender.FEMALE);
+        assertThat(profile.getMbti()).isEqualTo("ENFP");
+        assertThat(response.getHeight()).isEqualTo(186);
+        assertThat(response.getAge()).isEqualTo(24);
+        assertThat(response.getGender()).isEqualTo(Gender.FEMALE);
     }
 
     private UserService createService() {

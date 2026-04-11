@@ -107,9 +107,17 @@ public class AuthService {
 
     @Transactional
     public LoginResponse emailLogin(EmailLoginRequest request) {
+        log.info("Email login payload received: hasEmail={}, hasVerificationToken={}, hasPassword={}, hasDeviceId={}, reviewEnabled={}",
+                request != null && request.getEmail() != null && !request.getEmail().isBlank(),
+                request != null && request.getVerificationToken() != null && !request.getVerificationToken().isBlank(),
+                request != null && request.getPassword() != null && !request.getPassword().isBlank(),
+                request != null && request.getDeviceId() != null && !request.getDeviceId().isBlank(),
+                reviewAccountService.isEnabledAndConfigured());
+
         validateEmailLoginRequest(request);
 
         boolean reviewLogin = reviewAccountService.isReviewLoginRequest(request);
+        log.info("Email login mode resolved: reviewLogin={}", reviewLogin);
         String normalizedEmail;
 
         if (reviewLogin) {
