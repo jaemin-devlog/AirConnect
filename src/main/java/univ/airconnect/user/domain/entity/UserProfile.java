@@ -159,6 +159,51 @@ public class UserProfile {
         this.updatedAt = LocalDateTime.now();
     }
 
+    public void updatePartially(
+            Integer height,
+            Integer age,
+            String mbti,
+            String smoking,
+            Gender gender,
+            MilitaryStatus military,
+            String religion,
+            String residence,
+            String intro,
+            String instagram
+    ) {
+        if (height != null) {
+            this.height = height;
+        }
+        if (age != null) {
+            this.age = age;
+        }
+        if (mbti != null) {
+            this.mbti = mbti;
+        }
+        if (smoking != null) {
+            this.smoking = smoking;
+        }
+        if (gender != null) {
+            this.gender = gender;
+        }
+        if (military != null) {
+            this.military = military;
+        }
+        if (religion != null) {
+            this.religion = religion;
+        }
+        if (residence != null) {
+            this.residence = residence;
+        }
+        if (intro != null) {
+            this.intro = intro;
+        }
+        if (instagram != null) {
+            this.instagram = instagram;
+        }
+        this.updatedAt = LocalDateTime.now();
+    }
+
     public void anonymize() {
         this.height = null;
         this.age = null;

@@ -244,7 +244,7 @@ public class UserService {
 
         ensureUserActive(userProfile.getUser());
 
-        userProfile.update(
+        userProfile.updatePartially(
                 request.getHeight(),
                 request.getAge(),
                 request.getMbti(),
