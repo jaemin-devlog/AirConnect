@@ -78,6 +78,38 @@ class CompatibilityScoreCalculatorTest {
         assertThat(result.getScore()).isLessThan(50);
     }
 
+    @Test
+    void calculate_usesPlainKoreanReason_whenMbtiTierIsPotential() {
+        CompatibilityProfile me = profile(
+                1L,
+                22,
+                "컴퓨터공학과",
+                20240101,
+                170,
+                "INTJ",
+                "NO",
+                "NONE",
+                "서울 강남구"
+        );
+        CompatibilityProfile target = profile(
+                2L,
+                22,
+                "컴퓨터공학과",
+                20240102,
+                171,
+                "INFP",
+                "NO",
+                "NONE",
+                "서울 서초구"
+        );
+
+        CompatibilityResult result = calculator.calculate(me, target);
+
+        assertThat(result.getMbtiTier()).isEqualTo(MbtiCompatibilityTier.POTENTIAL);
+        assertThat(result.getReasons()).anyMatch(reason -> reason.contains("충분히 맞춰갈 수 있는 조합"));
+        assertThat(result.getReasons()).noneMatch(reason -> reason.contains("POTENTIAL"));
+    }
+
     private CompatibilityProfile profile(
             Long userId,
             Integer age,
