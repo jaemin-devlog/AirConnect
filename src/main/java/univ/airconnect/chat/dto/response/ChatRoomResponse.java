@@ -26,7 +26,7 @@ public class ChatRoomResponse {
     private Long targetUserId;
     private String targetNickname;
     private String targetProfileImage;
-    private ChatParticipantProfileResponse targetProfile;
+    private ChatParticipantDetailResponse targetProfile;
 
     public static ChatRoomResponse from(ChatRoom entity, String latestMessage, LocalDateTime latestMessageTime, int unreadCount) {
         return ChatRoomResponse.builder()
@@ -72,7 +72,7 @@ public class ChatRoomResponse {
                                         Long targetUserId,
                                         String targetNickname,
                                         String targetProfileImage,
-                                        ChatParticipantProfileResponse targetProfile) {
+                                        ChatParticipantDetailResponse targetProfile) {
         return ChatRoomResponse.builder()
                 .id(entity.getId())
                 .name(displayName)

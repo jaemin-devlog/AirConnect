@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import univ.airconnect.chat.dto.request.ChatRoomCreateRequest;
 import univ.airconnect.chat.dto.request.SendMessageRequest;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
+import univ.airconnect.chat.dto.response.ChatParticipantDetailResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantProfileResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.service.ChatService;
@@ -112,13 +113,24 @@ public class ChatRoomController {
     }
 
     @GetMapping("/rooms/{roomId}/counterpart-profile")
-    public ResponseEntity<ApiResponse<ChatParticipantProfileResponse>> getCounterpartProfile(
+    public ResponseEntity<ApiResponse<ChatParticipantDetailResponse>> getCounterpartProfile(
             @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        ChatParticipantProfileResponse response = chatService.getCounterpartProfile(roomId, userId);
+        ChatParticipantDetailResponse response = chatService.getCounterpartProfile(roomId, userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    @GetMapping("/rooms/{roomId}/participants/profiles")
+    public ResponseEntity<ApiResponse<List<ChatParticipantDetailResponse>>> getParticipantProfiles(
+            @PathVariable @Positive(message = "梨꾪똿諛?ID???묒닔?ъ빞 ?⑸땲??") Long roomId,
+            @CurrentUserId Long userId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        List<ChatParticipantDetailResponse> response = chatService.getParticipantProfiles(roomId, userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 

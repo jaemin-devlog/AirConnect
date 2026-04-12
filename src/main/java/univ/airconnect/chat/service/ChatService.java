@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import univ.airconnect.chat.domain.entity.ChatRoomMember;
 import univ.airconnect.chat.dto.request.ChatMessageRequest;
 import univ.airconnect.chat.dto.request.SendMessageRequest;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
+import univ.airconnect.chat.dto.response.ChatParticipantDetailResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantProfileResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
@@ -34,6 +36,7 @@ import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
@@ -59,6 +62,9 @@ public class ChatService {
     private final UserBlockPolicyService userBlockPolicyService;
 
     private final Map<String, ChannelTopic> topics = new ConcurrentHashMap<>();
+
+    @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
+    private String imageUrlBase;
 
     private static final String CHAT_SESSION_KEY = "chat:session:";
     private static final String SESSION_ROOM_KEY = "chat:session-room:";
@@ -579,8 +585,8 @@ public class ChatService {
                     Long targetUserId = targetUser != null ? targetUser.getId() : null;
                     String targetNickname = targetUser != null ? targetUser.getNickname() : null;
                     String targetProfileImage = extractProfileImage(targetUser);
-                    ChatParticipantProfileResponse targetProfile = targetUser != null
-                            ? toParticipantProfileResponse(targetUser)
+                    ChatParticipantDetailResponse targetProfile = targetUser != null
+                            ? toParticipantDetailResponse(targetUser)
                             : null;
                     String displayName = room.getName();
                     if (room.getType() == ChatRoomType.PERSONAL && targetNickname != null && !targetNickname.isBlank()) {
@@ -602,7 +608,7 @@ public class ChatService {
      * 1:1 채팅방 상대 프로필 조회
      */
     @Transactional(readOnly = true)
-    public ChatParticipantProfileResponse getCounterpartProfile(Long roomId, Long userId) {
+    public ChatParticipantDetailResponse getCounterpartProfile(Long roomId, Long userId) {
         validateRoomAccess(roomId, userId);
 
         User counterpart = chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(roomId)).stream()
@@ -612,7 +618,7 @@ public class ChatService {
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "상대 사용자 정보를 찾을 수 없습니다."));
 
-        return toParticipantProfileResponse(counterpart);
+        return toParticipantDetailResponse(counterpart);
     }
 
     @Transactional(readOnly = true)
@@ -672,6 +678,19 @@ public class ChatService {
         return response;
     }
 
+    @Transactional(readOnly = true)
+    public List<ChatParticipantDetailResponse> getParticipantProfiles(Long roomId, Long userId) {
+        validateRoomAccess(roomId, userId);
+
+        return chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(roomId)).stream()
+                .filter(member -> !member.isHidden())
+                .sorted(Comparator.comparing(ChatRoomMember::getJoinedAt))
+                .map(ChatRoomMember::getUser)
+                .filter(Objects::nonNull)
+                .map(this::toParticipantDetailResponse)
+                .toList();
+    }
+
     private Map<Long, User> buildCounterpartMap(List<Long> roomIds, Long myUserId) {
         if (roomIds == null || roomIds.isEmpty()) {
             return Collections.emptyMap();
@@ -716,7 +735,7 @@ public class ChatService {
                 counterpart.getId(),
                 targetNickname,
                 extractProfileImage(counterpart),
-                toParticipantProfileResponse(counterpart)
+                toParticipantDetailResponse(counterpart)
         );
     }
 
@@ -1053,6 +1072,29 @@ public class ChatService {
                 .age(profile != null ? profile.getAge() : null)
                 .profileExists(profile != null)
                 .profileImageUploaded(profileImageUploaded)
+                .build();
+    }
+
+    private ChatParticipantDetailResponse toParticipantDetailResponse(User user) {
+        UserProfile profile = user.getUserProfile();
+        boolean profileImageUploaded = profile != null
+                && profile.getProfileImagePath() != null
+                && !profile.getProfileImagePath().isBlank();
+
+        UserProfileResponse profileResponse = profile != null
+                ? UserProfileResponse.from(profile, imageUrlBase)
+                : null;
+
+        return ChatParticipantDetailResponse.builder()
+                .userId(user.getId())
+                .nickname(user.getNickname())
+                .deptName(user.getDeptName())
+                .profileImage(profile != null ? profile.getProfileImagePath() : null)
+                .gender(profile != null ? profile.getGender() : null)
+                .age(profile != null ? profile.getAge() : null)
+                .profileExists(profile != null)
+                .profileImageUploaded(profileImageUploaded)
+                .profile(profileResponse)
                 .build();
     }
 
