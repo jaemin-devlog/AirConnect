@@ -17,6 +17,7 @@ import lombok.NoArgsConstructor;
 import univ.airconnect.notification.domain.NotificationCategory;
 import univ.airconnect.notification.domain.NotificationType;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 
 /**
@@ -124,7 +125,7 @@ public class Notification {
         this.imageUrl = imageUrl;
         this.payloadJson = payloadJson;
         this.dedupeKey = dedupeKey;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = LocalDateTime.now(Clock.systemUTC());
     }
 
     /**
@@ -160,7 +161,7 @@ public class Notification {
         if (this.readAt != null) {
             return;
         }
-        this.readAt = LocalDateTime.now();
+        this.readAt = LocalDateTime.now(Clock.systemUTC());
     }
 
     /**
@@ -171,7 +172,7 @@ public class Notification {
         if (this.deletedAt != null) {
             return;
         }
-        this.deletedAt = LocalDateTime.now();
+        this.deletedAt = LocalDateTime.now(Clock.systemUTC());
     }
 
     /** 알림이 읽힘 상태인지 반환한다. */

@@ -165,6 +165,7 @@ class ChatServiceTest {
         assertThat(response.getUserId()).isEqualTo(targetUserId);
         assertThat(response.getNickname()).isEqualTo("target");
         assertThat(response.isProfileExists()).isTrue();
+        assertThat(response.getGender()).isEqualTo(Gender.FEMALE);
         assertThat(response.getProfile()).isNotNull();
         assertThat(response.getProfile().getGender()).isEqualTo(Gender.FEMALE);
         assertThat(response.getProfileImage()).isEqualTo("profiles/" + targetUserId + ".png");

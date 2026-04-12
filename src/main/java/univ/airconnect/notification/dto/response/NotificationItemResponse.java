@@ -1,5 +1,6 @@
 package univ.airconnect.notification.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Builder;
 import lombok.Getter;
 import univ.airconnect.notification.domain.NotificationCategory;
@@ -7,6 +8,8 @@ import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.domain.entity.Notification;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 /**
  * 모바일 클라이언트에 반환하는 알림 한 건의 응답 모델이다.
@@ -26,9 +29,11 @@ public class NotificationItemResponse {
     private String imageUrl;
     private Object payload;
     private Boolean read;
-    private LocalDateTime readAt;
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX", timezone = "UTC")
+    private OffsetDateTime readAt;
     private Boolean deleted;
-    private LocalDateTime createdAt;
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX", timezone = "UTC")
+    private OffsetDateTime createdAt;
 
     public static NotificationItemResponse from(Notification notification, Object payload) {
         return NotificationItemResponse.builder()
@@ -43,9 +48,16 @@ public class NotificationItemResponse {
                 .imageUrl(notification.getImageUrl())
                 .payload(payload)
                 .read(notification.isRead())
-                .readAt(notification.getReadAt())
+                .readAt(toOffset(notification.getReadAt()))
                 .deleted(notification.isDeleted())
-                .createdAt(notification.getCreatedAt())
+                .createdAt(toOffset(notification.getCreatedAt()))
                 .build();
+    }
+
+    private static OffsetDateTime toOffset(LocalDateTime value) {
+        if (value == null) {
+            return null;
+        }
+        return value.atOffset(ZoneOffset.UTC);
     }
 }

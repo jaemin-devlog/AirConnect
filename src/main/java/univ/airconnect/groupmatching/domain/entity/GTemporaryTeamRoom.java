@@ -158,6 +158,18 @@ public class GTemporaryTeamRoom {
         touch();
     }
 
+    public void updateVisibility(Long requestUserId, GTeamVisibility visibility) {
+        validateLeader(requestUserId);
+        if (visibility == null) {
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "visibility is required.");
+        }
+        if (!status.canModifyMembers()) {
+            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "Visibility can only be changed before queueing.");
+        }
+        this.visibility = visibility;
+        touch();
+    }
+
     public void addMember() {
         if (!status.canModifyMembers()) {
             throw new BusinessException(ErrorCode.TEAM_ROOM_JOIN_NOT_ALLOWED, "현재 상태에서는 팀원을 추가할 수 없습니다.");
