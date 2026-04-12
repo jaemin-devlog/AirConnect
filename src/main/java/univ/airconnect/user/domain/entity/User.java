@@ -23,6 +23,8 @@ import univ.airconnect.user.domain.UserStatus;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User {
 
+    private static final int INITIAL_TICKETS = 50;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -131,7 +133,7 @@ public class User {
         this.restrictedAt = restrictedAt;
         this.restrictedUntil = restrictedUntil;
         this.restrictedReason = restrictedReason;
-        this.tickets = tickets != null ? tickets : 100;
+        this.tickets = tickets != null ? tickets : INITIAL_TICKETS;
         this.iosAppAccountToken = (iosAppAccountToken == null || iosAppAccountToken.isBlank())
                 ? UUID.randomUUID().toString()
                 : iosAppAccountToken;
@@ -148,7 +150,7 @@ public class User {
                 .email(email)
                 .status(UserStatus.ACTIVE)
                 .onboardingStatus(OnboardingStatus.BASIC)
-                .tickets(100)
+                .tickets(INITIAL_TICKETS)
                 .iosAppAccountToken(UUID.randomUUID().toString())
                 .createdAt(LocalDateTime.now())
                 .build();
@@ -162,7 +164,7 @@ public class User {
                 .passwordHash(passwordHash)
                 .status(UserStatus.ACTIVE)
                 .onboardingStatus(OnboardingStatus.BASIC)
-                .tickets(100)
+                .tickets(INITIAL_TICKETS)
                 .iosAppAccountToken(UUID.randomUUID().toString())
                 .createdAt(LocalDateTime.now())
                 .build();

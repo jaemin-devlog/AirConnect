@@ -294,6 +294,15 @@ class UserServiceTest {
                         assertThat(ex.getErrorCode()).isEqualTo(UserErrorCode.INVALID_INPUT));
     }
 
+    @Test
+    void newUsers_startWithFiftyTickets() {
+        User socialUser = User.create(SocialProvider.KAKAO, "social-50", "social50@test.dev");
+        User emailUser = User.createEmailUser("email50@test.dev", "encoded-password");
+
+        assertThat(socialUser.getTickets()).isEqualTo(50);
+        assertThat(emailUser.getTickets()).isEqualTo(50);
+    }
+
     private UserService createService() {
         UserService service = new UserService(
                 userRepository,
