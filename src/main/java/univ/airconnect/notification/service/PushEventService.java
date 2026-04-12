@@ -23,7 +23,7 @@ public class PushEventService {
     @Transactional
     public PushEvent create(Long userId, CreateCommand command) {
         if (command == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Push event request body is required.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "푸시 이벤트 요청 본문이 필요합니다.");
         }
 
         Long notificationId = parseNotificationId(command.notificationId());
@@ -44,7 +44,7 @@ public class PushEventService {
         try {
             return Long.parseLong(rawNotificationId);
         } catch (NumberFormatException e) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "notificationId must be a numeric string.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "알림 ID는 숫자 문자열이어야 합니다.");
         }
     }
 

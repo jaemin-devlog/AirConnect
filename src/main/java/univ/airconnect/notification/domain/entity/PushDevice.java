@@ -165,10 +165,10 @@ public class PushDevice {
                              String timezone,
                              LocalDateTime lastSeenAt) {
         if (pushToken == null || pushToken.isBlank()) {
-            throw new IllegalArgumentException("pushToken is required");
+            throw new IllegalArgumentException("푸시 토큰은 필수입니다.");
         }
         if (this.platform == PushPlatform.ANDROID && apnsToken != null && !apnsToken.isBlank()) {
-            throw new IllegalArgumentException("apnsToken is not allowed for ANDROID");
+            throw new IllegalArgumentException("안드로이드에서는 APNS 토큰을 사용할 수 없습니다.");
         }
         this.pushToken = pushToken;
         this.apnsToken = apnsToken;
@@ -236,28 +236,28 @@ public class PushDevice {
                           String apnsToken,
                           Boolean notificationPermissionGranted) {
         if (userId == null) {
-            throw new IllegalArgumentException("userId is required");
+            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
         }
         if (deviceId == null || deviceId.isBlank()) {
-            throw new IllegalArgumentException("deviceId is required");
+            throw new IllegalArgumentException("디바이스 ID는 필수입니다.");
         }
         if (platform == null) {
-            throw new IllegalArgumentException("platform is required");
+            throw new IllegalArgumentException("플랫폼은 필수입니다.");
         }
         if (provider == null) {
-            throw new IllegalArgumentException("provider is required");
+            throw new IllegalArgumentException("푸시 제공자는 필수입니다.");
         }
         if (provider != PushProvider.FCM) {
-            throw new IllegalArgumentException("Only FCM provider is currently supported");
+            throw new IllegalArgumentException("현재는 FCM 제공자만 지원합니다.");
         }
         if (pushToken == null || pushToken.isBlank()) {
-            throw new IllegalArgumentException("pushToken is required");
+            throw new IllegalArgumentException("푸시 토큰은 필수입니다.");
         }
         if (notificationPermissionGranted == null) {
-            throw new IllegalArgumentException("notificationPermissionGranted is required");
+            throw new IllegalArgumentException("알림 권한 허용 여부는 필수입니다.");
         }
         if (platform == PushPlatform.ANDROID && apnsToken != null && !apnsToken.isBlank()) {
-            throw new IllegalArgumentException("apnsToken is not allowed for ANDROID");
+            throw new IllegalArgumentException("안드로이드에서는 APNS 토큰을 사용할 수 없습니다.");
         }
     }
 }

@@ -332,7 +332,7 @@ public class GlobalExceptionHandler {
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
-                "Unsupported Content-Type. Please use multipart/form-data.",
+                "지원하지 않는 Content-Type입니다. multipart/form-data 형식을 사용해 주세요.",
                 e.getStatusCode().value(),
                 traceId,
                 null
@@ -353,7 +353,7 @@ public class GlobalExceptionHandler {
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
-                "Invalid multipart request format.",
+                "멀티파트 요청 형식이 올바르지 않습니다.",
                 ec.getHttpStatus().value(),
                 traceId,
                 null

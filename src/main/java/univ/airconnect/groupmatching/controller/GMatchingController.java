@@ -457,7 +457,7 @@ public class GMatchingController {
             }
         }
 
-        throw new BusinessException(ErrorCode.UNAUTHORIZED, "인증 principal에서 userId를 추출할 수 없습니다.");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "인증 정보에서 사용자 ID를 추출할 수 없습니다.");
     }
 }
 

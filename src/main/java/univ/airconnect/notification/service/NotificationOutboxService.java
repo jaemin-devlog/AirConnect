@@ -102,6 +102,6 @@ public class NotificationOutboxService {
      */
     private NotificationOutbox getRequired(Long outboxId) {
         return notificationOutboxRepository.findById(outboxId)
-                .orElseThrow(() -> new IllegalArgumentException("notification outbox not found: " + outboxId));
+                .orElseThrow(() -> new IllegalArgumentException("알림 아웃박스를 찾을 수 없습니다: " + outboxId));
     }
 }

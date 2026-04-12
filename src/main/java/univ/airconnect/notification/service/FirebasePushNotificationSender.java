@@ -65,7 +65,7 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
         if (outbox.getProvider() != PushProvider.FCM) {
             return PushSendResult.failed(
                     "UNSUPPORTED_PROVIDER",
-                    "Only FCM delivery is implemented. Register iOS devices with FCM tokens."
+                    "현재는 FCM 전송만 구현되어 있습니다. iOS 기기도 FCM 토큰으로 등록해 주세요."
             );
         }
 

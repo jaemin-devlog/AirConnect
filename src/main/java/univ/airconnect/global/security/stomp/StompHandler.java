@@ -206,16 +206,16 @@ public class StompHandler implements ChannelInterceptor {
         }
 
         if (!StringUtils.hasText(bearerToken)) {
-            throw new IllegalArgumentException("Authorization header is required.");
+            throw new IllegalArgumentException("Authorization 헤더는 필수입니다.");
         }
 
         if (!bearerToken.startsWith("Bearer ")) {
-            throw new IllegalArgumentException("Authorization header must be Bearer token.");
+            throw new IllegalArgumentException("Authorization 헤더는 Bearer 토큰 형식이어야 합니다.");
         }
 
         String token = bearerToken.substring(7);
         if (!StringUtils.hasText(token)) {
-            throw new IllegalArgumentException("JWT token is empty.");
+            throw new IllegalArgumentException("JWT 토큰이 비어 있습니다.");
         }
 
         return token;
@@ -262,11 +262,11 @@ public class StompHandler implements ChannelInterceptor {
         try {
             Long id = Long.valueOf(destination.substring(prefix.length()));
             if (id <= 0) {
-                throw new IllegalArgumentException(target + " id must be positive");
+                throw new IllegalArgumentException(target + " ID는 1 이상이어야 합니다.");
             }
             return id;
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid destination for " + target);
+            throw new IllegalArgumentException(target + " 대상 경로가 올바르지 않습니다.");
         }
     }
 
@@ -296,7 +296,7 @@ public class StompHandler implements ChannelInterceptor {
 
     private void ensureActiveUser(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AccessDeniedException("User not found."));
+                .orElseThrow(() -> new AccessDeniedException("사용자를 찾을 수 없습니다."));
 
         if (user.getStatus() == UserStatus.DELETED) {
             throw new AccessDeniedException("Deleted user cannot use websocket.");
