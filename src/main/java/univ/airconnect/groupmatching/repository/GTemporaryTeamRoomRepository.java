@@ -10,7 +10,6 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import univ.airconnect.groupmatching.domain.GTeamGender;
 import univ.airconnect.groupmatching.domain.GTeamSize;
-import univ.airconnect.groupmatching.domain.GTeamVisibility;
 import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamRoom;
 
@@ -104,7 +103,6 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
                     where t.status = :status
                       and t.teamSize = :teamSize
                       and t.teamGender = :teamGender
-                      and t.visibility = :visibility
                       and (
                           (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.TWO and t.currentMemberCount < 2)
                           or (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.THREE and t.currentMemberCount < 3)
@@ -117,7 +115,6 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
                     where t.status = :status
                       and t.teamSize = :teamSize
                       and t.teamGender = :teamGender
-                      and t.visibility = :visibility
                       and (
                           (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.TWO and t.currentMemberCount < 2)
                           or (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.THREE and t.currentMemberCount < 3)
@@ -128,7 +125,6 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
             @Param("status") GTemporaryTeamRoomStatus status,
             @Param("teamSize") GTeamSize teamSize,
             @Param("teamGender") GTeamGender teamGender,
-            @Param("visibility") GTeamVisibility visibility,
             Pageable pageable
     );
 
@@ -148,7 +144,6 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
             from GTemporaryTeamRoom t
             where t.status = :status
               and t.teamGender = :teamGender
-              and t.visibility = :visibility
               and (
                   (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.TWO and t.currentMemberCount < 2)
                   or (t.teamSize = univ.airconnect.groupmatching.domain.GTeamSize.THREE and t.currentMemberCount < 3)
@@ -156,8 +151,7 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
             """)
     long countRecruitableRooms(
             @Param("status") GTemporaryTeamRoomStatus status,
-            @Param("teamGender") GTeamGender teamGender,
-            @Param("visibility") GTeamVisibility visibility
+            @Param("teamGender") GTeamGender teamGender
     );
 
     @Query("""

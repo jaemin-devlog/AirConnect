@@ -52,6 +52,9 @@ public class GTemporaryTeamMember {
     @Column(name = "left_at")
     private LocalDateTime leftAt;
 
+    @Column(name = "expelled_at")
+    private LocalDateTime expelledAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -61,10 +64,10 @@ public class GTemporaryTeamMember {
     @Builder
     private GTemporaryTeamMember(Long teamRoomId, Long userId, Boolean leader) {
         if (teamRoomId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "teamRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "팀방 ID는 필수입니다.");
         }
         if (userId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "userId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "사용자 ID는 필수입니다.");
         }
         this.teamRoomId = teamRoomId;
         this.userId = userId;
@@ -86,13 +89,27 @@ public class GTemporaryTeamMember {
         if (leftAt != null) {
             throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "이미 퇴장 처리된 멤버입니다.");
         }
-        this.leftAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
+        this.leftAt = now;
+        this.updatedAt = now;
+    }
+
+    public void markExpelled() {
+        if (leftAt != null) {
+            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "이미 퇴장 처리된 멤버입니다.");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        this.leftAt = now;
+        this.expelledAt = now;
+        this.updatedAt = now;
     }
 
     public void rejoin() {
         if (leftAt == null) {
-            throw new BusinessException(ErrorCode.ALREADY_TEAM_MEMBER, "이미 활성 상태인 팀원입니다.");
+            throw new BusinessException(ErrorCode.ALREADY_TEAM_MEMBER, "이미 활성 상태로 참여 중입니다.");
+        }
+        if (expelledAt != null) {
+            throw new BusinessException(ErrorCode.TEAM_ROOM_JOIN_NOT_ALLOWED, "추방된 임시방에는 다시 입장할 수 없습니다.");
         }
         this.leftAt = null;
         this.updatedAt = LocalDateTime.now();
@@ -104,6 +121,10 @@ public class GTemporaryTeamMember {
 
     public boolean isActiveMember() {
         return leftAt == null;
+    }
+
+    public boolean wasExpelled() {
+        return expelledAt != null;
     }
 
     public boolean belongsTo(Long teamRoomId) {

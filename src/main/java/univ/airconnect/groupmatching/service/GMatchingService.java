@@ -171,7 +171,7 @@ public class GMatchingService {
 
         validateLeaderMembership(teamRoom, teamRoomId, requestUserId);
         if (Objects.equals(requestUserId, targetUserId)) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Leader cannot expel self.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "방장은 본인을 추방할 수 없습니다.");
         }
 
         GTemporaryTeamMember member = temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(teamRoomId, targetUserId)
@@ -193,12 +193,12 @@ public class GMatchingService {
             chatService.publishExitMessage(
                     tempChatRoomId,
                     targetUserId,
-                    targetUser.getNickname() + " was removed from the team room."
+                    targetUser.getNickname() + "님이 팀방에서 추방되었습니다."
             );
         }
 
         removeChatRoomMembership(tempChatRoomId, targetUserId);
-        member.markLeft();
+        member.markExpelled();
         teamReadyStateRepository.findByTeamRoomIdAndUserId(teamRoomId, targetUserId)
                 .ifPresent(teamReadyStateRepository::delete);
         teamRoom.removeMember();
@@ -247,7 +247,6 @@ public class GMatchingService {
                 GTemporaryTeamRoomStatus.OPEN,
                 teamSize,
                 userTeamGender,
-                GTeamVisibility.PUBLIC,
                 PageRequest.of(page, size)
         );
         return GMatchingResponse.RecruitableTeamRoomPageResponse.from(roomsPage);
@@ -257,8 +256,7 @@ public class GMatchingService {
     public long countRecruitableTeamRooms(Long userId) {
         return temporaryTeamRoomRepository.countRecruitableRooms(
                 GTemporaryTeamRoomStatus.OPEN,
-                resolveUserTeamGender(userId),
-                GTeamVisibility.PUBLIC
+                resolveUserTeamGender(userId)
         );
     }
 
@@ -748,6 +746,9 @@ public class GMatchingService {
             if (member.isActiveMember()) {
                 throw new BusinessException(ErrorCode.ALREADY_TEAM_MEMBER);
             }
+            if (member.wasExpelled()) {
+                throw new BusinessException(ErrorCode.TEAM_ROOM_JOIN_NOT_ALLOWED, "추방된 임시방에는 다시 입장할 수 없습니다.");
+            }
         }
 
         teamRoom.addMember();
@@ -776,7 +777,7 @@ public class GMatchingService {
         chatService.publishEnterMessage(
                 teamRoom.getTempChatRoomId(),
                 userId,
-                user.getNickname() + "님이 팀에 입장했습니다."
+                user.getNickname() + "님이 팀방에 입장했습니다."
         );
 
         notifyTeamMemberJoined(teamRoom, userId, user.getNickname());
@@ -1556,8 +1557,8 @@ public class GMatchingService {
     }
 
     private String buildTempRoomName(String teamName, GTeamSize teamSize) {
-        String baseName = (teamName == null || teamName.isBlank()) ? "Temporary Team Room" : teamName.trim();
-        String roomName = baseName + " (" + teamSize.getValue() + " team)";
+        String baseName = (teamName == null || teamName.isBlank()) ? "임시 팀방" : teamName.trim();
+        String roomName = baseName + " (" + teamSize.getValue() + "인 팀)";
         return truncate(roomName, 100);
     }
 
@@ -1940,6 +1941,7 @@ public class GMatchingService {
         }
     }
 }
+
 
 
 

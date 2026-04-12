@@ -161,10 +161,10 @@ public class GTemporaryTeamRoom {
     public void updateVisibility(Long requestUserId, GTeamVisibility visibility) {
         validateLeader(requestUserId);
         if (visibility == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "visibility is required.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "공개 여부는 필수입니다.");
         }
         if (!status.canModifyMembers()) {
-            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "Visibility can only be changed before queueing.");
+            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "공개 여부는 큐 진입 전까지만 변경할 수 있습니다.");
         }
         this.visibility = visibility;
         touch();
@@ -229,7 +229,7 @@ public class GTemporaryTeamRoom {
             throw new BusinessException(ErrorCode.TEAM_NOT_ALL_READY, "모든 팀원이 준비 완료 상태여야 합니다.");
         }
         if (queueToken == null || queueToken.isBlank()) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "queueToken은 비어 있을 수 없습니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "큐 토큰은 비어 있을 수 없습니다.");
         }
 
         this.queueToken = queueToken;
@@ -261,7 +261,7 @@ public class GTemporaryTeamRoom {
             throw new BusinessException(ErrorCode.QUEUE_WAITING_REQUIRED, "큐 대기 중인 팀만 큐 메타데이터를 복구할 수 있습니다.");
         }
         if (recoveredQueueToken == null || recoveredQueueToken.isBlank()) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "recoveredQueueToken은 비어 있을 수 없습니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "복구할 큐 토큰은 비어 있을 수 없습니다.");
         }
 
         boolean changed = false;
@@ -304,7 +304,7 @@ public class GTemporaryTeamRoom {
 
     public void assignInviteCode(String inviteCode) {
         if (inviteCode == null || inviteCode.isBlank()) {
-            throw new BusinessException(ErrorCode.INVITE_CODE_REQUIRED, "inviteCode는 비어 있을 수 없습니다.");
+            throw new BusinessException(ErrorCode.INVITE_CODE_REQUIRED, "초대 코드는 비어 있을 수 없습니다.");
         }
         if (!status.canModifyMembers()) {
             throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "현재 상태에서는 초대 코드를 발급할 수 없습니다.");
@@ -373,25 +373,25 @@ public class GTemporaryTeamRoom {
             Long tempChatRoomId
     ) {
         if (leaderId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "leaderId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "방장 사용자 ID는 필수입니다.");
         }
         if (teamName == null || teamName.isBlank()) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "teamName은 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "팀 이름은 필수입니다.");
         }
         if (teamGender == null) {
-            throw new BusinessException(ErrorCode.TEAM_GENDER_REQUIRED, "teamGender는 필수입니다.");
+            throw new BusinessException(ErrorCode.TEAM_GENDER_REQUIRED, "팀 성별은 필수입니다.");
         }
         if (teamSize == null) {
-            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED, "teamSize는 필수입니다.");
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED, "팀 인원 수는 필수입니다.");
         }
         if (opponentGenderFilter == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "opponentGenderFilter는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "상대 성별 조건은 필수입니다.");
         }
         if (visibility == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "visibility는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "공개 여부는 필수입니다.");
         }
         if (tempChatRoomId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "tempChatRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "임시 채팅방 ID는 필수입니다.");
         }
     }
 }

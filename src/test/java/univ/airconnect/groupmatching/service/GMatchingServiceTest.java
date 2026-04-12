@@ -301,14 +301,13 @@ class GMatchingServiceTest {
     }
 
     @Test
-    @DisplayName("main count returns all active temporary rooms")
-    void countRecruitableTeamRooms_returnsVisiblePublicRoomCountForCurrentUserGender() {
+    @DisplayName("main count returns same-gender recruitable rooms including private rooms")
+    void countRecruitableTeamRooms_returnsSameGenderRecruitableRoomCountIncludingPrivateRooms() {
         Long userId = 77L;
         when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profileWithGender(testUser(userId, "viewer", 5), Gender.MALE)));
         when(temporaryTeamRoomRepository.countRecruitableRooms(
                 eq(univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus.OPEN),
-                eq(GTeamGender.M),
-                eq(GTeamVisibility.PUBLIC)
+                eq(GTeamGender.M)
         )).thenReturn(5L);
 
         long count = matchingService.countRecruitableTeamRooms(userId);
@@ -317,17 +316,17 @@ class GMatchingServiceTest {
     }
 
     @Test
-    @DisplayName("public room list only loads same-gender public recruitable rooms for current user")
+    @DisplayName("recruitable room list loads same-gender rooms including private rooms for current user")
     void findRecruitableTeamRooms_filtersByCurrentUserGender() {
         Long userId = 78L;
         GTemporaryTeamRoom room = createOpenRoom(901L, 41L, 1401L, GTeamSize.TWO, GTeamGender.M);
+        ReflectionTestUtils.setField(room, "visibility", GTeamVisibility.PRIVATE);
 
         when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profileWithGender(testUser(userId, "viewer", 5), Gender.MALE)));
         when(temporaryTeamRoomRepository.findRecruitableRooms(
                 eq(univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus.OPEN),
                 eq(GTeamSize.TWO),
                 eq(GTeamGender.M),
-                eq(GTeamVisibility.PUBLIC),
                 eq(PageRequest.of(0, 20))
         )).thenReturn(new PageImpl<>(List.of(room), PageRequest.of(0, 20), 1));
 
@@ -335,6 +334,8 @@ class GMatchingServiceTest {
 
         assertThat(response.rooms()).hasSize(1);
         assertThat(response.rooms().get(0).teamGender()).isEqualTo(GTeamGender.M);
+        assertThat(response.rooms().get(0).visibility()).isEqualTo(GTeamVisibility.PRIVATE);
+        assertThat(response.rooms().get(0).locked()).isTrue();
     }
 
     @Test
@@ -361,7 +362,70 @@ class GMatchingServiceTest {
 
         assertThat(result.getCurrentMemberCount()).isEqualTo(1);
         assertThat(targetMember.isActiveMember()).isFalse();
+        assertThat(targetMember.wasExpelled()).isTrue();
         assertThat(result.getStatus()).isEqualTo(univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus.OPEN);
+    }
+
+    @Test
+    @DisplayName("expelled member cannot join the same temporary team room again")
+    void joinPublicRoom_blocksPreviouslyExpelledMember() {
+        Long teamRoomId = 930L;
+        Long userId = 71L;
+
+        GTemporaryTeamRoom room = createOpenRoom(teamRoomId, 70L, 1930L, GTeamSize.TWO, GTeamGender.M);
+        GTemporaryTeamMember expelledMember = GTemporaryTeamMember.create(teamRoomId, userId, false);
+        expelledMember.markExpelled();
+        User user = testUser(userId, "blocked-user", 5);
+
+        when(temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)).thenReturn(Optional.of(room));
+        when(temporaryTeamRoomRepository.findActiveRoomsByUserId(eq(userId), anyCollection())).thenReturn(List.of());
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profileWithGender(user, Gender.MALE)));
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(teamRoomId, userId)).thenReturn(Optional.of(expelledMember));
+
+        assertThatThrownBy(() -> matchingService.joinPublicRoom(teamRoomId, userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.TEAM_ROOM_JOIN_NOT_ALLOWED);
+    }
+
+    @Test
+    @DisplayName("temporary room creation builds Korean chat room name without corruption")
+    void createTemporaryTeamRoom_buildsKoreanChatRoomName() {
+        Long leaderUserId = 81L;
+        String leaderNickname = "\uBC29\uC7A5";
+        String teamName = "\uD55C\uAE00\uBC29";
+        String expectedCreatedMessage = "\uBC29\uC7A5\uB2D8\uC774 \uD300\uBC29\uC744 \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.";
+        String expectedRoomName = "\uD55C\uAE00\uBC29 (2\uC778 \uD300)";
+        User leader = testUser(leaderUserId, leaderNickname, 5);
+        ChatRoom tempChatRoom = ChatRoom.create("\uC784\uC2DC \uD300\uBC29", ChatRoomType.GROUP);
+        ReflectionTestUtils.setField(tempChatRoom, "id", 2081L);
+
+        when(userRepository.findById(leaderUserId)).thenReturn(Optional.of(leader));
+        when(temporaryTeamRoomRepository.findActiveRoomsByUserId(eq(leaderUserId), anyCollection())).thenReturn(List.of());
+        when(userProfileRepository.findByUserId(leaderUserId)).thenReturn(Optional.of(profileWithGender(leader, Gender.MALE)));
+        when(temporaryTeamRoomRepository.existsActiveRoomByTeamName(eq(teamName), anyCollection())).thenReturn(false);
+        when(temporaryTeamRoomRepository.existsUsableInviteCode(any(String.class))).thenReturn(false);
+        when(temporaryTeamRoomRepository.save(any(GTemporaryTeamRoom.class))).thenAnswer(invocation -> {
+            GTemporaryTeamRoom savedRoom = invocation.getArgument(0);
+            ReflectionTestUtils.setField(savedRoom, "id", 3081L);
+            return savedRoom;
+        });
+        when(chatService.createGroupRoomWithMembers(any(String.class), anyCollection())).thenReturn(tempChatRoom);
+
+        matchingService.createTemporaryTeamRoom(
+                leaderUserId,
+                teamName,
+                GTeamGender.M,
+                GTeamSize.TWO,
+                GGenderFilter.ANY,
+                GTeamVisibility.PUBLIC
+        );
+
+        ArgumentCaptor<String> roomNameCaptor = ArgumentCaptor.forClass(String.class);
+        verify(chatService).createGroupRoomWithMembers(roomNameCaptor.capture(), eq(List.of(leaderUserId)));
+        verify(chatService).publishEnterMessage(2081L, leaderUserId, expectedCreatedMessage);
+        assertThat(roomNameCaptor.getValue()).isEqualTo(expectedRoomName);
     }
 
     @Test
@@ -496,3 +560,4 @@ class GMatchingServiceTest {
         );
     }
 }
+
