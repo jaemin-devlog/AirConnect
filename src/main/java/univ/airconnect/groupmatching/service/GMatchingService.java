@@ -86,6 +86,14 @@ public class GMatchingService {
     private static final Duration QUEUE_TOKEN_TTL = Duration.ofHours(12);
     private static final int PROCESS_LOCK_RETRY_COUNT = 20;
     private static final long PROCESS_LOCK_RETRY_DELAY_MS = 50L;
+    private static final String TEAM_ROOM_CREATED_MESSAGE_SUFFIX =
+            "\uB2D8\uC774 \uD300\uBC29\uC744 \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.";
+    private static final String TEAM_ROOM_JOINED_MESSAGE_SUFFIX =
+            "\uB2D8\uC774 \uD300\uBC29\uC5D0 \uC785\uC7A5\uD588\uC2B5\uB2C8\uB2E4.";
+    private static final String MATCH_COMPLETED_MOVE_TO_FINAL_CHAT_MESSAGE =
+            "\uB9E4\uCE6D\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uCD5C\uC885 \uADF8\uB8F9 \uCC44\uD305\uBC29\uC73C\uB85C \uC774\uB3D9\uD569\uB2C8\uB2E4.";
+    private static final String MATCH_COMPLETED_FINAL_CHAT_CREATED_MESSAGE =
+            "\uB9E4\uCE6D\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uCD5C\uC885 \uADF8\uB8F9 \uCC44\uD305\uBC29\uC774 \uC0DD\uC131\uB418\uC5C8\uC2B5\uB2C8\uB2E4.";
 
     private final GTemporaryTeamRoomRepository temporaryTeamRoomRepository;
     private final GTemporaryTeamMemberRepository temporaryTeamMemberRepository;
@@ -147,7 +155,7 @@ public class GMatchingService {
         chatService.publishEnterMessage(
                 tempChatRoom.getId(),
                 leaderUserId,
-                leader.getNickname() + "님이 팀방을 생성했습니다."
+                leader.getNickname() + TEAM_ROOM_CREATED_MESSAGE_SUFFIX
         );
 
         analyticsService.trackServerEvent(
@@ -777,7 +785,7 @@ public class GMatchingService {
         chatService.publishEnterMessage(
                 teamRoom.getTempChatRoomId(),
                 userId,
-                user.getNickname() + "님이 팀방에 입장했습니다."
+                user.getNickname() + TEAM_ROOM_JOINED_MESSAGE_SUFFIX
         );
 
         notifyTeamMemberJoined(teamRoom, userId, user.getNickname());
@@ -860,21 +868,7 @@ public class GMatchingService {
         notifyGroupMatched(finalMemberIds, first.getId(), second.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
         matchingPushService.notifyMatched(finalMemberIds, finalGroupChatRoom.getId(), finalChatRoom.getId());
 
-        chatService.publishEnterMessage(
-                first.getTempChatRoomId(),
-                first.getLeaderId(),
-                "매칭이 완료되었습니다. 최종 그룹 채팅방으로 이동합니다."
-        );
-        chatService.publishEnterMessage(
-                second.getTempChatRoomId(),
-                second.getLeaderId(),
-                "매칭이 완료되었습니다. 최종 그룹 채팅방으로 이동합니다."
-        );
-        chatService.publishEnterMessage(
-                finalChatRoom.getId(),
-                first.getLeaderId(),
-                "매칭이 완료되었습니다. 최종 그룹 채팅방이 생성되었습니다."
-        );
+        publishFinalGroupChatSystemMessages(first, second, finalChatRoom.getId());
 
         markMembersLeft(firstMembers);
         markMembersLeft(secondMembers);
@@ -1315,21 +1309,7 @@ public class GMatchingService {
         notifyGroupMatched(finalMemberIds, first.getId(), second.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
         matchingPushService.notifyMatched(finalMemberIds, finalGroupChatRoom.getId(), finalChatRoom.getId());
 
-        chatService.publishEnterMessage(
-                first.getTempChatRoomId(),
-                first.getLeaderId(),
-                "留ㅼ묶???꾨즺?섏뿀?듬땲?? 理쒖쥌 洹몃９ 梨꾪똿諛⑹쑝濡??대룞?⑸땲??"
-        );
-        chatService.publishEnterMessage(
-                second.getTempChatRoomId(),
-                second.getLeaderId(),
-                "留ㅼ묶???꾨즺?섏뿀?듬땲?? 理쒖쥌 洹몃９ 梨꾪똿諛⑹쑝濡??대룞?⑸땲??"
-        );
-        chatService.publishEnterMessage(
-                finalChatRoom.getId(),
-                first.getLeaderId(),
-                "留ㅼ묶???꾨즺?섏뿀?듬땲?? 理쒖쥌 洹몃９ 梨꾪똿諛⑹씠 ?앹꽦?섏뿀?듬땲??"
-        );
+        publishFinalGroupChatSystemMessages(first, second, finalChatRoom.getId());
 
         markMembersLeft(firstMembers);
         markMembersLeft(secondMembers);
@@ -1358,6 +1338,28 @@ public class GMatchingService {
 
     private boolean shouldDelayMatchFinalization() {
         return MATCH_FINALIZATION_DELAY != null && !MATCH_FINALIZATION_DELAY.isNegative();
+    }
+
+    private void publishFinalGroupChatSystemMessages(
+            GTemporaryTeamRoom first,
+            GTemporaryTeamRoom second,
+            Long finalChatRoomId
+    ) {
+        chatService.publishEnterMessage(
+                first.getTempChatRoomId(),
+                first.getLeaderId(),
+                MATCH_COMPLETED_MOVE_TO_FINAL_CHAT_MESSAGE
+        );
+        chatService.publishEnterMessage(
+                second.getTempChatRoomId(),
+                second.getLeaderId(),
+                MATCH_COMPLETED_MOVE_TO_FINAL_CHAT_MESSAGE
+        );
+        chatService.publishEnterMessage(
+                finalChatRoomId,
+                first.getLeaderId(),
+                MATCH_COMPLETED_FINAL_CHAT_CREATED_MESSAGE
+        );
     }
 
     private void validateMatchedMembersForFinalization(GTemporaryTeamRoom room, List<GTemporaryTeamMember> members) {

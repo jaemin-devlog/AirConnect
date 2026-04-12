@@ -223,6 +223,10 @@ class GMatchingServiceTest {
     @Test
     @DisplayName("delayed match finalization creates final room after threshold and consumes tickets")
     void finalizePendingMatches_createsFinalRoomAfterDelay() {
+        String expectedMoveMessage =
+                "\uB9E4\uCE6D\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uCD5C\uC885 \uADF8\uB8F9 \uCC44\uD305\uBC29\uC73C\uB85C \uC774\uB3D9\uD569\uB2C8\uB2E4.";
+        String expectedCreatedMessage =
+                "\uB9E4\uCE6D\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uCD5C\uC885 \uADF8\uB8F9 \uCC44\uD305\uBC29\uC774 \uC0DD\uC131\uB418\uC5C8\uC2B5\uB2C8\uB2E4.";
         User user1 = testUser(101L, "min", 5);
         User user2 = testUser(102L, "jin", 5);
         User user3 = testUser(103L, "kang", 5);
@@ -265,6 +269,9 @@ class GMatchingServiceTest {
 
         ArgumentCaptor<String> roomNameCaptor = ArgumentCaptor.forClass(String.class);
         verify(chatService).createGroupRoomWithMembers(roomNameCaptor.capture(), anyCollection());
+        verify(chatService).publishEnterMessage(5001L, 101L, expectedMoveMessage);
+        verify(chatService).publishEnterMessage(5002L, 103L, expectedMoveMessage);
+        verify(chatService).publishEnterMessage(700L, 101L, expectedCreatedMessage);
 
         assertThat(finalizedCount).isEqualTo(1);
         assertThat(roomNameCaptor.getValue()).isEqualTo("min, jin, kang, seo");
