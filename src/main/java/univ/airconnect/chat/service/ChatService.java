@@ -497,6 +497,7 @@ public class ChatService {
 
         updateLastRead(roomId, sender.getId(), chatMessage.getId());
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
+        LocalDateTime immediateReadAt = applyImmediateReadForViewingMembers(roomId, sender.getId(), chatMessage, roomMembers);
 
         ChatMessageResponse response = ChatMessageResponse.from(
                 chatMessage,
@@ -504,6 +505,9 @@ public class ChatService {
                 resolveMessageUnreadCount(chatMessage, roomMembers)
         );
         publishToRedisSilently(roomId, response);
+        if (immediateReadAt != null) {
+            publishImmediateReadReceipt(roomId, chatMessage, roomMembers, immediateReadAt);
+        }
         publishChatMessageNotifications(roomId, sender, chatMessage);
         return response;
     }
@@ -1017,6 +1021,36 @@ public class ChatService {
                 .toList();
     }
 
+    private LocalDateTime applyImmediateReadForViewingMembers(Long roomId,
+                                                              Long senderId,
+                                                              ChatMessage chatMessage,
+                                                              List<ChatRoomMember> roomMembers) {
+        if (chatMessage == null || roomMembers == null || roomMembers.isEmpty()) {
+            return null;
+        }
+
+        boolean readByViewer = false;
+        for (ChatRoomMember member : roomMembers) {
+            Long memberUserId = member.getUser().getId();
+            if (Objects.equals(memberUserId, senderId)) {
+                continue;
+            }
+            if (!isUserViewingRoom(memberUserId, roomId)) {
+                continue;
+            }
+
+            member.updateLastReadMessageId(chatMessage.getId());
+            readByViewer = true;
+        }
+
+        if (!readByViewer) {
+            return null;
+        }
+
+        chatMessage.markRead();
+        return chatMessage.getReadAt();
+    }
+
     private Integer resolveMessageUnreadCount(ChatMessage message, List<ChatRoomMember> roomMembers) {
         if (message == null || message.isDeleted()) {
             return 0;
@@ -1040,6 +1074,19 @@ public class ChatService {
                 .count();
 
         return Math.toIntExact(unreadCount);
+    }
+
+    private void publishImmediateReadReceipt(Long roomId,
+                                             ChatMessage message,
+                                             List<ChatRoomMember> roomMembers,
+                                             LocalDateTime readAt) {
+        ChatMessageResponse readReceipt = ChatMessageResponse.readReceipt(
+                roomId,
+                message.getId(),
+                readAt,
+                resolveMessageUnreadCount(message, roomMembers)
+        );
+        publishToRedisSilently(roomId, readReceipt);
     }
 
     private void publishReadReceiptEvents(Long roomId,

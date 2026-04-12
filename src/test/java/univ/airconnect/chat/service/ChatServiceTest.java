@@ -525,6 +525,70 @@ class ChatServiceTest {
     }
 
     @Test
+    void sendMessage_immediatelyReflectsReadWhenCounterpartIsViewingRoom() throws Exception {
+        ChatService service = createService();
+        Long roomId = 703L;
+        Long senderId = 1L;
+        Long readerId = 2L;
+
+        User sender = createUser(senderId, "sender");
+        User reader = createUser(readerId, "reader");
+        ChatRoom room = ChatRoom.create("room-703", ChatRoomType.PERSONAL);
+        ChatRoomMember senderMember = ChatRoomMember.create(room, sender);
+        senderMember.updateLastReadMessageId(80L);
+        ChatRoomMember readerMember = ChatRoomMember.create(room, reader);
+        readerMember.updateLastReadMessageId(80L);
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        ReflectionTestUtils.setField(request, "roomId", roomId);
+        ReflectionTestUtils.setField(request, "message", "hello");
+
+        ChatMessage[] savedMessage = new ChatMessage[1];
+
+        when(userRepository.findById(senderId)).thenReturn(Optional.of(sender));
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(true);
+        when(chatRoomMemberRepository.findUserIdsByChatRoomId(roomId)).thenReturn(List.of(senderId, readerId));
+        when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, senderId)).thenReturn(Optional.of(senderMember));
+        when(chatRoomMemberRepository.findByChatRoomId(roomId)).thenReturn(List.of(senderMember, readerMember));
+        when(setOperations.members("chat:room-sessions:" + roomId)).thenReturn(Set.of("session-reader"));
+        when(valueOperations.get("chat:session:session-reader")).thenReturn(String.valueOf(readerId));
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(chatMessageRepository.save(any(ChatMessage.class))).thenAnswer(invocation -> {
+            ChatMessage message = invocation.getArgument(0);
+            ReflectionTestUtils.setField(message, "id", 81L);
+            savedMessage[0] = message;
+            return message;
+        });
+
+        service.sendMessage(senderId, request);
+
+        ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(objectMapper, atLeastOnce()).writeValueAsString(payloadCaptor.capture());
+
+        List<ChatMessageResponse> publishedPayloads = payloadCaptor.getAllValues().stream()
+                .filter(ChatMessageResponse.class::isInstance)
+                .map(ChatMessageResponse.class::cast)
+                .toList();
+
+        ChatMessageResponse messageEvent = publishedPayloads.stream()
+                .filter(payload -> "MESSAGE".equals(payload.getEventType()))
+                .findFirst()
+                .orElseThrow();
+        ChatMessageResponse readReceipt = publishedPayloads.stream()
+                .filter(payload -> "READ_RECEIPT".equals(payload.getEventType()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(messageEvent.getUnreadCount()).isEqualTo(0);
+        assertThat(readReceipt.getMessageId()).isEqualTo(81L);
+        assertThat(readReceipt.getUnreadCount()).isEqualTo(0);
+        assertThat(readerMember.getLastReadMessageId()).isEqualTo(81L);
+        assertThat(savedMessage[0]).isNotNull();
+        assertThat(savedMessage[0].getReadAt()).isNotNull();
+    }
+
+    @Test
     void sendMessage_throwsWhenUsersAreBlockedInRoom() {
         ChatService service = createService();
         Long userId = 1L;
