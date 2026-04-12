@@ -24,8 +24,11 @@ import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.dto.request.ChangePasswordRequest;
+import univ.airconnect.user.dto.request.UpdateNicknameRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
+import univ.airconnect.user.dto.response.UpdateNicknameResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
+import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
@@ -249,6 +252,46 @@ class UserServiceTest {
         assertThat(response.getHeight()).isEqualTo(186);
         assertThat(response.getAge()).isEqualTo(24);
         assertThat(response.getGender()).isEqualTo(Gender.FEMALE);
+    }
+
+    @Test
+    void updateNickname_trimsAndPersistsNickname() {
+        UserService service = createService();
+        Long userId = 7L;
+
+        User user = User.createEmailUser("nickname@airconnect.test", "encoded-password");
+        user.completeSignUp("tester", "oldNick", 20230007, "dept");
+        ReflectionTestUtils.setField(user, "id", userId);
+
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+
+        UpdateNicknameRequest request = new UpdateNicknameRequest();
+        ReflectionTestUtils.setField(request, "nickname", "  newNick  ");
+
+        UpdateNicknameResponse response = service.updateNickname(userId, request);
+
+        assertThat(user.getNickname()).isEqualTo("newNick");
+        assertThat(response.getUserId()).isEqualTo(userId);
+        assertThat(response.getNickname()).isEqualTo("newNick");
+    }
+
+    @Test
+    void updateNickname_rejectsBlankNickname() {
+        UserService service = createService();
+        Long userId = 8L;
+
+        User user = User.createEmailUser("blank@airconnect.test", "encoded-password");
+        user.completeSignUp("tester", "oldNick", 20230008, "dept");
+        ReflectionTestUtils.setField(user, "id", userId);
+
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+
+        UpdateNicknameRequest request = new UpdateNicknameRequest();
+        ReflectionTestUtils.setField(request, "nickname", "   ");
+
+        assertThatThrownBy(() -> service.updateNickname(userId, request))
+                .isInstanceOfSatisfying(UserException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(UserErrorCode.INVALID_INPUT));
     }
 
     private UserService createService() {

@@ -22,8 +22,10 @@ import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.dto.request.DeleteAccountRequest;
 import univ.airconnect.user.dto.request.ChangePasswordRequest;
 import univ.airconnect.user.dto.request.SignUpRequest;
+import univ.airconnect.user.dto.request.UpdateNicknameRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
 import univ.airconnect.user.dto.response.SignUpResponse;
+import univ.airconnect.user.dto.response.UpdateNicknameResponse;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.exception.UserErrorCode;
@@ -62,6 +64,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
 
     private static final String USER_ACTIVITY_TOUCH_KEY_PREFIX = "analytics:user:last-active:";
+    private static final int NICKNAME_MAX_LENGTH = 100;
     private static final int PASSWORD_MIN_LENGTH = 8;
     private static final int PASSWORD_MAX_LENGTH = 72;
 
@@ -260,6 +263,28 @@ public class UserService {
         log.info("✅ 프로필 업데이트 완료: userId={}", userId);
 
         return UserProfileResponse.from(userProfile, imageUrlBase);
+    }
+
+    @Transactional
+    public UpdateNicknameResponse updateNickname(Long userId, UpdateNicknameRequest request) {
+        if (request == null) {
+            throw new UserException(UserErrorCode.INVALID_INPUT);
+        }
+
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+
+        ensureUserActive(user);
+
+        String normalizedNickname = normalizeNickname(request.getNickname());
+        user.changeNickname(normalizedNickname);
+
+        log.info("✅ 닉네임 변경 완료: userId={}, nickname={}", userId, normalizedNickname);
+
+        return UpdateNicknameResponse.builder()
+                .userId(user.getId())
+                .nickname(user.getNickname())
+                .build();
     }
 
     public UserProfileResponse getProfile(Long userId) {
@@ -474,6 +499,19 @@ public class UserService {
         if (!hasLetter || !hasDigit || !hasSpecial) {
             throw new UserException(UserErrorCode.PASSWORD_INVALID_FORMAT);
         }
+    }
+
+    private String normalizeNickname(String nickname) {
+        if (nickname == null) {
+            throw new UserException(UserErrorCode.INVALID_INPUT);
+        }
+
+        String normalized = nickname.trim();
+        if (normalized.isBlank() || normalized.length() > NICKNAME_MAX_LENGTH) {
+            throw new UserException(UserErrorCode.INVALID_INPUT);
+        }
+
+        return normalized;
     }
 
     private String maskEmail(String email) {
