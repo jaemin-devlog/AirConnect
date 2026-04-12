@@ -2,6 +2,7 @@ package univ.airconnect.chat.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -48,6 +49,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.atLeastOnce;
 
 @ExtendWith(MockitoExtension.class)
 class ChatServiceTest {
@@ -172,20 +174,25 @@ class ChatServiceTest {
     }
 
     @Test
-    void updateLastRead_marksMessagesReadAndUpdatesLastReadMessageId() {
+    void updateLastRead_marksMessagesReadAndUpdatesLastReadMessageId() throws Exception {
         ChatService service = createService();
         Long roomId = 500L;
         Long userId = 10L;
+        Long senderId = 20L;
 
         ChatRoom room = ChatRoom.create("room-500", ChatRoomType.PERSONAL);
         User user = createUser(userId, "reader");
+        User sender = createUser(senderId, "sender");
         ChatRoomMember member = ChatRoomMember.create(room, user);
+        ChatRoomMember senderMember = ChatRoomMember.create(room, sender);
         ChatMessage lastMessage = ChatMessage.create(roomId, 20L, "sender", "hello", univ.airconnect.chat.domain.MessageType.TEXT);
         ReflectionTestUtils.setField(lastMessage, "id", 77L);
 
         when(chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)).thenReturn(Optional.of(member));
-        when(chatMessageRepository.findUnreadIncomingMessageIds(roomId, userId)).thenReturn(List.of(11L, 12L));
+        when(chatMessageRepository.findUnreadIncomingMessages(roomId, userId, null)).thenReturn(List.of(lastMessage));
         when(chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)).thenReturn(Optional.of(lastMessage));
+        when(chatRoomMemberRepository.findByChatRoomId(roomId)).thenReturn(List.of(member, senderMember));
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         service.updateLastRead(roomId, userId);
 
@@ -284,6 +291,91 @@ class ChatServiceTest {
         assertThat(response).hasSize(2);
         assertThat(response.get(0).getId()).isEqualTo(10L);
         assertThat(response.get(1).getId()).isEqualTo(20L);
+    }
+
+    @Test
+    void findMessagesByRoomId_returnsUnreadCountPerRemainingReader() {
+        ChatService service = createService();
+        Long roomId = 701L;
+        Long senderId = 1L;
+
+        User sender = createUser(senderId, "sender");
+        User readerA = createUser(2L, "readerA");
+        User readerB = createUser(3L, "readerB");
+        User readerC = createUser(4L, "readerC");
+
+        ChatRoom room = ChatRoom.create("room-701", ChatRoomType.GROUP);
+        ChatRoomMember senderMember = ChatRoomMember.create(room, sender);
+        senderMember.updateLastReadMessageId(100L);
+        ChatRoomMember memberA = ChatRoomMember.create(room, readerA);
+        memberA.updateLastReadMessageId(100L);
+        ChatRoomMember memberB = ChatRoomMember.create(room, readerB);
+        memberB.updateLastReadMessageId(99L);
+        ChatRoomMember memberC = ChatRoomMember.create(room, readerC);
+
+        ChatMessage message = ChatMessage.create(roomId, senderId, "sender", "hello", univ.airconnect.chat.domain.MessageType.TEXT);
+        ReflectionTestUtils.setField(message, "id", 100L);
+
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(true);
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, senderId)).thenReturn(Optional.of(senderMember));
+        when(chatMessageRepository.findUnreadIncomingMessages(roomId, senderId, 100L)).thenReturn(List.of());
+        when(chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)).thenReturn(Optional.of(message));
+        when(chatMessageRepository.findMessagesCursor(eq(roomId), eq(null), any())).thenReturn(List.of(message));
+        when(chatRoomMemberRepository.findByChatRoomId(roomId)).thenReturn(List.of(senderMember, memberA, memberB, memberC));
+        when(userRepository.findAllByIdWithProfile(Set.of(senderId))).thenReturn(List.of(sender));
+
+        List<ChatMessageResponse> response = service.findMessagesByRoomId(roomId, senderId, null, 20);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).getUnreadCount()).isEqualTo(2);
+    }
+
+    @Test
+    void updateLastRead_publishesReadReceiptWithUnreadCountDecrementedByOne() throws Exception {
+        ChatService service = createService();
+        Long roomId = 702L;
+        Long senderId = 1L;
+        Long readerId = 2L;
+
+        User sender = createUser(senderId, "sender");
+        User reader = createUser(readerId, "reader");
+        User readerB = createUser(3L, "readerB");
+        User readerC = createUser(4L, "readerC");
+
+        ChatRoom room = ChatRoom.create("room-702", ChatRoomType.GROUP);
+        ChatRoomMember senderMember = ChatRoomMember.create(room, sender);
+        senderMember.updateLastReadMessageId(50L);
+        ChatRoomMember readerMember = ChatRoomMember.create(room, reader);
+        readerMember.updateLastReadMessageId(40L);
+        ChatRoomMember memberB = ChatRoomMember.create(room, readerB);
+        memberB.updateLastReadMessageId(49L);
+        ChatRoomMember memberC = ChatRoomMember.create(room, readerC);
+        memberC.updateLastReadMessageId(50L);
+
+        ChatMessage message = ChatMessage.create(roomId, senderId, "sender", "hello", univ.airconnect.chat.domain.MessageType.TEXT);
+        ReflectionTestUtils.setField(message, "id", 50L);
+
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, readerId)).thenReturn(Optional.of(readerMember));
+        when(chatMessageRepository.findUnreadIncomingMessages(roomId, readerId, 40L)).thenReturn(List.of(message));
+        when(chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)).thenReturn(Optional.of(message));
+        when(chatRoomMemberRepository.findByChatRoomId(roomId)).thenReturn(List.of(senderMember, readerMember, memberB, memberC));
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        service.updateLastRead(roomId, readerId);
+
+        ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(objectMapper, atLeastOnce()).writeValueAsString(payloadCaptor.capture());
+
+        ChatMessageResponse readReceipt = payloadCaptor.getAllValues().stream()
+                .filter(ChatMessageResponse.class::isInstance)
+                .map(ChatMessageResponse.class::cast)
+                .filter(payload -> "READ_RECEIPT".equals(payload.getEventType()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(readReceipt.getMessageId()).isEqualTo(50L);
+        assertThat(readReceipt.getUnreadCount()).isEqualTo(1);
+        assertThat(readerMember.getLastReadMessageId()).isEqualTo(50L);
     }
 
     @Test

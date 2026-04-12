@@ -70,7 +70,7 @@ public class ChatMessageResponse {
                 .build();
     }
 
-    public static ChatMessageResponse readReceipt(Long roomId, Long messageId, LocalDateTime readAt) {
+    public static ChatMessageResponse readReceipt(Long roomId, Long messageId, LocalDateTime readAt, Integer unreadCount) {
         OffsetDateTime offsetReadAt = toOffset(readAt);
         return ChatMessageResponse.builder()
                 .eventType("READ_RECEIPT")
@@ -78,7 +78,7 @@ public class ChatMessageResponse {
                 .messageId(messageId)
                 .roomId(roomId)
                 .chatRoomId(roomId)
-                .unreadCount(0)
+                .unreadCount(unreadCount != null ? unreadCount : 0)
                 .readAt(offsetReadAt)
                 .sentAt(offsetReadAt)
                 .createdAt(offsetReadAt)

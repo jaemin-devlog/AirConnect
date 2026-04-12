@@ -200,7 +200,7 @@ public class ChatService {
         ChatRoom room = findRoomOrThrow(roomId);
 
         if (room.getType() != ChatRoomType.GROUP) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "GROUP 채팅방에만 멤버를 추가할 수 있습니다.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "그룹 채팅방에만 멤버를 추가할 수 있습니다.");
         }
 
         LinkedHashSet<Long> candidateUserIds = normalizeUserIds(userIds);
@@ -232,7 +232,7 @@ public class ChatService {
     @Transactional
     public ChatMessageResponse publishSystemMessage(Long roomId, Long senderId, String message, MessageType type) {
         if (type == null || type == MessageType.TEXT || type == MessageType.IMAGE || type == MessageType.TALK) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "시스템 메시지 타입은 ENTER 또는 EXIT 이어야 합니다.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "시스템 메시지 타입은 입장 또는 퇴장이어야 합니다.");
         }
 
         if (message == null || message.isBlank()) {
@@ -407,16 +407,25 @@ public class ChatService {
     public void updateLastRead(Long roomId, Long userId) {
         chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)
                 .ifPresent(member -> {
-                    List<Long> unreadIncomingMessageIds = chatMessageRepository.findUnreadIncomingMessageIds(roomId, userId);
+                    Long previousLastReadMessageId = member.getLastReadMessageId();
+                    List<ChatMessage> unreadIncomingMessages = chatMessageRepository.findUnreadIncomingMessages(
+                            roomId,
+                            userId,
+                            previousLastReadMessageId
+                    );
                     LocalDateTime readAt = LocalDateTime.now(java.time.Clock.systemUTC());
 
-                    if (!unreadIncomingMessageIds.isEmpty()) {
+                    if (!unreadIncomingMessages.isEmpty()) {
                         chatMessageRepository.markIncomingMessagesRead(roomId, userId, readAt);
-                        publishReadReceiptEvents(roomId, unreadIncomingMessageIds, readAt);
                     }
 
                     chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)
                             .ifPresent(lastMsg -> member.updateLastReadMessageId(lastMsg.getId()));
+
+                    if (!unreadIncomingMessages.isEmpty()) {
+                        List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
+                        publishReadReceiptEvents(roomId, unreadIncomingMessages, roomMembers, readAt);
+                    }
                 });
     }
 
@@ -459,10 +468,11 @@ public class ChatService {
         }
 
         message.softDelete();
+        List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
         ChatMessageResponse response = ChatMessageResponse.from(
                 message,
                 extractProfileImage(findUserOrThrow(userId)),
-                resolveMessageUnreadCount(message)
+                resolveMessageUnreadCount(message, roomMembers)
         );
         publishToRedisSilently(roomId, response);
         return response;
@@ -485,11 +495,12 @@ public class ChatService {
         findRoomOrThrow(roomId).updateLastMessage(summarizeForRoomList(content, messageType), chatMessage.getCreatedAt());
 
         updateLastRead(roomId, sender.getId(), chatMessage.getId());
+        List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
 
         ChatMessageResponse response = ChatMessageResponse.from(
                 chatMessage,
                 extractProfileImage(sender),
-                resolveMessageUnreadCount(chatMessage)
+                resolveMessageUnreadCount(chatMessage, roomMembers)
         );
         publishToRedisSilently(roomId, response);
         publishChatMessageNotifications(roomId, sender, chatMessage);
@@ -514,11 +525,12 @@ public class ChatService {
                 MessageType.EXIT
         );
         chatMessageRepository.save(exitMessage);
+        List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
 
         ChatMessageResponse response = ChatMessageResponse.from(
                 exitMessage,
                 extractProfileImage(user),
-                resolveMessageUnreadCount(exitMessage)
+                resolveMessageUnreadCount(exitMessage, roomMembers)
         );
         publishToRedisSilently(roomId, response);
 
@@ -638,6 +650,9 @@ public class ChatService {
             return Collections.emptyList();
         }
 
+        updateLastRead(roomId, userId);
+        List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
+
         Set<Long> senderIds = messages.stream()
                 .map(ChatMessage::getSenderId)
                 .collect(Collectors.toSet());
@@ -651,11 +666,9 @@ public class ChatService {
                     String profileImage = (sender != null && sender.getUserProfile() != null)
                             ? sender.getUserProfile().getProfileImagePath()
                             : null;
-                    return ChatMessageResponse.from(msg, profileImage, resolveMessageUnreadCount(msg));
+                    return ChatMessageResponse.from(msg, profileImage, resolveMessageUnreadCount(msg, roomMembers));
                 })
                 .collect(Collectors.toList());
-
-        updateLastRead(roomId, userId);
 
         Collections.reverse(response);
         return response;
@@ -899,7 +912,7 @@ public class ChatService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "메시지 내용은 비어 있을 수 없습니다.");
         }
         if (messageType == MessageType.TEXT && content.trim().isEmpty()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "TEXT 메시지는 비어 있을 수 없습니다.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "텍스트 메시지는 비어 있을 수 없습니다.");
         }
     }
 
@@ -925,7 +938,13 @@ public class ChatService {
         return normalized.length() > 100 ? normalized.substring(0, 100) : normalized;
     }
 
-    private Integer resolveMessageUnreadCount(ChatMessage message) {
+    private List<ChatRoomMember> loadVisibleRoomMembers(Long roomId) {
+        return chatRoomMemberRepository.findByChatRoomId(roomId).stream()
+                .filter(member -> !member.isHidden())
+                .toList();
+    }
+
+    private Integer resolveMessageUnreadCount(ChatMessage message, List<ChatRoomMember> roomMembers) {
         if (message == null || message.isDeleted()) {
             return 0;
         }
@@ -935,12 +954,32 @@ public class ChatService {
             return 0;
         }
 
-        return message.getReadAt() == null ? 1 : 0;
+        if (roomMembers == null || roomMembers.isEmpty()) {
+            return 0;
+        }
+
+        long unreadCount = roomMembers.stream()
+                .filter(member -> !Objects.equals(member.getUser().getId(), message.getSenderId()))
+                .filter(member -> {
+                    Long lastReadMessageId = member.getLastReadMessageId();
+                    return lastReadMessageId == null || lastReadMessageId < message.getId();
+                })
+                .count();
+
+        return Math.toIntExact(unreadCount);
     }
 
-    private void publishReadReceiptEvents(Long roomId, List<Long> messageIds, LocalDateTime readAt) {
-        for (Long messageId : messageIds) {
-            ChatMessageResponse readReceipt = ChatMessageResponse.readReceipt(roomId, messageId, readAt);
+    private void publishReadReceiptEvents(Long roomId,
+                                          List<ChatMessage> messages,
+                                          List<ChatRoomMember> roomMembers,
+                                          LocalDateTime readAt) {
+        for (ChatMessage message : messages) {
+            ChatMessageResponse readReceipt = ChatMessageResponse.readReceipt(
+                    roomId,
+                    message.getId(),
+                    readAt,
+                    resolveMessageUnreadCount(message, roomMembers)
+            );
             publishToRedisSilently(roomId, readReceipt);
         }
     }

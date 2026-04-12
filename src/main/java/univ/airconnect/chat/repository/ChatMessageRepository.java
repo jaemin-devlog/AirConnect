@@ -41,13 +41,14 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     Optional<ChatMessage> findTopByRoomIdAndDeletedFalseOrderByIdDesc(Long roomId);
 
-    @Query("SELECT m.id FROM ChatMessage m " +
+    @Query("SELECT m FROM ChatMessage m " +
             "WHERE m.roomId = :roomId " +
             "AND m.senderId <> :userId " +
-            "AND m.readAt IS NULL " +
+            "AND (:lastReadMessageId IS NULL OR m.id > :lastReadMessageId) " +
             "ORDER BY m.id ASC")
-    List<Long> findUnreadIncomingMessageIds(@Param("roomId") Long roomId,
-                                            @Param("userId") Long userId);
+    List<ChatMessage> findUnreadIncomingMessages(@Param("roomId") Long roomId,
+                                                 @Param("userId") Long userId,
+                                                 @Param("lastReadMessageId") Long lastReadMessageId);
 
     int countByRoomIdAndIdGreaterThan(Long roomId, Long lastReadMessageId);
 
