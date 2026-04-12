@@ -184,6 +184,11 @@ public class User {
         this.lastActiveAt = LocalDateTime.now();
     }
 
+    public void changeNickname(String nickname) {
+        this.nickname = nickname;
+        this.lastActiveAt = LocalDateTime.now();
+    }
+
     public void resetOnboarding() {
         this.name = null;
         this.nickname = null;

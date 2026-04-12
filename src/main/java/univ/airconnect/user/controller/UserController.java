@@ -14,10 +14,12 @@ import univ.airconnect.user.dto.request.DeleteAccountRequest;
 import univ.airconnect.user.dto.request.ChangePasswordRequest;
 import univ.airconnect.user.dto.request.SchoolConsentUpsertRequest;
 import univ.airconnect.user.dto.request.SignUpRequest;
+import univ.airconnect.user.dto.request.UpdateNicknameRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
 import univ.airconnect.user.dto.response.ProfileImageUploadResponse;
 import univ.airconnect.user.dto.response.SchoolConsentResponse;
 import univ.airconnect.user.dto.response.SignUpResponse;
+import univ.airconnect.user.dto.response.UpdateNicknameResponse;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.service.UserProfileImageService;
@@ -59,6 +61,19 @@ public class UserController {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         UserMeResponse response = userService.getMe(userId);
         log.info("✅ 사용자 정보 조회 완료: userId={}", userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    @PatchMapping("/me/nickname")
+    public ResponseEntity<ApiResponse<UpdateNicknameResponse>> updateNickname(
+            @CurrentUserId Long userId,
+            @RequestBody UpdateNicknameRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        log.info("✏️ 닉네임 변경 요청: userId={}", userId);
+        String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
+        UpdateNicknameResponse response = userService.updateNickname(userId, request);
+        log.info("✅ 닉네임 변경 완료: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
