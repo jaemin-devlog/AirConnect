@@ -6,12 +6,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.chat.domain.ChatRoomType;
@@ -22,20 +21,19 @@ import univ.airconnect.chat.domain.entity.ChatRoomMember;
 import univ.airconnect.chat.dto.request.ChatMessageRequest;
 import univ.airconnect.chat.dto.request.SendMessageRequest;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
+import univ.airconnect.chat.dto.response.ChatParticipantProfileResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
-import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
-import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
@@ -59,9 +57,6 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final NotificationService notificationService;
     private final UserBlockPolicyService userBlockPolicyService;
-
-    @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
-    private String imageUrlBase;
 
     private final Map<String, ChannelTopic> topics = new ConcurrentHashMap<>();
 
@@ -87,11 +82,11 @@ public class ChatService {
             if (!existingRoomIds.isEmpty()) {
                 ChatRoom existingRoom = chatRoomRepository.findById(existingRoomIds.get(0))
                         .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR));
-                return ChatRoomResponse.from(existingRoom);
+                return buildCreateRoomResponse(existingRoom, creatorUserId);
             }
 
             ChatRoom personalRoom = createPersonalRoom(name, creatorUserId, targetUserId, null);
-            return ChatRoomResponse.from(personalRoom);
+            return buildCreateRoomResponse(personalRoom, creatorUserId);
         }
 
         ChatRoom groupRoom = createRoomWithMembers(name, ChatRoomType.GROUP, List.of(creatorUserId));
@@ -112,7 +107,7 @@ public class ChatService {
             if (byConnection.isPresent()) {
                 ChatRoom existingRoom = byConnection.get();
                 ensurePersonalRoomMembers(existingRoom, userAId, userBId);
-                return ChatRoomResponse.from(existingRoom);
+                return buildCreateRoomResponse(existingRoom, userAId);
             }
         }
 
@@ -125,11 +120,11 @@ public class ChatService {
             ChatRoom existingRoom = existingByUsers.get();
             existingRoom.bindConnectionIfMissing(connectionId);
             ensurePersonalRoomMembers(existingRoom, userAId, userBId);
-            return ChatRoomResponse.from(existingRoom);
+            return buildCreateRoomResponse(existingRoom, userAId);
         }
 
         ChatRoom room = createPersonalRoom(roomName, userAId, userBId, connectionId);
-        return ChatRoomResponse.from(room);
+        return buildCreateRoomResponse(room, userAId);
     }
 
     /**
@@ -150,12 +145,12 @@ public class ChatService {
             if (byConnection.isPresent()) {
                 ChatRoom existingRoom = byConnection.get();
                 ensurePersonalRoomMembers(existingRoom, userAId, userBId);
-                return ChatRoomResponse.from(existingRoom);
+                return buildCreateRoomResponse(existingRoom, userAId);
             }
         }
 
         ChatRoom room = createPersonalRoom(roomName, userAId, userBId, connectionId);
-        return ChatRoomResponse.from(room);
+        return buildCreateRoomResponse(room, userAId);
     }
 
     private void ensurePersonalRoomMembers(ChatRoom room, Long userAId, Long userBId) {
@@ -584,13 +579,16 @@ public class ChatService {
                     Long targetUserId = targetUser != null ? targetUser.getId() : null;
                     String targetNickname = targetUser != null ? targetUser.getNickname() : null;
                     String targetProfileImage = extractProfileImage(targetUser);
+                    ChatParticipantProfileResponse targetProfile = targetUser != null
+                            ? toParticipantProfileResponse(targetUser)
+                            : null;
                     String displayName = room.getName();
                     if (room.getType() == ChatRoomType.PERSONAL && targetNickname != null && !targetNickname.isBlank()) {
                         displayName = targetNickname;
                     }
 
                     return ChatRoomResponse.from(room, displayName, content, time, unreadCount,
-                            targetUserId, targetNickname, targetProfileImage);
+                            targetUserId, targetNickname, targetProfileImage, targetProfile);
                 })
                 .sorted((r1, r2) -> {
                     java.time.OffsetDateTime t1 = (r1.getLatestMessageTime() != null) ? r1.getLatestMessageTime() : r1.getCreatedAt();
@@ -604,7 +602,7 @@ public class ChatService {
      * 1:1 채팅방 상대 프로필 조회
      */
     @Transactional(readOnly = true)
-    public MatchingCandidateResponse getCounterpartProfile(Long roomId, Long userId) {
+    public ChatParticipantProfileResponse getCounterpartProfile(Long roomId, Long userId) {
         validateRoomAccess(roomId, userId);
 
         User counterpart = chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(roomId)).stream()
@@ -618,7 +616,7 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public MatchingCandidateResponse getParticipantProfile(Long roomId, Long userId, Long targetUserId) {
+    public ChatParticipantProfileResponse getParticipantProfile(Long roomId, Long userId, Long targetUserId) {
         validateRoomAccess(roomId, userId);
 
         if (Objects.equals(userId, targetUserId)) {
@@ -693,6 +691,56 @@ public class ChatService {
         return result;
     }
 
+    private ChatRoomResponse buildCreateRoomResponse(ChatRoom room, Long requesterUserId) {
+        if (room.getType() != ChatRoomType.PERSONAL) {
+            return ChatRoomResponse.from(room);
+        }
+
+        Long counterpartUserId = resolveCounterpartUserId(room, requesterUserId);
+        if (counterpartUserId == null) {
+            return ChatRoomResponse.from(room);
+        }
+
+        User counterpart = findUserWithProfileOrThrow(counterpartUserId);
+        String targetNickname = counterpart.getNickname();
+        String displayName = (targetNickname != null && !targetNickname.isBlank())
+                ? targetNickname
+                : room.getName();
+
+        return ChatRoomResponse.from(
+                room,
+                displayName,
+                room.getLastMessage(),
+                room.getLastMessageAt(),
+                0,
+                counterpart.getId(),
+                targetNickname,
+                extractProfileImage(counterpart),
+                toParticipantProfileResponse(counterpart)
+        );
+    }
+
+    private Long resolveCounterpartUserId(ChatRoom room, Long requesterUserId) {
+        if (room.getType() != ChatRoomType.PERSONAL) {
+            return null;
+        }
+
+        if (Objects.equals(requesterUserId, room.getUser1Id())) {
+            return room.getUser2Id();
+        }
+        if (Objects.equals(requesterUserId, room.getUser2Id())) {
+            return room.getUser1Id();
+        }
+
+        return chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(room.getId())).stream()
+                .map(ChatRoomMember::getUser)
+                .filter(Objects::nonNull)
+                .map(User::getId)
+                .filter(memberUserId -> !Objects.equals(memberUserId, requesterUserId))
+                .findFirst()
+                .orElse(null);
+    }
+
     private ChatRoom createPersonalRoom(String roomName, Long creatorUserId, Long targetUserId, Long connectionId) {
         if (roomName == null || roomName.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "채팅방 이름은 비어 있을 수 없습니다.");
@@ -764,6 +812,12 @@ public class ChatService {
 
     private User findUserOrThrow(Long userId) {
         return userRepository.findById(userId)
+                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+    }
+
+    private User findUserWithProfileOrThrow(Long userId) {
+        return userRepository.findAllByIdWithProfile(List.of(userId)).stream()
+                .findFirst()
                 .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
     }
 
@@ -984,30 +1038,21 @@ public class ChatService {
         }
     }
 
-    private MatchingCandidateResponse toParticipantProfileResponse(User user) {
+    private ChatParticipantProfileResponse toParticipantProfileResponse(User user) {
         UserProfile profile = user.getUserProfile();
-        UserProfileResponse profileResponse = profile != null ? UserProfileResponse.from(profile, imageUrlBase) : null;
-
         boolean profileImageUploaded = profile != null
                 && profile.getProfileImagePath() != null
                 && !profile.getProfileImagePath().isBlank();
 
-        return MatchingCandidateResponse.builder()
+        return ChatParticipantProfileResponse.builder()
                 .userId(user.getId())
-                .socialId(user.getSocialId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
                 .profileImage(profile != null ? profile.getProfileImagePath() : null)
                 .gender(profile != null ? profile.getGender() : null)
-                .studentNum(user.getStudentNum())
                 .age(profile != null ? profile.getAge() : null)
-                .status(user.getStatus())
-                .onboardingStatus(user.getOnboardingStatus())
                 .profileExists(profile != null)
                 .profileImageUploaded(profileImageUploaded)
-                .emailVerified(false)
-                .tickets(user.getTickets())
-                .profile(profileResponse)
                 .build();
     }
 

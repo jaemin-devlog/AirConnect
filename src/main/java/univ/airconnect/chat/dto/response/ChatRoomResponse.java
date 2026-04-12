@@ -26,6 +26,7 @@ public class ChatRoomResponse {
     private Long targetUserId;
     private String targetNickname;
     private String targetProfileImage;
+    private ChatParticipantProfileResponse targetProfile;
 
     public static ChatRoomResponse from(ChatRoom entity, String latestMessage, LocalDateTime latestMessageTime, int unreadCount) {
         return ChatRoomResponse.builder()
@@ -48,7 +49,7 @@ public class ChatRoomResponse {
                                         String targetNickname,
                                         String targetProfileImage) {
         return from(entity, entity.getName(), latestMessage, latestMessageTime, unreadCount,
-                targetUserId, targetNickname, targetProfileImage);
+                targetUserId, targetNickname, targetProfileImage, null);
     }
 
     public static ChatRoomResponse from(ChatRoom entity,
@@ -59,6 +60,19 @@ public class ChatRoomResponse {
                                         Long targetUserId,
                                         String targetNickname,
                                         String targetProfileImage) {
+        return from(entity, displayName, latestMessage, latestMessageTime, unreadCount,
+                targetUserId, targetNickname, targetProfileImage, null);
+    }
+
+    public static ChatRoomResponse from(ChatRoom entity,
+                                        String displayName,
+                                        String latestMessage,
+                                        LocalDateTime latestMessageTime,
+                                        int unreadCount,
+                                        Long targetUserId,
+                                        String targetNickname,
+                                        String targetProfileImage,
+                                        ChatParticipantProfileResponse targetProfile) {
         return ChatRoomResponse.builder()
                 .id(entity.getId())
                 .name(displayName)
@@ -71,6 +85,7 @@ public class ChatRoomResponse {
                 .targetUserId(targetUserId)
                 .targetNickname(targetNickname)
                 .targetProfileImage(targetProfileImage)
+                .targetProfile(targetProfile)
                 .build();
     }
 

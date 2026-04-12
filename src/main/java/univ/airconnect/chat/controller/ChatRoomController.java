@@ -13,11 +13,11 @@ import org.springframework.web.bind.annotation.*;
 import univ.airconnect.chat.dto.request.ChatRoomCreateRequest;
 import univ.airconnect.chat.dto.request.SendMessageRequest;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
+import univ.airconnect.chat.dto.response.ChatParticipantProfileResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
-import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
 
 import java.util.List;
 
@@ -112,25 +112,25 @@ public class ChatRoomController {
     }
 
     @GetMapping("/rooms/{roomId}/counterpart-profile")
-    public ResponseEntity<ApiResponse<MatchingCandidateResponse>> getCounterpartProfile(
+    public ResponseEntity<ApiResponse<ChatParticipantProfileResponse>> getCounterpartProfile(
             @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        MatchingCandidateResponse response = chatService.getCounterpartProfile(roomId, userId);
+        ChatParticipantProfileResponse response = chatService.getCounterpartProfile(roomId, userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
     @GetMapping("/rooms/{roomId}/participants/{targetUserId}/profile")
-    public ResponseEntity<ApiResponse<MatchingCandidateResponse>> getParticipantProfile(
+    public ResponseEntity<ApiResponse<ChatParticipantProfileResponse>> getParticipantProfile(
             @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
             @PathVariable @Positive(message = "대상 사용자 ID는 양수여야 합니다.") Long targetUserId,
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        MatchingCandidateResponse response = chatService.getParticipantProfile(roomId, userId, targetUserId);
+        ChatParticipantProfileResponse response = chatService.getParticipantProfile(roomId, userId, targetUserId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
