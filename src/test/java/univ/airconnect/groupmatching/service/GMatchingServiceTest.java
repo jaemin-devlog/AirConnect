@@ -264,6 +264,7 @@ class GMatchingServiceTest {
         when(matchResultRepository.findByIdForUpdate(9900L)).thenReturn(Optional.of(matchResult));
         when(temporaryTeamRoomRepository.findByIdForUpdate(firstRoom.getId())).thenReturn(Optional.of(firstRoom));
         when(temporaryTeamRoomRepository.findByIdForUpdate(secondRoom.getId())).thenReturn(Optional.of(secondRoom));
+        when(finalGroupChatRoomRepository.countByTeamSize(GTeamSize.TWO)).thenReturn(0L);
 
         int finalizedCount = matchingService.finalizePendingMatches();
 
@@ -274,13 +275,26 @@ class GMatchingServiceTest {
         verify(chatService).publishEnterMessage(700L, 101L, expectedCreatedMessage);
 
         assertThat(finalizedCount).isEqualTo(1);
-        assertThat(roomNameCaptor.getValue()).isEqualTo("min, jin, kang, seo");
+        assertThat(roomNameCaptor.getValue()).isEqualTo("2:2그룹매칭방(1)");
         assertThat(user1.getTickets()).isEqualTo(3);
         assertThat(user2.getTickets()).isEqualTo(3);
         assertThat(user3.getTickets()).isEqualTo(3);
         assertThat(user4.getTickets()).isEqualTo(3);
         assertThat(firstRoom.getStatus()).isEqualTo(univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus.CLOSED);
         assertThat(secondRoom.getStatus()).isEqualTo(univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus.CLOSED);
+    }
+
+    @Test
+    @DisplayName("final room name uses team-size scoped numbering")
+    void buildFinalRoomName_usesTeamSizeScopedSequence() {
+        when(finalGroupChatRoomRepository.countByTeamSize(GTeamSize.TWO)).thenReturn(1L);
+        when(finalGroupChatRoomRepository.countByTeamSize(GTeamSize.THREE)).thenReturn(0L);
+
+        String twoByTwoName = ReflectionTestUtils.invokeMethod(matchingService, "buildFinalRoomName", GTeamSize.TWO);
+        String threeByThreeName = ReflectionTestUtils.invokeMethod(matchingService, "buildFinalRoomName", GTeamSize.THREE);
+
+        assertThat(twoByTwoName).isEqualTo("2:2그룹매칭방(2)");
+        assertThat(threeByThreeName).isEqualTo("3:3그룹매칭방(1)");
     }
 
     @Test
@@ -464,6 +478,7 @@ class GMatchingServiceTest {
     ) {
         lenient().when(matchResultRepository.existsByTeamPairAndStatuses(anyLong(), anyLong(), any())).thenReturn(false);
         lenient().when(finalGroupChatRoomRepository.findByTeamPair(firstRoom.getId(), secondRoom.getId())).thenReturn(Optional.empty());
+        lenient().when(finalGroupChatRoomRepository.countByTeamSize(firstRoom.getTeamSize())).thenReturn(0L);
         lenient().when(temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(firstRoom.getId()))
                 .thenReturn(firstMembers);
         lenient().when(temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(secondRoom.getId()))

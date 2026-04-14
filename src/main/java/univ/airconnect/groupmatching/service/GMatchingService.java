@@ -845,7 +845,7 @@ public class GMatchingService {
         finalMemberIds.addAll(extractUserIds(secondMembers));
 
         ChatRoom finalChatRoom = chatService.createGroupRoomWithMembers(
-                buildFinalRoomName(finalMemberIds),
+                buildFinalRoomName(first.getTeamSize()),
                 finalMemberIds
         );
 
@@ -1285,7 +1285,7 @@ public class GMatchingService {
         finalMemberIds.addAll(extractUserIds(secondMembers));
 
         ChatRoom finalChatRoom = chatService.createGroupRoomWithMembers(
-                buildFinalRoomName(finalMemberIds),
+                buildFinalRoomName(first.getTeamSize()),
                 finalMemberIds
         );
 
@@ -1626,6 +1626,16 @@ public class GMatchingService {
             users.add(user);
         }
         return users;
+    }
+
+    private String buildFinalRoomName(GTeamSize teamSize) {
+        if (teamSize == null) {
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
+        }
+
+        long sequence = finalGroupChatRoomRepository.countByTeamSize(teamSize) + 1;
+        String roomName = teamSize.getValue() + ":" + teamSize.getValue() + "그룹매칭방(" + sequence + ")";
+        return truncate(roomName, 100);
     }
 
     private String buildFinalRoomName(Collection<Long> userIds) {
