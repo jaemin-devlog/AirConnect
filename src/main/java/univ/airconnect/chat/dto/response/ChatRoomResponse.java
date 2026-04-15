@@ -25,6 +25,7 @@ public class ChatRoomResponse {
     private int unreadCount;
     private Long targetUserId;
     private String targetNickname;
+    private Integer targetStudentNum;
     private String targetProfileImage;
     private ChatParticipantDetailResponse targetProfile;
 
@@ -47,9 +48,10 @@ public class ChatRoomResponse {
                                         int unreadCount,
                                         Long targetUserId,
                                         String targetNickname,
+                                        Integer targetStudentNum,
                                         String targetProfileImage) {
         return from(entity, entity.getName(), latestMessage, latestMessageTime, unreadCount,
-                targetUserId, targetNickname, targetProfileImage, null);
+                targetUserId, targetNickname, targetStudentNum, targetProfileImage, null);
     }
 
     public static ChatRoomResponse from(ChatRoom entity,
@@ -59,9 +61,10 @@ public class ChatRoomResponse {
                                         int unreadCount,
                                         Long targetUserId,
                                         String targetNickname,
+                                        Integer targetStudentNum,
                                         String targetProfileImage) {
         return from(entity, displayName, latestMessage, latestMessageTime, unreadCount,
-                targetUserId, targetNickname, targetProfileImage, null);
+                targetUserId, targetNickname, targetStudentNum, targetProfileImage, null);
     }
 
     public static ChatRoomResponse from(ChatRoom entity,
@@ -71,6 +74,7 @@ public class ChatRoomResponse {
                                         int unreadCount,
                                         Long targetUserId,
                                         String targetNickname,
+                                        Integer targetStudentNum,
                                         String targetProfileImage,
                                         ChatParticipantDetailResponse targetProfile) {
         return ChatRoomResponse.builder()
@@ -84,6 +88,7 @@ public class ChatRoomResponse {
                 .unreadCount(unreadCount)
                 .targetUserId(targetUserId)
                 .targetNickname(targetNickname)
+                .targetStudentNum(targetStudentNum)
                 .targetProfileImage(targetProfileImage)
                 .targetProfile(targetProfile)
                 .build();

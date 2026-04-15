@@ -14,6 +14,7 @@ public class ChatParticipantDetailResponse {
     private Long userId;
     private String nickname;
     private String deptName;
+    private Integer studentNum;
     private Integer age;
     private Gender gender;
     private String profileImage;

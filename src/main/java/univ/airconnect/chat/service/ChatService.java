@@ -598,7 +598,9 @@ public class ChatService {
                     }
 
                     return ChatRoomResponse.from(room, displayName, content, time, unreadCount,
-                            targetUserId, targetNickname, targetProfileImage, targetProfile);
+                            targetUserId, targetNickname,
+                            targetUser != null ? targetUser.getStudentNum() : null,
+                            targetProfileImage, targetProfile);
                 })
                 .sorted((r1, r2) -> {
                     java.time.OffsetDateTime t1 = (r1.getLatestMessageTime() != null) ? r1.getLatestMessageTime() : r1.getCreatedAt();
@@ -738,6 +740,7 @@ public class ChatService {
                 0,
                 counterpart.getId(),
                 targetNickname,
+                counterpart.getStudentNum(),
                 extractProfileImage(counterpart),
                 toParticipantDetailResponse(counterpart)
         );
@@ -1136,6 +1139,7 @@ public class ChatService {
                 .userId(user.getId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
+                .studentNum(user.getStudentNum())
                 .profileImage(profile != null ? profile.getProfileImagePath() : null)
                 .gender(profile != null ? profile.getGender() : null)
                 .age(profile != null ? profile.getAge() : null)
