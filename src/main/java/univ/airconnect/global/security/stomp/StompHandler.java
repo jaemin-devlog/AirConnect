@@ -68,6 +68,8 @@ public class StompHandler implements ChannelInterceptor {
                 handleConnectWithLogging(accessor);
             } else if (StompCommand.SUBSCRIBE.equals(command)) {
                 handleSubscribe(accessor);
+            } else if (StompCommand.UNSUBSCRIBE.equals(command)) {
+                handleUnsubscribe(accessor);
             } else if (StompCommand.DISCONNECT.equals(command)) {
                 handleDisconnect(accessor);
             }
@@ -162,8 +164,12 @@ public class StompHandler implements ChannelInterceptor {
         // 구독 자체 권한은 이미 검증되었으므로, 부가 동기화 실패는 구독까지 차단하지 않는다.
         try {
             chatService.enterChatRoom(roomId.toString());
-            chatService.mapSessionToRoom(accessor.getSessionId(), roomId.toString());
-            chatService.updateLastRead(roomId, userId);
+            chatService.registerSessionRoomSubscription(
+                    accessor.getSessionId(),
+                    accessor.getSubscriptionId(),
+                    roomId.toString()
+            );
+            chatService.syncReadStateOnRoomViewed(roomId, userId);
         } catch (RuntimeException ex) {
             stompOpsMonitor.recordSideEffectFailure("SUBSCRIBE_SYNC", ex);
             log.warn("STOMP SUBSCRIBE SIDE-EFFECT FAIL: sessionId={}, userId={}, roomId={}, type={}, message={}",
@@ -192,6 +198,10 @@ public class StompHandler implements ChannelInterceptor {
 
         log.info("STOMP SUBSCRIBE MATCHING: sessionId={}, userId={}, teamRoomId={}",
                 accessor.getSessionId(), userId, teamRoomId);
+    }
+
+    private void handleUnsubscribe(StompHeaderAccessor accessor) {
+        chatService.unregisterSessionRoomSubscription(accessor.getSessionId(), accessor.getSubscriptionId());
     }
 
     private void handleDisconnect(StompHeaderAccessor accessor) {

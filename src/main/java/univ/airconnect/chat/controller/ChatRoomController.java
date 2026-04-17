@@ -180,7 +180,7 @@ public class ChatRoomController {
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        chatService.updateLastRead(roomId, userId);
+        chatService.syncReadStateOnRoomViewed(roomId, userId);
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }
 }

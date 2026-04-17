@@ -38,6 +38,10 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
      */
     Optional<ChatRoomMember> findByChatRoomIdAndUserId(Long chatRoomId, Long userId);
 
+    Optional<ChatRoomMember> findByChatRoomIdAndUserIdAndHiddenAtIsNull(Long chatRoomId, Long userId);
+
+    List<ChatRoomMember> findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(Long chatRoomId);
+
     /**
      * 두 사용자가 모두 참여 중인 PERSONAL 타입의 채팅방 ID 조회
      */

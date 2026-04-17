@@ -40,6 +40,8 @@ public class ChatMessageResponse {
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX", timezone = "UTC")
     private OffsetDateTime createdAt;
 
+    private static final String EVENT_MESSAGE = "MESSAGE";
+    private static final String EVENT_READ_RECEIPT = "READ_RECEIPT";
     private static final String DELETED_CONTENT = "삭제된 메시지입니다.";
     private static final ZoneOffset RESPONSE_OFFSET = ZoneOffset.UTC;
 
@@ -48,9 +50,9 @@ public class ChatMessageResponse {
     }
 
     public static ChatMessageResponse from(ChatMessage entity, String profileImage, Integer unreadCount) {
-        String renderedContent = entity.isDeleted() ? DELETED_CONTENT : entity.getContent();
+        String renderedContent = entity.isDeleted() ? DELETED_CONTENT : entity.getDisplayContent();
         return ChatMessageResponse.builder()
-                .eventType("MESSAGE")
+                .eventType(EVENT_MESSAGE)
                 .id(entity.getId())
                 .messageId(entity.getId())
                 .roomId(entity.getRoomId())
@@ -73,7 +75,7 @@ public class ChatMessageResponse {
     public static ChatMessageResponse readReceipt(Long roomId, Long messageId, LocalDateTime readAt, Integer unreadCount) {
         OffsetDateTime offsetReadAt = toOffset(readAt);
         return ChatMessageResponse.builder()
-                .eventType("READ_RECEIPT")
+                .eventType(EVENT_READ_RECEIPT)
                 .id(messageId)
                 .messageId(messageId)
                 .roomId(roomId)

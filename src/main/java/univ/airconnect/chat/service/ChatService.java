@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.HashOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -68,6 +69,7 @@ public class ChatService {
 
     private static final String CHAT_SESSION_KEY = "chat:session:";
     private static final String SESSION_ROOM_KEY = "chat:session-room:";
+    private static final String SESSION_SUBSCRIPTION_KEY = "chat:session-subscriptions:";
     private static final String ROOM_SESSION_SET_KEY = "chat:room-sessions:";
 
     /**
@@ -177,8 +179,9 @@ public class ChatService {
         }
 
         Map<Long, User> userMap = loadUsersAsMap(missingUserIds);
+        Long initialLastReadMessageId = resolveLatestMessageId(room.getId());
         List<ChatRoomMember> membersToRestore = missingUserIds.stream()
-                .map(userId -> ChatRoomMember.create(room, userMap.get(userId)))
+                .map(userId -> ChatRoomMember.create(room, userMap.get(userId), initialLastReadMessageId))
                 .collect(Collectors.toList());
         chatRoomMemberRepository.saveAll(membersToRestore);
     }
@@ -198,7 +201,7 @@ public class ChatService {
      */
     @Transactional
     public void addMembersToRoom(Long roomId, Collection<Long> userIds) {
-        ChatRoom room = findRoomOrThrow(roomId);
+        ChatRoom room = findRoomForUpdateOrThrow(roomId);
 
         if (room.getType() != ChatRoomType.GROUP) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "그룹 채팅방에만 멤버를 추가할 수 있습니다.");
@@ -219,8 +222,9 @@ public class ChatService {
         }
 
         Map<Long, User> userMap = loadUsersAsMap(candidateUserIds);
+        Long initialLastReadMessageId = resolveLatestMessageId(roomId);
         List<ChatRoomMember> newMembers = candidateUserIds.stream()
-                .map(userId -> ChatRoomMember.create(room, userMap.get(userId)))
+                .map(userId -> ChatRoomMember.create(room, userMap.get(userId), initialLastReadMessageId))
                 .collect(Collectors.toList());
 
         chatRoomMemberRepository.saveAll(newMembers);
@@ -261,7 +265,7 @@ public class ChatService {
      */
     @Transactional
     public void joinRoom(Long roomId, Long userId) {
-        ChatRoom room = findRoomOrThrow(roomId);
+        ChatRoom room = findRoomForUpdateOrThrow(roomId);
 
         if (room.getType() == ChatRoomType.PERSONAL) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "1:1 채팅방은 별도 참여가 불가능합니다.");
@@ -270,7 +274,7 @@ public class ChatService {
         User user = findUserOrThrow(userId);
 
         if (!chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)) {
-            chatRoomMemberRepository.save(ChatRoomMember.create(room, user));
+            chatRoomMemberRepository.save(ChatRoomMember.create(room, user, resolveLatestMessageId(roomId)));
         }
     }
 
@@ -278,7 +282,7 @@ public class ChatService {
      * 채팅방 멤버 여부 확인
      */
     public boolean isMember(Long roomId, Long userId) {
-        return chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId);
+        return chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId);
     }
 
     /**
@@ -339,7 +343,70 @@ public class ChatService {
         }
 
         redisTemplate.opsForValue().set(SESSION_ROOM_KEY + sessionId, roomId, 24, TimeUnit.HOURS);
-        redisTemplate.opsForSet().add(ROOM_SESSION_SET_KEY + roomId, sessionId);
+        addSessionToRoom(roomId, sessionId);
+    }
+
+    /**
+     * STOMP subscription 단위로 session-room 매핑을 유지한다.
+     * 같은 세션이 여러 채팅방을 동시에 구독해도 각 room membership을 독립적으로 추적한다.
+     */
+    public void registerSessionRoomSubscription(String sessionId, String subscriptionId, String roomId) {
+        if (sessionId == null || roomId == null) {
+            return;
+        }
+
+        if (subscriptionId == null || subscriptionId.isBlank()) {
+            mapSessionToRoom(sessionId, roomId);
+            return;
+        }
+
+        String subscriptionKey = SESSION_SUBSCRIPTION_KEY + sessionId;
+        HashOperations<String, Object, Object> hashOperations = redisTemplate.opsForHash();
+        Object previousRoomIdValue = hashOperations.get(subscriptionKey, subscriptionId);
+
+        hashOperations.put(subscriptionKey, subscriptionId, roomId);
+        addSessionToRoom(roomId, sessionId);
+
+        if (previousRoomIdValue != null && !Objects.equals(String.valueOf(previousRoomIdValue), roomId)) {
+            List<Object> activeRooms = hashOperations.values(subscriptionKey);
+            boolean stillViewingPreviousRoom = activeRooms != null && activeRooms.stream()
+                    .map(String::valueOf)
+                    .anyMatch(previousRoom -> Objects.equals(previousRoom, String.valueOf(previousRoomIdValue)));
+
+            if (!stillViewingPreviousRoom) {
+                cleanupRoomTopicIfUnused(sessionId, previousRoomIdValue);
+            }
+        }
+    }
+
+    public void unregisterSessionRoomSubscription(String sessionId, String subscriptionId) {
+        if (sessionId == null || subscriptionId == null || subscriptionId.isBlank()) {
+            return;
+        }
+
+        String subscriptionKey = SESSION_SUBSCRIPTION_KEY + sessionId;
+        HashOperations<String, Object, Object> hashOperations = redisTemplate.opsForHash();
+        Object roomIdValue = hashOperations.get(subscriptionKey, subscriptionId);
+
+        if (roomIdValue == null) {
+            return;
+        }
+
+        hashOperations.delete(subscriptionKey, subscriptionId);
+
+        List<Object> remainingRooms = hashOperations.values(subscriptionKey);
+        boolean stillViewingRoom = remainingRooms != null && remainingRooms.stream()
+                .map(String::valueOf)
+                .anyMatch(roomId -> Objects.equals(roomId, String.valueOf(roomIdValue)));
+
+        if (!stillViewingRoom) {
+            cleanupRoomTopicIfUnused(sessionId, roomIdValue);
+        }
+
+        Long remainingSubscriptions = hashOperations.size(subscriptionKey);
+        if (remainingSubscriptions != null && remainingSubscriptions == 0L) {
+            redisTemplate.delete(subscriptionKey);
+        }
     }
 
     /**
@@ -396,47 +463,84 @@ public class ChatService {
      */
     public void removeSessionInfo(String sessionId) {
         Object roomIdValue = redisTemplate.opsForValue().get(SESSION_ROOM_KEY + sessionId);
+        String subscriptionKey = SESSION_SUBSCRIPTION_KEY + sessionId;
+        List<Object> subscriptionRoomIds = redisTemplate.opsForHash().values(subscriptionKey);
         redisTemplate.delete(CHAT_SESSION_KEY + sessionId);
         redisTemplate.delete(SESSION_ROOM_KEY + sessionId);
-        cleanupRoomTopicIfUnused(sessionId, roomIdValue);
+        redisTemplate.delete(subscriptionKey);
+
+        LinkedHashSet<String> roomIdsToCleanup = new LinkedHashSet<>();
+        if (roomIdValue != null) {
+            roomIdsToCleanup.add(String.valueOf(roomIdValue));
+        }
+        if (subscriptionRoomIds != null) {
+            subscriptionRoomIds.stream()
+                    .filter(Objects::nonNull)
+                    .map(String::valueOf)
+                    .forEach(roomIdsToCleanup::add);
+        }
+
+        roomIdsToCleanup.forEach(roomId -> cleanupRoomTopicIfUnused(sessionId, roomId));
     }
 
     /**
-     * 특정 채팅방의 읽음 상태 업데이트 (채팅방 진입/조회용)
+     * STOMP subscribe, PATCH /read, HTTP 메시지 조회 진입이 모두 동일한 room-viewed 진입점으로 읽음 상태를 동기화한다.
+     * PATCH는 websocket 구독이 늦거나 끊긴 상황에서의 fallback 역할을 맡는다.
+     */
+    @Transactional
+    public void syncReadStateOnRoomViewed(Long roomId, Long userId) {
+        ChatRoom room = findRoomForUpdateOrThrow(roomId);
+        ChatRoomMember member = chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "해당 채팅방에 접근할 수 없습니다."));
+
+        Long previousLastReadMessageId = member.getLastReadMessageId();
+        List<ChatMessage> unreadIncomingMessages = chatMessageRepository.findUnreadIncomingMessages(
+                roomId,
+                userId,
+                previousLastReadMessageId
+        );
+
+        chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)
+                .ifPresent(lastMsg -> member.updateLastReadMessageId(lastMsg.getId()));
+
+        if (unreadIncomingMessages.isEmpty()) {
+            return;
+        }
+
+        List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
+        LocalDateTime actionTime = LocalDateTime.now(java.time.Clock.systemUTC());
+
+        if (room.getType() == ChatRoomType.PERSONAL) {
+            publishPersonalReadReceiptEvents(room, unreadIncomingMessages, roomMembers, actionTime);
+            return;
+        }
+
+        publishGroupReadReceiptEvents(room, unreadIncomingMessages, roomMembers, actionTime);
+    }
+
+    /**
+     * 기존 호출부 호환용 래퍼. 새 구현은 syncReadStateOnRoomViewed를 사용한다.
      */
     @Transactional
     public void updateLastRead(Long roomId, Long userId) {
-        chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)
-                .ifPresent(member -> {
-                    Long previousLastReadMessageId = member.getLastReadMessageId();
-                    List<ChatMessage> unreadIncomingMessages = chatMessageRepository.findUnreadIncomingMessages(
-                            roomId,
-                            userId,
-                            previousLastReadMessageId
-                    );
-                    LocalDateTime readAt = LocalDateTime.now(java.time.Clock.systemUTC());
-
-                    if (!unreadIncomingMessages.isEmpty()) {
-                        chatMessageRepository.markIncomingMessagesRead(roomId, userId, readAt);
-                    }
-
-                    chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)
-                            .ifPresent(lastMsg -> member.updateLastReadMessageId(lastMsg.getId()));
-
-                    if (!unreadIncomingMessages.isEmpty()) {
-                        List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
-                        publishReadReceiptEvents(roomId, unreadIncomingMessages, roomMembers, readAt);
-                    }
-                });
+        syncReadStateOnRoomViewed(roomId, userId);
     }
 
     /**
-     * 특정 메시지 ID로 마지막 읽음 상태 업데이트 (메시지 전송 직후용)
+     * 발신자는 본인 메시지를 즉시 읽은 것으로 간주한다.
+     */
+    @Transactional
+    public void markOwnMessageAsRead(Long roomId, Long userId, Long messageId) {
+        chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)
+                .ifPresent(member -> member.updateLastReadMessageId(messageId));
+    }
+
+    /**
+     * 기존 호출부 호환용 래퍼. 새 구현은 markOwnMessageAsRead를 사용한다.
      */
     @Transactional
     public void updateLastRead(Long roomId, Long userId, Long messageId) {
-        chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)
-                .ifPresent(member -> member.updateLastReadMessageId(messageId));
+        markOwnMessageAsRead(roomId, userId, messageId);
     }
 
     /**
@@ -468,12 +572,13 @@ public class ChatService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "본인이 보낸 메시지만 삭제할 수 있습니다.");
         }
 
+        ChatRoom room = findRoomOrThrow(roomId);
         message.softDelete();
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
         ChatMessageResponse response = ChatMessageResponse.from(
                 message,
                 extractProfileImage(findUserOrThrow(userId)),
-                resolveMessageUnreadCount(message, roomMembers)
+                resolveMessageUnreadCount(room, message, roomMembers)
         );
         publishToRedisSilently(roomId, response);
         return response;
@@ -490,24 +595,23 @@ public class ChatService {
     }
 
     private ChatMessageResponse saveAndPublishMessage(Long roomId, User sender, String content, MessageType messageType) {
+        ChatRoom room = findRoomForUpdateOrThrow(roomId);
+
         ChatMessage chatMessage = ChatMessage.create(roomId, sender.getId(), sender.getNickname(), content, messageType);
         chatMessageRepository.save(chatMessage);
 
-        findRoomOrThrow(roomId).updateLastMessage(summarizeForRoomList(content, messageType), chatMessage.getCreatedAt());
+        room.updateLastMessage(summarizeForRoomList(content, messageType), chatMessage.getCreatedAt());
 
-        updateLastRead(roomId, sender.getId(), chatMessage.getId());
+        markOwnMessageAsRead(roomId, sender.getId(), chatMessage.getId());
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
-        LocalDateTime immediateReadAt = applyImmediateReadForViewingMembers(roomId, sender.getId(), chatMessage, roomMembers);
+        applyImmediateReadForViewingMembers(room, sender.getId(), chatMessage, roomMembers);
 
         ChatMessageResponse response = ChatMessageResponse.from(
                 chatMessage,
                 extractProfileImage(sender),
-                resolveMessageUnreadCount(chatMessage, roomMembers)
+                resolveMessageUnreadCount(room, chatMessage, roomMembers)
         );
         publishToRedisSilently(roomId, response);
-        if (immediateReadAt != null) {
-            publishImmediateReadReceipt(roomId, chatMessage, roomMembers, immediateReadAt);
-        }
         publishChatMessageNotifications(roomId, sender, chatMessage);
         return response;
     }
@@ -517,6 +621,7 @@ public class ChatService {
      */
     @Transactional
     public void leaveRoom(Long roomId, Long userId) {
+        ChatRoom room = findRoomForUpdateOrThrow(roomId);
         User user = findUserOrThrow(userId);
 
         ChatRoomMember member = chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)
@@ -535,7 +640,7 @@ public class ChatService {
         ChatMessageResponse response = ChatMessageResponse.from(
                 exitMessage,
                 extractProfileImage(user),
-                resolveMessageUnreadCount(exitMessage, roomMembers)
+                resolveMessageUnreadCount(room, exitMessage, roomMembers)
         );
         publishToRedisSilently(roomId, response);
 
@@ -580,6 +685,9 @@ public class ChatService {
                             ? room.getLastMessageAt()
                             : (latestMsg != null ? latestMsg.getCreatedAt() : null);
                     int unreadCount = unreadCountMap.getOrDefault(room.getId(), 0);
+                    if (room.getType() == ChatRoomType.PERSONAL) {
+                        unreadCount = unreadCount > 0 ? 1 : 0;
+                    }
 
                     User targetUser = null;
                     if (room.getType() == ChatRoomType.PERSONAL) {
@@ -652,6 +760,7 @@ public class ChatService {
     @Transactional
     public List<ChatMessageResponse> findMessagesByRoomId(Long roomId, Long userId, Long lastMessageId, int size) {
         validateRoomAccess(roomId, userId);
+        ChatRoom room = findRoomOrThrow(roomId);
 
         Pageable pageable = PageRequest.of(0, size);
         List<ChatMessage> messages = chatMessageRepository.findMessagesCursor(roomId, lastMessageId, pageable);
@@ -660,7 +769,7 @@ public class ChatService {
             return Collections.emptyList();
         }
 
-        updateLastRead(roomId, userId);
+        syncReadStateOnRoomViewed(roomId, userId);
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
 
         Set<Long> senderIds = messages.stream()
@@ -676,7 +785,7 @@ public class ChatService {
                     String profileImage = (sender != null && sender.getUserProfile() != null)
                             ? sender.getUserProfile().getProfileImagePath()
                             : null;
-                    return ChatMessageResponse.from(msg, profileImage, resolveMessageUnreadCount(msg, roomMembers));
+                    return ChatMessageResponse.from(msg, profileImage, resolveMessageUnreadCount(room, msg, roomMembers));
                 })
                 .collect(Collectors.toList());
 
@@ -860,6 +969,14 @@ public class ChatService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "채팅방을 찾을 수 없습니다."));
     }
 
+    private ChatRoom findRoomForUpdateOrThrow(Long roomId) {
+        Optional<ChatRoom> lockedRoom = chatRoomRepository.findByIdForUpdate(roomId);
+        if (lockedRoom != null && lockedRoom.isPresent()) {
+            return lockedRoom.get();
+        }
+        return findRoomOrThrow(roomId);
+    }
+
     private String extractProfileImage(User user) {
         if (user == null) {
             return null;
@@ -904,12 +1021,16 @@ public class ChatService {
         }
     }
 
+    private void addSessionToRoom(String roomId, String sessionId) {
+        redisTemplate.opsForSet().add(ROOM_SESSION_SET_KEY + roomId, sessionId);
+    }
+
     private void publishChatMessageNotifications(Long roomId, User sender, ChatMessage chatMessage) {
         if (!isPushEligibleMessage(chatMessage.getType())) {
             return;
         }
 
-        List<ChatRoomMember> members = chatRoomMemberRepository.findByChatRoomId(roomId);
+        List<ChatRoomMember> members = loadVisibleRoomMembers(roomId);
         if (members.isEmpty()) {
             return;
         }
@@ -1019,92 +1140,157 @@ public class ChatService {
     }
 
     private List<ChatRoomMember> loadVisibleRoomMembers(Long roomId) {
-        return chatRoomMemberRepository.findByChatRoomId(roomId).stream()
-                .filter(member -> !member.isHidden())
-                .toList();
+        return chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId);
     }
 
-    private LocalDateTime applyImmediateReadForViewingMembers(Long roomId,
-                                                              Long senderId,
-                                                              ChatMessage chatMessage,
-                                                              List<ChatRoomMember> roomMembers) {
+    private void applyImmediateReadForViewingMembers(ChatRoom room,
+                                                     Long senderId,
+                                                     ChatMessage chatMessage,
+                                                     List<ChatRoomMember> roomMembers) {
         if (chatMessage == null || roomMembers == null || roomMembers.isEmpty()) {
-            return null;
+            return;
         }
 
-        boolean readByViewer = false;
+        if (room.getType() == ChatRoomType.PERSONAL) {
+            applyImmediateReadForPersonalRoom(room, senderId, chatMessage, roomMembers);
+            return;
+        }
+
+        applyImmediateReadForGroupRoom(room, senderId, chatMessage, roomMembers);
+    }
+
+    private void applyImmediateReadForPersonalRoom(ChatRoom room,
+                                                   Long senderId,
+                                                   ChatMessage message,
+                                                   List<ChatRoomMember> roomMembers) {
+        roomMembers.stream()
+                .filter(member -> isUnreadRecipient(member, message))
+                .filter(member -> isUserViewingRoom(member.getUser().getId(), room.getId()))
+                .findFirst()
+                .ifPresent(member -> member.updateLastReadMessageId(message.getId()));
+
+        markMessageAsFullyReadIfNeeded(room, message, roomMembers, LocalDateTime.now(java.time.Clock.systemUTC()));
+    }
+
+    private void applyImmediateReadForGroupRoom(ChatRoom room,
+                                                Long senderId,
+                                                ChatMessage message,
+                                                List<ChatRoomMember> roomMembers) {
         for (ChatRoomMember member : roomMembers) {
             Long memberUserId = member.getUser().getId();
             if (Objects.equals(memberUserId, senderId)) {
                 continue;
             }
-            if (!isUserViewingRoom(memberUserId, roomId)) {
+            if (!isUnreadRecipient(member, message)) {
+                continue;
+            }
+            if (!isUserViewingRoom(memberUserId, room.getId())) {
                 continue;
             }
 
-            member.updateLastReadMessageId(chatMessage.getId());
-            readByViewer = true;
+            member.updateLastReadMessageId(message.getId());
         }
 
-        if (!readByViewer) {
-            return null;
-        }
-
-        chatMessage.markRead();
-        return chatMessage.getReadAt();
+        markMessageAsFullyReadIfNeeded(room, message, roomMembers, LocalDateTime.now(java.time.Clock.systemUTC()));
     }
 
-    private Integer resolveMessageUnreadCount(ChatMessage message, List<ChatRoomMember> roomMembers) {
-        if (message == null || message.isDeleted()) {
+    private Integer resolveMessageUnreadCount(ChatRoom room, ChatMessage message, List<ChatRoomMember> roomMembers) {
+        if (message == null || !message.isUnreadTrackable()) {
             return 0;
         }
-
-        MessageType messageType = message.getType();
-        if (messageType != MessageType.TEXT && messageType != MessageType.IMAGE) {
-            return 0;
-        }
-
         if (roomMembers == null || roomMembers.isEmpty()) {
             return 0;
         }
 
+        if (room.getType() == ChatRoomType.PERSONAL) {
+            return resolvePersonalUnreadCount(message, roomMembers);
+        }
+
+        return resolveGroupUnreadCount(message, roomMembers);
+    }
+
+    private Integer resolvePersonalUnreadCount(ChatMessage message, List<ChatRoomMember> roomMembers) {
         long unreadCount = roomMembers.stream()
-                .filter(member -> !Objects.equals(member.getUser().getId(), message.getSenderId()))
-                .filter(member -> {
-                    Long lastReadMessageId = member.getLastReadMessageId();
-                    return lastReadMessageId == null || lastReadMessageId < message.getId();
-                })
+                .filter(member -> isUnreadRecipient(member, message))
+                .filter(member -> !member.hasRead(message.getId()))
+                .count();
+
+        return unreadCount > 0 ? 1 : 0;
+    }
+
+    private Integer resolveGroupUnreadCount(ChatMessage message, List<ChatRoomMember> roomMembers) {
+        long unreadCount = roomMembers.stream()
+                .filter(member -> isUnreadRecipient(member, message))
+                .filter(member -> !member.hasRead(message.getId()))
                 .count();
 
         return Math.toIntExact(unreadCount);
     }
 
-    private void publishImmediateReadReceipt(Long roomId,
-                                             ChatMessage message,
-                                             List<ChatRoomMember> roomMembers,
-                                             LocalDateTime readAt) {
-        ChatMessageResponse readReceipt = ChatMessageResponse.readReceipt(
-                roomId,
-                message.getId(),
-                readAt,
-                resolveMessageUnreadCount(message, roomMembers)
-        );
-        publishToRedisSilently(roomId, readReceipt);
+    private void publishPersonalReadReceiptEvents(ChatRoom room,
+                                                  List<ChatMessage> messages,
+                                                  List<ChatRoomMember> roomMembers,
+                                                  LocalDateTime actionTime) {
+        publishReadReceiptEvents(room, messages, roomMembers, actionTime);
     }
 
-    private void publishReadReceiptEvents(Long roomId,
+    private void publishGroupReadReceiptEvents(ChatRoom room,
+                                               List<ChatMessage> messages,
+                                               List<ChatRoomMember> roomMembers,
+                                               LocalDateTime actionTime) {
+        publishReadReceiptEvents(room, messages, roomMembers, actionTime);
+    }
+
+    private void publishReadReceiptEvents(ChatRoom room,
                                           List<ChatMessage> messages,
                                           List<ChatRoomMember> roomMembers,
-                                          LocalDateTime readAt) {
+                                          LocalDateTime actionTime) {
         for (ChatMessage message : messages) {
+            if (!message.isUnreadTrackable()) {
+                continue;
+            }
+
+            markMessageAsFullyReadIfNeeded(room, message, roomMembers, actionTime);
             ChatMessageResponse readReceipt = ChatMessageResponse.readReceipt(
-                    roomId,
+                    room.getId(),
                     message.getId(),
-                    readAt,
-                    resolveMessageUnreadCount(message, roomMembers)
+                    actionTime,
+                    resolveMessageUnreadCount(room, message, roomMembers)
             );
-            publishToRedisSilently(roomId, readReceipt);
+            publishToRedisSilently(room.getId(), readReceipt);
         }
+    }
+
+    private void markMessageAsFullyReadIfNeeded(ChatRoom room,
+                                                ChatMessage message,
+                                                List<ChatRoomMember> roomMembers,
+                                                LocalDateTime readAt) {
+        if (!message.isUnreadTrackable()) {
+            return;
+        }
+        if (resolveMessageUnreadCount(room, message, roomMembers) == 0) {
+            message.markRead(readAt);
+        }
+    }
+
+    private boolean isUnreadRecipient(ChatRoomMember member, ChatMessage message) {
+        if (member == null || member.isHidden() || message == null) {
+            return false;
+        }
+        if (Objects.equals(member.getUser().getId(), message.getSenderId())) {
+            return false;
+        }
+        if (member.getLastReadMessageId() != null) {
+            return true;
+        }
+        LocalDateTime joinedAt = member.getJoinedAt();
+        return joinedAt == null || !joinedAt.isAfter(message.getCreatedAt());
+    }
+
+    private Long resolveLatestMessageId(Long roomId) {
+        return chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)
+                .map(ChatMessage::getId)
+                .orElse(null);
     }
 
     private ChatParticipantProfileResponse toParticipantProfileResponse(User user) {

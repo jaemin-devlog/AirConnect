@@ -174,4 +174,24 @@ class ChatRoomControllerTest {
 
         verify(chatService).getParticipantProfiles(roomId, currentUserId);
     }
+
+    @Test
+    void updateReadStatus_delegatesToUnifiedReadSync() {
+        ChatRoomController controller = new ChatRoomController(chatService);
+        Long roomId = 903L;
+        Long currentUserId = 1L;
+        String traceId = "trace-chat-read";
+
+        when(request.getAttribute("traceId")).thenReturn(traceId);
+
+        ResponseEntity<ApiResponse<Void>> response =
+                controller.updateReadStatus(roomId, currentUserId, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().isSuccess()).isTrue();
+        assertThat(response.getBody().getTraceId()).isEqualTo(traceId);
+
+        verify(chatService).syncReadStateOnRoomViewed(roomId, currentUserId);
+    }
 }
