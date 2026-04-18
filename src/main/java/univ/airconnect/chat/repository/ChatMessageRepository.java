@@ -35,8 +35,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             "AND m.senderId <> :userId " +
             "AND m.deleted = false " +
             "AND m.type IN ('TEXT', 'IMAGE') " +
-            "AND ((crm.lastReadMessageId IS NOT NULL AND m.id > crm.lastReadMessageId) " +
-            "OR (crm.lastReadMessageId IS NULL AND m.createdAt >= crm.joinedAt)) " +
+            "AND m.createdAt >= crm.joinedAt " +
+            "AND (crm.lastReadMessageId IS NULL OR m.id > crm.lastReadMessageId) " +
             "GROUP BY m.roomId")
     List<Object[]> countUnreadByUserId(@Param("userId") Long userId);
 
@@ -50,12 +50,31 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             "AND crm.user.id = :userId " +
             "AND crm.hiddenAt IS NULL " +
             "AND m.senderId <> :userId " +
-            "AND ((:lastReadMessageId IS NOT NULL AND m.id > :lastReadMessageId) " +
-            "OR (:lastReadMessageId IS NULL AND m.createdAt >= crm.joinedAt)) " +
+            "AND m.deleted = false " +
+            "AND m.type IN ('TEXT', 'IMAGE') " +
+            "AND m.createdAt >= crm.joinedAt " +
+            "AND (:lastReadMessageId IS NULL OR m.id > :lastReadMessageId) " +
             "ORDER BY m.id ASC")
     List<ChatMessage> findUnreadIncomingMessages(@Param("roomId") Long roomId,
                                                  @Param("userId") Long userId,
                                                  @Param("lastReadMessageId") Long lastReadMessageId);
+
+    @Query("SELECT m FROM ChatMessage m, ChatRoomMember crm " +
+            "WHERE m.roomId = :roomId " +
+            "AND crm.chatRoom.id = m.roomId " +
+            "AND crm.user.id = :userId " +
+            "AND crm.hiddenAt IS NULL " +
+            "AND m.senderId <> :userId " +
+            "AND m.deleted = false " +
+            "AND m.type IN ('TEXT', 'IMAGE') " +
+            "AND m.createdAt >= crm.joinedAt " +
+            "AND (:previousLastReadMessageId IS NULL OR m.id > :previousLastReadMessageId) " +
+            "AND m.id <= :newLastReadMessageId " +
+            "ORDER BY m.id ASC")
+    List<ChatMessage> findNewlyReadIncomingMessages(@Param("roomId") Long roomId,
+                                                    @Param("userId") Long userId,
+                                                    @Param("previousLastReadMessageId") Long previousLastReadMessageId,
+                                                    @Param("newLastReadMessageId") Long newLastReadMessageId);
 
     int countByRoomIdAndIdGreaterThan(Long roomId, Long lastReadMessageId);
 
