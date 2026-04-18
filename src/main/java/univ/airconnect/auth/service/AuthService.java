@@ -49,7 +49,6 @@ public class AuthService {
     private final AnalyticsService analyticsService;
     private final VerificationService verificationService;
     private final PasswordEncoder passwordEncoder;
-    private final ReviewAccountService reviewAccountService;
 
     private static final int PASSWORD_MIN_LENGTH = 8;
     private static final int PASSWORD_MAX_LENGTH = 72;
@@ -107,25 +106,14 @@ public class AuthService {
 
     @Transactional
     public LoginResponse emailLogin(EmailLoginRequest request) {
-        log.info("Email login payload received: hasEmail={}, hasVerificationToken={}, hasPassword={}, hasDeviceId={}, reviewEnabled={}",
+        log.info("Email login payload received: hasEmail={}, hasPassword={}, hasDeviceId={}",
                 request != null && request.getEmail() != null && !request.getEmail().isBlank(),
-                request != null && request.getVerificationToken() != null && !request.getVerificationToken().isBlank(),
                 request != null && request.getPassword() != null && !request.getPassword().isBlank(),
-                request != null && request.getDeviceId() != null && !request.getDeviceId().isBlank(),
-                reviewAccountService.isEnabledAndConfigured());
+                request != null && request.getDeviceId() != null && !request.getDeviceId().isBlank());
 
         validateEmailLoginRequest(request);
 
-        boolean reviewLogin = reviewAccountService.isReviewLoginRequest(request);
-        log.info("Email login mode resolved: reviewLogin={}", reviewLogin);
-        String normalizedEmail;
-
-        if (reviewLogin) {
-            normalizedEmail = normalizeEmail(request.getEmail());
-        } else {
-            String verifiedEmail = verificationService.resolveVerifiedEmail(request.getVerificationToken());
-            normalizedEmail = normalizeEmail(verifiedEmail);
-        }
+        String normalizedEmail = normalizeEmail(request.getEmail());
 
         User user = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
                 .orElseThrow(() -> new AuthException(AuthErrorCode.EMAIL_LOGIN_FAILED));
@@ -137,13 +125,10 @@ public class AuthService {
             throw new AuthException(AuthErrorCode.EMAIL_LOGIN_FAILED);
         }
 
-        if (!reviewLogin) {
-            verificationService.consumeVerifiedEmail(request.getVerificationToken());
-        }
         user.markActive();
 
-        log.info("Email login completed: userId={}, emailMasked={}, reviewLogin={}",
-                user.getId(), maskEmail(normalizedEmail), reviewLogin);
+        log.info("Email login completed: userId={}, emailMasked={}",
+                user.getId(), maskEmail(normalizedEmail));
         return issueLoginResponse(user, request.getDeviceId(), SocialProvider.EMAIL.name());
     }
 
@@ -259,8 +244,7 @@ public class AuthService {
         if (request == null) {
             throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
         }
-        boolean reviewLogin = reviewAccountService.isReviewLoginRequest(request);
-        if (!reviewLogin && (request.getVerificationToken() == null || request.getVerificationToken().isBlank())) {
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
             throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
         }
         if (request.getPassword() == null || request.getPassword().isBlank()) {

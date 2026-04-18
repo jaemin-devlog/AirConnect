@@ -68,8 +68,6 @@ class AuthServiceTest {
     private VerificationService verificationService;
     @Mock
     private PasswordEncoder passwordEncoder;
-    @Mock
-    private ReviewAccountService reviewAccountService;
 
     @InjectMocks
     private AuthService authService;
@@ -208,12 +206,32 @@ class AuthServiceTest {
     }
 
     @Test
-    void emailLogin_failsWhenPasswordMismatch() {
-        EmailLoginRequest request = new EmailLoginRequest("verify-token", "wrong-password", "device-1");
+    void emailLogin_succeedsWithEmailAndPasswordOnly() {
+        EmailLoginRequest request = new EmailLoginRequest("user@office.hanseo.ac.kr", "Passw0rd!@", "device-1");
         User user = User.createEmailUser("user@office.hanseo.ac.kr", "encoded-password");
         ReflectionTestUtils.setField(user, "id", 77L);
 
-        when(verificationService.resolveVerifiedEmail("verify-token")).thenReturn("user@office.hanseo.ac.kr");
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "user@office.hanseo.ac.kr"))
+                .thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Passw0rd!@", "encoded-password")).thenReturn(true);
+        when(jwtProvider.createAccessToken(77L)).thenReturn("access-token");
+        when(jwtProvider.createRefreshToken(77L, "device-1")).thenReturn("refresh-token-raw");
+        when(tokenHashService.hash("refresh-token-raw")).thenReturn("refresh-token-hash");
+        when(userService.getMe(77L)).thenReturn(UserMeResponse.builder().userId(77L).build());
+
+        LoginResponse response = authService.emailLogin(request);
+
+        assertThat(response.getAccessToken()).isEqualTo("access-token");
+        verify(verificationService, never()).resolveVerifiedEmail(any());
+        verify(verificationService, never()).consumeVerifiedEmail(any());
+    }
+
+    @Test
+    void emailLogin_failsWhenPasswordMismatch() {
+        EmailLoginRequest request = new EmailLoginRequest("user@office.hanseo.ac.kr", "wrong-password", "device-1");
+        User user = User.createEmailUser("user@office.hanseo.ac.kr", "encoded-password");
+        ReflectionTestUtils.setField(user, "id", 77L);
+
         when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "user@office.hanseo.ac.kr"))
                 .thenReturn(Optional.of(user));
         when(passwordEncoder.matches("wrong-password", "encoded-password")).thenReturn(false);
@@ -225,25 +243,13 @@ class AuthServiceTest {
     }
 
     @Test
-    void emailLogin_allowsReviewAccountWithoutVerificationToken() {
-        EmailLoginRequest request = new EmailLoginRequest(null, "Passw0rd!@", "device-1", "review@airconnect.test");
-        User user = User.createEmailUser("review@airconnect.test", "encoded-password");
-        ReflectionTestUtils.setField(user, "id", 88L);
+    void emailLogin_requiresEmail() {
+        EmailLoginRequest request = new EmailLoginRequest(null, "Passw0rd!@", "device-1");
 
-        when(reviewAccountService.isReviewLoginRequest(request)).thenReturn(true);
-        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "review@airconnect.test"))
-                .thenReturn(Optional.of(user));
-        when(passwordEncoder.matches("Passw0rd!@", "encoded-password")).thenReturn(true);
-        when(jwtProvider.createAccessToken(88L)).thenReturn("access-token");
-        when(jwtProvider.createRefreshToken(88L, "device-1")).thenReturn("refresh-token-raw");
-        when(tokenHashService.hash("refresh-token-raw")).thenReturn("refresh-token-hash");
-        when(userService.getMe(88L)).thenReturn(UserMeResponse.builder().userId(88L).build());
-
-        LoginResponse response = authService.emailLogin(request);
-
-        assertThat(response.getAccessToken()).isEqualTo("access-token");
-        verify(verificationService, never()).resolveVerifiedEmail(any());
-        verify(verificationService, never()).consumeVerifiedEmail(any());
+        assertThatThrownBy(() -> authService.emailLogin(request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.INVALID_LOGIN_REQUEST);
     }
 
     private User createUser(Long userId) {
