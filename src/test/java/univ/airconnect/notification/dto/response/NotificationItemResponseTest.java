@@ -38,6 +38,6 @@ class NotificationItemResponseTest {
         String json = objectMapper.writeValueAsString(response);
 
         assertThat(response.getCreatedAt()).isEqualTo(createdAt.atOffset(ZoneOffset.UTC));
-        assertThat(json).contains("+00:00");
+        assertThat(json).containsPattern("\"createdAt\":\"2026-04-12T04:30:00\\.000000(Z|\\+00:00)\"");
     }
 }

@@ -30,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 public class StompHandler implements ChannelInterceptor {
 
     private static final String CHAT_ROOM_SUB_PREFIX = "/sub/chat/room/";
+    private static final String CHAT_LIST_SUB_PREFIX = "/sub/chat/list/";
     private static final String MATCHING_TEAM_ROOM_SUB_PREFIX = "/sub/matching/team-room/";
 
     private final JwtProvider jwtProvider;
@@ -68,6 +69,8 @@ public class StompHandler implements ChannelInterceptor {
                 handleConnectWithLogging(accessor);
             } else if (StompCommand.SUBSCRIBE.equals(command)) {
                 handleSubscribe(accessor);
+            } else if (StompCommand.UNSUBSCRIBE.equals(command)) {
+                handleUnsubscribe(accessor);
             } else if (StompCommand.DISCONNECT.equals(command)) {
                 handleDisconnect(accessor);
             }
@@ -145,6 +148,11 @@ public class StompHandler implements ChannelInterceptor {
             return;
         }
 
+        if (destination.startsWith(CHAT_LIST_SUB_PREFIX)) {
+            handleChatListSubscribe(destination, userId);
+            return;
+        }
+
         if (destination.startsWith(MATCHING_TEAM_ROOM_SUB_PREFIX)) {
             handleMatchingSubscribe(accessor, destination, userId);
         }
@@ -162,8 +170,12 @@ public class StompHandler implements ChannelInterceptor {
         // 구독 자체 권한은 이미 검증되었으므로, 부가 동기화 실패는 구독까지 차단하지 않는다.
         try {
             chatService.enterChatRoom(roomId.toString());
-            chatService.mapSessionToRoom(accessor.getSessionId(), roomId.toString());
-            chatService.updateLastRead(roomId, userId);
+            chatService.registerSessionRoomSubscription(
+                    accessor.getSessionId(),
+                    accessor.getSubscriptionId(),
+                    roomId.toString()
+            );
+            chatService.syncReadStateOnRoomViewed(roomId, userId);
         } catch (RuntimeException ex) {
             stompOpsMonitor.recordSideEffectFailure("SUBSCRIBE_SYNC", ex);
             log.warn("STOMP SUBSCRIBE SIDE-EFFECT FAIL: sessionId={}, userId={}, roomId={}, type={}, message={}",
@@ -192,6 +204,21 @@ public class StompHandler implements ChannelInterceptor {
 
         log.info("STOMP SUBSCRIBE MATCHING: sessionId={}, userId={}, teamRoomId={}",
                 accessor.getSessionId(), userId, teamRoomId);
+    }
+
+    private void handleChatListSubscribe(String destination, Long userId) {
+        Long subscribedUserId = extractId(destination, CHAT_LIST_SUB_PREFIX, "chat list user");
+        if (!subscribedUserId.equals(userId)) {
+            log.error("STOMP SUBSCRIBE REJECTED: destination={}, userId={}, reason=list_forbidden", destination, userId);
+            stompOpsMonitor.recordSubscribeFailure(new AccessDeniedException("list_forbidden"));
+            throw new AccessDeniedException("No permission to subscribe this chat list.");
+        }
+
+        stompOpsMonitor.recordSubscribeSuccess();
+    }
+
+    private void handleUnsubscribe(StompHeaderAccessor accessor) {
+        chatService.unregisterSessionRoomSubscription(accessor.getSessionId(), accessor.getSubscriptionId());
     }
 
     private void handleDisconnect(StompHeaderAccessor accessor) {

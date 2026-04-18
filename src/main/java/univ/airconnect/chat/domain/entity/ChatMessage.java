@@ -96,10 +96,18 @@ public class ChatMessage {
     }
 
     public void markRead() {
-        if (this.readAt != null) {
+        markRead(LocalDateTime.now(java.time.Clock.systemUTC()));
+    }
+
+    public void markRead(LocalDateTime readAt) {
+        if (this.readAt != null || readAt == null) {
             return;
         }
-        this.readAt = LocalDateTime.now(java.time.Clock.systemUTC());
+        this.readAt = readAt;
+    }
+
+    public boolean isUnreadTrackable() {
+        return !deleted && (type == MessageType.TEXT || type == MessageType.IMAGE);
     }
 
     public String getDisplayContent() {
