@@ -497,16 +497,22 @@ public class ChatService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "해당 채팅방에 접근할 수 없습니다."));
 
         Long previousLastReadMessageId = member.getLastReadMessageId();
-        List<ChatMessage> unreadIncomingMessages = chatMessageRepository.findUnreadIncomingMessages(
+        Long newLastReadMessageId = resolveLatestMessageId(roomId);
+
+        if (newLastReadMessageId == null) {
+            publishRoomListUpdate(room, userId, 0);
+            return;
+        }
+
+        List<ChatMessage> newlyReadIncomingMessages = findNewlyReadIncomingMessages(
                 roomId,
                 userId,
-                previousLastReadMessageId
+                previousLastReadMessageId,
+                newLastReadMessageId
         );
+        member.updateLastReadMessageId(newLastReadMessageId);
 
-        chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)
-                .ifPresent(lastMsg -> member.updateLastReadMessageId(lastMsg.getId()));
-
-        if (unreadIncomingMessages.isEmpty()) {
+        if (newlyReadIncomingMessages.isEmpty()) {
             publishRoomListUpdate(room, userId, 0);
             return;
         }
@@ -515,12 +521,12 @@ public class ChatService {
         LocalDateTime actionTime = LocalDateTime.now(java.time.Clock.systemUTC());
 
         if (room.getType() == ChatRoomType.PERSONAL) {
-            publishPersonalReadReceiptEvents(room, unreadIncomingMessages, roomMembers, actionTime);
+            syncPersonalReadReceipts(room, newlyReadIncomingMessages, roomMembers, actionTime);
             publishRoomListUpdate(room, userId, 0);
             return;
         }
 
-        publishGroupReadReceiptEvents(room, unreadIncomingMessages, roomMembers, actionTime);
+        syncGroupReadReceipts(room, newlyReadIncomingMessages, roomMembers, actionTime);
         publishRoomListUpdate(room, userId, 0);
     }
 
@@ -539,6 +545,77 @@ public class ChatService {
     public void markOwnMessageAsRead(Long roomId, Long userId, Long messageId) {
         chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)
                 .ifPresent(member -> member.updateLastReadMessageId(messageId));
+    }
+
+    private List<ChatMessage> markSenderReadThroughNewMessage(Long roomId, Long senderId, Long newMessageId) {
+        if (newMessageId == null) {
+            return Collections.emptyList();
+        }
+
+        ChatRoomMember senderMember = chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "해당 채팅방에 접근할 수 없습니다."));
+        return markMemberReadThroughMessage(roomId, senderMember, newMessageId, null);
+    }
+
+    private List<ChatMessage> findNewlyReadIncomingMessages(Long roomId,
+                                                            Long userId,
+                                                            Long previousLastReadMessageId,
+                                                            Long newLastReadMessageId) {
+        if (newLastReadMessageId == null) {
+            return Collections.emptyList();
+        }
+
+        List<ChatMessage> messages = chatMessageRepository.findNewlyReadIncomingMessages(
+                roomId,
+                userId,
+                previousLastReadMessageId,
+                newLastReadMessageId
+        );
+        if (messages != null && !messages.isEmpty()) {
+            return messages;
+        }
+
+        List<ChatMessage> fallbackMessages = chatMessageRepository.findUnreadIncomingMessages(
+                roomId,
+                userId,
+                previousLastReadMessageId
+        );
+
+        if (fallbackMessages == null || fallbackMessages.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return fallbackMessages.stream()
+                .filter(message -> message != null && message.getId() != null)
+                .filter(message -> message.getId() <= newLastReadMessageId)
+                .collect(Collectors.toList());
+    }
+
+    private List<ChatMessage> markMemberReadThroughMessage(Long roomId,
+                                                           ChatRoomMember member,
+                                                           Long newLastReadMessageId,
+                                                           Long excludedReceiptMessageId) {
+        if (member == null || newLastReadMessageId == null) {
+            return Collections.emptyList();
+        }
+
+        Long memberUserId = member.getUser().getId();
+        Long previousLastReadMessageId = member.getLastReadMessageId();
+        List<ChatMessage> newlyReadIncomingMessages = findNewlyReadIncomingMessages(
+                roomId,
+                memberUserId,
+                previousLastReadMessageId,
+                newLastReadMessageId
+        );
+        member.updateLastReadMessageId(newLastReadMessageId);
+
+        if (excludedReceiptMessageId == null || newlyReadIncomingMessages.isEmpty()) {
+            return newlyReadIncomingMessages;
+        }
+
+        return newlyReadIncomingMessages.stream()
+                .filter(message -> !Objects.equals(message.getId(), excludedReceiptMessageId))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -608,9 +685,16 @@ public class ChatService {
 
         room.updateLastMessage(summarizeForRoomList(content, messageType), chatMessage.getCreatedAt());
 
-        markOwnMessageAsRead(roomId, sender.getId(), chatMessage.getId());
+        List<ChatMessage> readReceiptMessages = new ArrayList<>(markSenderReadThroughNewMessage(roomId, sender.getId(), chatMessage.getId()));
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
-        applyImmediateReadForViewingMembers(room, sender.getId(), chatMessage, roomMembers);
+        readReceiptMessages.addAll(applyImmediateReadForViewingMembers(room, sender.getId(), chatMessage, roomMembers));
+
+        LocalDateTime actionTime = LocalDateTime.now(java.time.Clock.systemUTC());
+        if (room.getType() == ChatRoomType.PERSONAL) {
+            syncPersonalReadReceipts(room, readReceiptMessages, roomMembers, actionTime);
+        } else {
+            syncGroupReadReceipts(room, readReceiptMessages, roomMembers, actionTime);
+        }
 
         ChatMessageResponse response = ChatMessageResponse.from(
                 chatMessage,
@@ -766,6 +850,7 @@ public class ChatService {
     @Transactional
     public List<ChatMessageResponse> findMessagesByRoomId(Long roomId, Long userId, Long lastMessageId, int size) {
         validateRoomAccess(roomId, userId);
+        syncReadStateOnRoomViewed(roomId, userId);
         ChatRoom room = findRoomOrThrow(roomId);
 
         Pageable pageable = PageRequest.of(0, size);
@@ -775,7 +860,6 @@ public class ChatService {
             return Collections.emptyList();
         }
 
-        syncReadStateOnRoomViewed(roomId, userId);
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
 
         Set<Long> senderIds = messages.stream()
@@ -1193,39 +1277,42 @@ public class ChatService {
         return members != null ? members : Collections.emptyList();
     }
 
-    private void applyImmediateReadForViewingMembers(ChatRoom room,
-                                                     Long senderId,
-                                                     ChatMessage chatMessage,
-                                                     List<ChatRoomMember> roomMembers) {
+    private List<ChatMessage> applyImmediateReadForViewingMembers(ChatRoom room,
+                                                                  Long senderId,
+                                                                  ChatMessage chatMessage,
+                                                                  List<ChatRoomMember> roomMembers) {
         if (chatMessage == null || roomMembers == null || roomMembers.isEmpty()) {
-            return;
+            return Collections.emptyList();
         }
 
         if (room.getType() == ChatRoomType.PERSONAL) {
-            applyImmediateReadForPersonalRoom(room, senderId, chatMessage, roomMembers);
-            return;
+            return applyImmediateReadForPersonalRoom(room, senderId, chatMessage, roomMembers);
         }
 
-        applyImmediateReadForGroupRoom(room, senderId, chatMessage, roomMembers);
+        return applyImmediateReadForGroupRoom(room, senderId, chatMessage, roomMembers);
     }
 
-    private void applyImmediateReadForPersonalRoom(ChatRoom room,
-                                                   Long senderId,
-                                                   ChatMessage message,
-                                                   List<ChatRoomMember> roomMembers) {
-        roomMembers.stream()
+    private List<ChatMessage> applyImmediateReadForPersonalRoom(ChatRoom room,
+                                                                Long senderId,
+                                                                ChatMessage message,
+                                                                List<ChatRoomMember> roomMembers) {
+        List<ChatMessage> readReceiptMessages = roomMembers.stream()
                 .filter(member -> isUnreadRecipient(member, message))
                 .filter(member -> isUserViewingRoom(member.getUser().getId(), room.getId()))
                 .findFirst()
-                .ifPresent(member -> member.updateLastReadMessageId(message.getId()));
+                .map(member -> markMemberReadThroughMessage(room.getId(), member, message.getId(), message.getId()))
+                .orElseGet(Collections::emptyList);
 
         markMessageAsFullyReadIfNeeded(room, message, roomMembers, LocalDateTime.now(java.time.Clock.systemUTC()));
+        return readReceiptMessages;
     }
 
-    private void applyImmediateReadForGroupRoom(ChatRoom room,
-                                                Long senderId,
-                                                ChatMessage message,
-                                                List<ChatRoomMember> roomMembers) {
+    private List<ChatMessage> applyImmediateReadForGroupRoom(ChatRoom room,
+                                                             Long senderId,
+                                                             ChatMessage message,
+                                                             List<ChatRoomMember> roomMembers) {
+        List<ChatMessage> readReceiptMessages = new ArrayList<>();
+
         for (ChatRoomMember member : roomMembers) {
             Long memberUserId = member.getUser().getId();
             if (Objects.equals(memberUserId, senderId)) {
@@ -1238,10 +1325,11 @@ public class ChatService {
                 continue;
             }
 
-            member.updateLastReadMessageId(message.getId());
+            readReceiptMessages.addAll(markMemberReadThroughMessage(room.getId(), member, message.getId(), message.getId()));
         }
 
         markMessageAsFullyReadIfNeeded(room, message, roomMembers, LocalDateTime.now(java.time.Clock.systemUTC()));
+        return readReceiptMessages;
     }
 
     private Integer resolveMessageUnreadCount(ChatRoom room, ChatMessage message, List<ChatRoomMember> roomMembers) {
@@ -1277,17 +1365,17 @@ public class ChatService {
         return Math.toIntExact(unreadCount);
     }
 
-    private void publishPersonalReadReceiptEvents(ChatRoom room,
-                                                  List<ChatMessage> messages,
-                                                  List<ChatRoomMember> roomMembers,
-                                                  LocalDateTime actionTime) {
+    private void syncPersonalReadReceipts(ChatRoom room,
+                                          List<ChatMessage> messages,
+                                          List<ChatRoomMember> roomMembers,
+                                          LocalDateTime actionTime) {
         publishReadReceiptEvents(room, messages, roomMembers, actionTime);
     }
 
-    private void publishGroupReadReceiptEvents(ChatRoom room,
-                                               List<ChatMessage> messages,
-                                               List<ChatRoomMember> roomMembers,
-                                               LocalDateTime actionTime) {
+    private void syncGroupReadReceipts(ChatRoom room,
+                                       List<ChatMessage> messages,
+                                       List<ChatRoomMember> roomMembers,
+                                       LocalDateTime actionTime) {
         publishReadReceiptEvents(room, messages, roomMembers, actionTime);
     }
 
@@ -1295,8 +1383,16 @@ public class ChatService {
                                           List<ChatMessage> messages,
                                           List<ChatRoomMember> roomMembers,
                                           LocalDateTime actionTime) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+
+        Set<Long> publishedMessageIds = new HashSet<>();
         for (ChatMessage message : messages) {
-            if (!message.isUnreadTrackable()) {
+            if (message == null || !message.isUnreadTrackable()) {
+                continue;
+            }
+            if (!publishedMessageIds.add(message.getId())) {
                 continue;
             }
 
@@ -1330,9 +1426,7 @@ public class ChatService {
         if (Objects.equals(member.getUser().getId(), message.getSenderId())) {
             return false;
         }
-        if (member.getLastReadMessageId() != null) {
-            return true;
-        }
+
         LocalDateTime joinedAt = member.getJoinedAt();
         return joinedAt == null || !joinedAt.isAfter(message.getCreatedAt());
     }
