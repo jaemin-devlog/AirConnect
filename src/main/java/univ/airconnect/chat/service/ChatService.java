@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.HashOperations;
+import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -25,6 +26,7 @@ import univ.airconnect.chat.dto.request.SendMessageRequest;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantDetailResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantProfileResponse;
+import univ.airconnect.chat.dto.response.ChatRoomListUpdateResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
@@ -58,6 +60,7 @@ public class ChatService {
     private final RedisMessageListenerContainer redisMessageListener;
     private final RedisSubscriber redisSubscriber;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final SimpMessageSendingOperations messagingTemplate;
     private final ObjectMapper objectMapper;
     private final NotificationService notificationService;
     private final UserBlockPolicyService userBlockPolicyService;
@@ -504,6 +507,7 @@ public class ChatService {
                 .ifPresent(lastMsg -> member.updateLastReadMessageId(lastMsg.getId()));
 
         if (unreadIncomingMessages.isEmpty()) {
+            publishRoomListUpdate(room, userId, 0);
             return;
         }
 
@@ -512,10 +516,12 @@ public class ChatService {
 
         if (room.getType() == ChatRoomType.PERSONAL) {
             publishPersonalReadReceiptEvents(room, unreadIncomingMessages, roomMembers, actionTime);
+            publishRoomListUpdate(room, userId, 0);
             return;
         }
 
         publishGroupReadReceiptEvents(room, unreadIncomingMessages, roomMembers, actionTime);
+        publishRoomListUpdate(room, userId, 0);
     }
 
     /**
@@ -612,6 +618,9 @@ public class ChatService {
                 resolveMessageUnreadCount(room, chatMessage, roomMembers)
         );
         publishToRedisSilently(roomId, response);
+        publishRoomListUpdates(room, roomMembers.stream()
+                .map(member -> member.getUser().getId())
+                .collect(Collectors.toSet()));
         publishChatMessageNotifications(roomId, sender, chatMessage);
         return response;
     }
@@ -685,9 +694,6 @@ public class ChatService {
                             ? room.getLastMessageAt()
                             : (latestMsg != null ? latestMsg.getCreatedAt() : null);
                     int unreadCount = unreadCountMap.getOrDefault(room.getId(), 0);
-                    if (room.getType() == ChatRoomType.PERSONAL) {
-                        unreadCount = unreadCount > 0 ? 1 : 0;
-                    }
 
                     User targetUser = null;
                     if (room.getType() == ChatRoomType.PERSONAL) {
@@ -1005,6 +1011,49 @@ public class ChatService {
         }
     }
 
+    private void publishRoomListUpdates(ChatRoom room, Collection<Long> userIds) {
+        if (room == null || userIds == null || userIds.isEmpty()) {
+            return;
+        }
+
+        userIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .forEach(userId -> publishRoomListUpdate(room, userId, resolveRoomListUnreadCount(userId, room.getId())));
+    }
+
+    private void publishRoomListUpdate(ChatRoom room, Long userId, int unreadCount) {
+        if (room == null || userId == null) {
+            return;
+        }
+
+        try {
+            ChatRoomListUpdateResponse payload = ChatRoomListUpdateResponse.of(
+                    userId,
+                    room.getId(),
+                    room.getLastMessage(),
+                    room.getLastMessageAt(),
+                    unreadCount
+            );
+            messagingTemplate.convertAndSend("/sub/chat/list/" + userId, payload);
+        } catch (RuntimeException e) {
+            log.error("Room list update publish failed. roomId={}, userId={}", room.getId(), userId, e);
+        }
+    }
+
+    private int resolveRoomListUnreadCount(Long userId, Long roomId) {
+        List<Object[]> unreadCounts = chatMessageRepository.countUnreadByUserId(userId);
+        if (unreadCounts == null || unreadCounts.isEmpty()) {
+            return 0;
+        }
+
+        return unreadCounts.stream()
+                .filter(row -> row != null && row.length >= 2 && Objects.equals(row[0], roomId))
+                .findFirst()
+                .map(row -> ((Long) row[1]).intValue())
+                .orElse(0);
+    }
+
     private void cleanupRoomTopicIfUnused(String sessionId, Object roomIdValue) {
         if (roomIdValue == null) {
             return;
@@ -1140,7 +1189,8 @@ public class ChatService {
     }
 
     private List<ChatRoomMember> loadVisibleRoomMembers(Long roomId) {
-        return chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId);
+        List<ChatRoomMember> members = chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId);
+        return members != null ? members : Collections.emptyList();
     }
 
     private void applyImmediateReadForViewingMembers(ChatRoom room,

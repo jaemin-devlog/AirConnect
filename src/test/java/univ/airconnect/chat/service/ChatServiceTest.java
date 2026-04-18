@@ -13,6 +13,7 @@ import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.listener.Topic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.auth.exception.AuthErrorCode;
@@ -25,6 +26,7 @@ import univ.airconnect.chat.dto.request.ChatMessageRequest;
 import univ.airconnect.chat.dto.response.ChatParticipantDetailResponse;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantProfileResponse;
+import univ.airconnect.chat.dto.response.ChatRoomListUpdateResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
@@ -84,6 +86,8 @@ class ChatServiceTest {
     private SetOperations<String, Object> setOperations;
     @Mock
     private HashOperations<String, Object, Object> hashOperations;
+    @Mock
+    private SimpMessageSendingOperations messagingTemplate;
 
     @Test
     void sendMessage_doesNotFailWhenRedisPublishSerializationFails() throws Exception {
@@ -488,7 +492,66 @@ class ChatServiceTest {
         assertThat(response.get(0).getTargetProfile().getProfileImage()).isEqualTo("profiles/" + other.getId() + ".png");
         assertThat(response.get(0).getTargetProfile().getProfile()).isNotNull();
         assertThat(response.get(0).getTargetProfile().getProfile().getMbti()).isEqualTo("ISFP");
-        assertThat(response.get(0).getUnreadCount()).isEqualTo(1);
+        assertThat(response.get(0).getUnreadCount()).isEqualTo(2);
+    }
+
+    @Test
+    void sendMessage_publishesRoomListUpdateWithAccumulatedUnreadCount() throws Exception {
+        ChatService service = createService();
+        Long roomId = 704L;
+        Long senderId = 1L;
+        Long readerId = 2L;
+
+        User sender = createUser(senderId, "sender");
+        User reader = createUser(readerId, "reader");
+        ChatRoom room = ChatRoom.createPersonal("room-704", senderId, readerId, null);
+        ReflectionTestUtils.setField(room, "id", roomId);
+        ChatRoomMember senderMember = ChatRoomMember.create(room, sender);
+        senderMember.updateLastReadMessageId(90L);
+        ChatRoomMember readerMember = ChatRoomMember.create(room, reader);
+        readerMember.updateLastReadMessageId(90L);
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        ReflectionTestUtils.setField(request, "roomId", roomId);
+        ReflectionTestUtils.setField(request, "message", "hello");
+
+        when(userRepository.findById(senderId)).thenReturn(Optional.of(sender));
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(true);
+        when(chatRoomMemberRepository.findUserIdsByChatRoomId(roomId)).thenReturn(List.of(senderId, readerId));
+        when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(Optional.of(senderMember));
+        when(chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId))
+                .thenReturn(List.of(senderMember, readerMember));
+        when(chatMessageRepository.countUnreadByUserId(senderId)).thenReturn(List.of());
+        when(chatMessageRepository.countUnreadByUserId(readerId))
+                .thenReturn(java.util.Collections.singletonList(new Object[]{roomId, 4L}));
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(chatMessageRepository.save(any(ChatMessage.class))).thenAnswer(invocation -> {
+            ChatMessage message = invocation.getArgument(0);
+            ReflectionTestUtils.setField(message, "id", 91L);
+            return message;
+        });
+
+        service.sendMessage(senderId, request);
+
+        ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(messagingTemplate, atLeastOnce()).convertAndSend(anyString(), payloadCaptor.capture());
+
+        List<ChatRoomListUpdateResponse> roomListUpdates = payloadCaptor.getAllValues().stream()
+                .filter(ChatRoomListUpdateResponse.class::isInstance)
+                .map(ChatRoomListUpdateResponse.class::cast)
+                .toList();
+
+        assertThat(roomListUpdates).hasSize(2);
+        assertThat(roomListUpdates)
+                .anySatisfy(update -> {
+                    assertThat(update.getUserId()).isEqualTo(senderId);
+                    assertThat(update.getUnreadCount()).isEqualTo(0);
+                })
+                .anySatisfy(update -> {
+                    assertThat(update.getUserId()).isEqualTo(readerId);
+                    assertThat(update.getUnreadCount()).isEqualTo(4);
+                });
     }
 
     @Test
@@ -617,6 +680,52 @@ class ChatServiceTest {
     }
 
     @Test
+    void updateLastRead_publishesRoomListUpdateClearingUnreadCount() throws Exception {
+        ChatService service = createService();
+        Long roomId = 705L;
+        Long senderId = 1L;
+        Long readerId = 2L;
+
+        User sender = createUser(senderId, "sender");
+        User reader = createUser(readerId, "reader");
+
+        ChatRoom room = ChatRoom.create("room-705", ChatRoomType.GROUP);
+        ReflectionTestUtils.setField(room, "id", roomId);
+        room.updateLastMessage("latest", LocalDateTime.now());
+
+        ChatRoomMember senderMember = ChatRoomMember.create(room, sender);
+        senderMember.updateLastReadMessageId(60L);
+        ChatRoomMember readerMember = ChatRoomMember.create(room, reader);
+        readerMember.updateLastReadMessageId(55L);
+
+        ChatMessage message = ChatMessage.create(roomId, senderId, "sender", "hello", univ.airconnect.chat.domain.MessageType.TEXT);
+        ReflectionTestUtils.setField(message, "id", 60L);
+
+        when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, readerId)).thenReturn(Optional.of(readerMember));
+        when(chatMessageRepository.findUnreadIncomingMessages(roomId, readerId, 55L)).thenReturn(List.of(message));
+        when(chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)).thenReturn(Optional.of(message));
+        when(chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId))
+                .thenReturn(List.of(senderMember, readerMember));
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        service.updateLastRead(roomId, readerId);
+
+        ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(messagingTemplate, atLeastOnce()).convertAndSend(anyString(), payloadCaptor.capture());
+
+        ChatRoomListUpdateResponse roomListUpdate = payloadCaptor.getAllValues().stream()
+                .filter(ChatRoomListUpdateResponse.class::isInstance)
+                .map(ChatRoomListUpdateResponse.class::cast)
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(roomListUpdate.getRoomId()).isEqualTo(roomId);
+        assertThat(roomListUpdate.getUserId()).isEqualTo(readerId);
+        assertThat(roomListUpdate.getUnreadCount()).isEqualTo(0);
+    }
+
+    @Test
     void sendMessage_immediatelyReflectsReadWhenCounterpartIsViewingRoom() throws Exception {
         ChatService service = createService();
         Long roomId = 703L;
@@ -714,10 +823,11 @@ class ChatServiceTest {
                 redisMessageListenerContainer,
                 redisSubscriber,
                 redisTemplate,
+                messagingTemplate,
                 objectMapper,
-                  notificationService,
-                  userBlockPolicyService
-          );
+                notificationService,
+                userBlockPolicyService
+        );
         ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
         return service;
     }

@@ -10,6 +10,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.chat.domain.MessageType;
@@ -63,6 +64,7 @@ class ChatServiceReadTrackingTest {
     @Mock private RedisMessageListenerContainer redisMessageListener;
     @Mock private RedisSubscriber redisSubscriber;
     @Mock private RedisTemplate<String, Object> redisTemplate;
+    @Mock private SimpMessageSendingOperations messagingTemplate;
     @Mock private NotificationService notificationService;
     @Mock private UserBlockPolicyService userBlockPolicyService;
 
@@ -87,6 +89,7 @@ class ChatServiceReadTrackingTest {
                 redisMessageListener,
                 redisSubscriber,
                 redisTemplate,
+                messagingTemplate,
                 objectMapper,
                 notificationService,
                 userBlockPolicyService
@@ -221,6 +224,40 @@ class ChatServiceReadTrackingTest {
         assertNotNull(message.getReadAt());
 
         assertEquals(List.of(2, 1, 0), publishedEvents.stream()
+                .map(ChatMessageResponse::getUnreadCount)
+                .collect(Collectors.toList()));
+    }
+
+    @Test
+    void groupRoomReadReceiptsArePublishedForMessagesFromDifferentSenders() {
+        Long roomId = 16L;
+
+        ChatRoom room = groupRoom(roomId);
+        ChatRoomMember senderA = member(room, 1L, utcNow().minusMinutes(20));
+        ChatRoomMember senderB = member(room, 2L, utcNow().minusMinutes(20));
+        ChatRoomMember reader = member(room, 3L, utcNow().minusMinutes(20));
+        ChatRoomMember member4 = member(room, 4L, utcNow().minusMinutes(20));
+
+        senderA.updateLastReadMessageId(801L);
+        senderB.updateLastReadMessageId(802L);
+
+        ChatMessage messageFromA = message(801L, roomId, 1L, "from-a", MessageType.TEXT, utcNow().minusMinutes(3));
+        ChatMessage messageFromB = message(802L, roomId, 2L, "from-b", MessageType.TEXT, utcNow().minusMinutes(2));
+        List<ChatMessage> roomMessages = new ArrayList<>(List.of(messageFromA, messageFromB));
+
+        stubRoom(room, roomMessages, Map.of(
+                1L, senderA,
+                2L, senderB,
+                3L, reader,
+                4L, member4
+        ));
+
+        chatService.syncReadStateOnRoomViewed(roomId, 3L);
+
+        assertEquals(List.of(801L, 802L), publishedEvents.stream()
+                .map(ChatMessageResponse::getMessageId)
+                .collect(Collectors.toList()));
+        assertEquals(List.of(1, 2), publishedEvents.stream()
                 .map(ChatMessageResponse::getUnreadCount)
                 .collect(Collectors.toList()));
     }

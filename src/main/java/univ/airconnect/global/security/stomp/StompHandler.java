@@ -30,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 public class StompHandler implements ChannelInterceptor {
 
     private static final String CHAT_ROOM_SUB_PREFIX = "/sub/chat/room/";
+    private static final String CHAT_LIST_SUB_PREFIX = "/sub/chat/list/";
     private static final String MATCHING_TEAM_ROOM_SUB_PREFIX = "/sub/matching/team-room/";
 
     private final JwtProvider jwtProvider;
@@ -147,6 +148,11 @@ public class StompHandler implements ChannelInterceptor {
             return;
         }
 
+        if (destination.startsWith(CHAT_LIST_SUB_PREFIX)) {
+            handleChatListSubscribe(destination, userId);
+            return;
+        }
+
         if (destination.startsWith(MATCHING_TEAM_ROOM_SUB_PREFIX)) {
             handleMatchingSubscribe(accessor, destination, userId);
         }
@@ -198,6 +204,17 @@ public class StompHandler implements ChannelInterceptor {
 
         log.info("STOMP SUBSCRIBE MATCHING: sessionId={}, userId={}, teamRoomId={}",
                 accessor.getSessionId(), userId, teamRoomId);
+    }
+
+    private void handleChatListSubscribe(String destination, Long userId) {
+        Long subscribedUserId = extractId(destination, CHAT_LIST_SUB_PREFIX, "chat list user");
+        if (!subscribedUserId.equals(userId)) {
+            log.error("STOMP SUBSCRIBE REJECTED: destination={}, userId={}, reason=list_forbidden", destination, userId);
+            stompOpsMonitor.recordSubscribeFailure(new AccessDeniedException("list_forbidden"));
+            throw new AccessDeniedException("No permission to subscribe this chat list.");
+        }
+
+        stompOpsMonitor.recordSubscribeSuccess();
     }
 
     private void handleUnsubscribe(StompHeaderAccessor accessor) {

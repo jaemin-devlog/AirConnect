@@ -110,6 +110,45 @@ class StompHandlerTest {
         verify(chatService).unregisterSessionRoomSubscription("session-3", "sub-3");
     }
 
+    @Test
+    void subscribeToOwnChatListIsAllowed() {
+        Long userId = 1L;
+        User user = activeUser();
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        StompHandler handler = new StompHandler(
+                jwtProvider,
+                chatService,
+                matchingService,
+                stompOpsMonitor,
+                userRepository
+        );
+
+        handler.preSend(subscribeListMessage("session-list", "sub-list", userId, userId), messageChannel);
+    }
+
+    @Test
+    void subscribeToAnotherUsersChatListIsRejected() {
+        Long userId = 1L;
+        User user = activeUser();
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        StompHandler handler = new StompHandler(
+                jwtProvider,
+                chatService,
+                matchingService,
+                stompOpsMonitor,
+                userRepository
+        );
+
+        assertThatThrownBy(() -> handler.preSend(
+                subscribeListMessage("session-list", "sub-list", 2L, userId),
+                messageChannel
+        )).isInstanceOf(AccessDeniedException.class);
+    }
+
     private Message<byte[]> subscribeMessage(String sessionId, String subscriptionId, Long roomId, Long userId) {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setSessionId(sessionId);
@@ -117,6 +156,19 @@ class StompHandlerTest {
         accessor.setDestination("/sub/chat/room/" + roomId);
         accessor.setUser(new UsernamePasswordAuthenticationToken(
                 new CustomUserPrincipal(userId),
+                null,
+                List.of()
+        ));
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
+    private Message<byte[]> subscribeListMessage(String sessionId, String subscriptionId, Long subscribedUserId, Long principalUserId) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.setSessionId(sessionId);
+        accessor.setSubscriptionId(subscriptionId);
+        accessor.setDestination("/sub/chat/list/" + subscribedUserId);
+        accessor.setUser(new UsernamePasswordAuthenticationToken(
+                new CustomUserPrincipal(principalUserId),
                 null,
                 List.of()
         ));
