@@ -438,6 +438,35 @@ class MatchingServiceTest {
     }
 
     @Test
+    @DisplayName("same gender recommendation only returns same gender candidates")
+    void recommendSameGender_returnsOnlySameGenderCandidates() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User sameGender = saveUserWithProfile("u2", Gender.MALE, 100);
+        saveUserWithProfile("u3", Gender.FEMALE, 100);
+
+        MatchingRecommendationResponse response = matchingService.recommendSameGender(requester.getId());
+
+        assertThat(response.getCount()).isEqualTo(1);
+        assertThat(response.getCandidates()).extracting("userId").containsExactly(sameGender.getId());
+    }
+
+    @Test
+    @DisplayName("same gender recommendation excludes blocked users")
+    void recommendSameGender_excludesBlockedUsers() {
+        User requester = saveUserWithProfile("u1", Gender.FEMALE, 100);
+        User blockedCandidate = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        User visibleCandidate = saveUserWithProfile("u3", Gender.FEMALE, 100);
+        saveUserWithProfile("u4", Gender.MALE, 100);
+
+        userBlockRepository.save(UserBlock.create(requester.getId(), blockedCandidate.getId()));
+
+        MatchingRecommendationResponse response = matchingService.recommendSameGender(requester.getId());
+
+        assertThat(response.getCandidates()).extracting("userId")
+                .containsExactly(visibleCandidate.getId());
+    }
+
+    @Test
     @DisplayName("connect fails when users are in a block relation")
     void connect_failsWhenBlockedRelationExists() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);

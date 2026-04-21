@@ -59,6 +59,15 @@ public class MatchingService {
 
     @Transactional
     public MatchingRecommendationResponse recommend(Long userId) {
+        return recommendByGenderMode(userId, false);
+    }
+
+    @Transactional
+    public MatchingRecommendationResponse recommendSameGender(Long userId) {
+        return recommendByGenderMode(userId, true);
+    }
+
+    private MatchingRecommendationResponse recommendByGenderMode(Long userId, boolean sameGenderOnly) {
         validateActiveUser(userId);
         requireProfileGender(userId);
 
@@ -71,7 +80,9 @@ public class MatchingService {
             throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
         }
 
-        List<User> allCandidates = userRepository.findActiveUsersWithProfileForMatching(userId);
+        List<User> allCandidates = sameGenderOnly
+                ? userRepository.findActiveUsersWithProfileForSameGenderMatching(userId)
+                : userRepository.findActiveUsersWithProfileForMatching(userId);
         allCandidates = excludeBlockedCandidates(userId, allCandidates);
 
         // 노출 이력을 사용해 새로고침 시 후보가 순환되도록 한다.
@@ -106,7 +117,8 @@ public class MatchingService {
                     userId,
                     Map.of(
                             "candidateCount", 0,
-                            "ticketsRemaining", user.getTickets()
+                            "ticketsRemaining", user.getTickets(),
+                            "targetGenderMode", sameGenderOnly ? "SAME" : "OPPOSITE"
                     )
             );
             return MatchingRecommendationResponse.builder()
@@ -147,7 +159,8 @@ public class MatchingService {
                 Map.of(
                         "candidateCount", candidates.size(),
                         "ticketsRemaining", user.getTickets(),
-                        "ticketConsumed", ticketConsumed
+                        "ticketConsumed", ticketConsumed,
+                        "targetGenderMode", sameGenderOnly ? "SAME" : "OPPOSITE"
                 )
         );
 

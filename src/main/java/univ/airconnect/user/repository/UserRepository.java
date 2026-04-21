@@ -87,4 +87,44 @@ public interface UserRepository extends JpaRepository<User, Long> {
         ORDER BY u.createdAt ASC
     """)
     List<User> findActiveUsersWithProfileForMatching(@Param("userId") Long userId);
+
+    @Query("""
+        SELECT u
+        FROM User u
+        INNER JOIN u.userProfile up
+        WHERE u.status = 'ACTIVE'
+          AND u.id <> :userId
+          AND up.gender = (
+              SELECT up2.gender FROM UserProfile up2 WHERE up2.userId = :userId
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM MatchingConnection mc
+              WHERE (
+                    (mc.user1Id = :userId AND mc.user2Id = u.id)
+                 OR (mc.user1Id = u.id AND mc.user2Id = :userId)
+              )
+                AND mc.status = 'PENDING'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM MatchingConnection mc
+              WHERE (
+                    (mc.user1Id = :userId AND mc.user2Id = u.id)
+                 OR (mc.user1Id = u.id AND mc.user2Id = :userId)
+              )
+                AND mc.status = 'ACCEPTED'
+                AND mc.chatRoomId IS NOT NULL
+                AND EXISTS (
+                    SELECT 1 FROM ChatRoomMember me
+                    WHERE me.chatRoom.id = mc.chatRoomId
+                      AND me.user.id = :userId
+                )
+                AND EXISTS (
+                    SELECT 1 FROM ChatRoomMember other
+                    WHERE other.chatRoom.id = mc.chatRoomId
+                      AND other.user.id = u.id
+                )
+          )
+        ORDER BY u.createdAt ASC
+    """)
+    List<User> findActiveUsersWithProfileForSameGenderMatching(@Param("userId") Long userId);
 }
