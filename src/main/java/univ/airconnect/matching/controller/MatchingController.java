@@ -34,6 +34,16 @@ public class MatchingController {
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
+    @GetMapping("/recommendations/same-gender")
+    public ResponseEntity<ApiResponse<MatchingRecommendationResponse>> recommendSameGender(
+            @CurrentUserId Long userId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        MatchingRecommendationResponse response = matchingService.recommendSameGender(userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
     @PostMapping("/connect/{targetUserId}")
     public ResponseEntity<ApiResponse<MatchingConnectResponse>> connect(
             @CurrentUserId Long userId,
