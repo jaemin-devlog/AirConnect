@@ -206,6 +206,21 @@ class AuthServiceTest {
     }
 
     @Test
+    void emailSignUp_failsWhenVerifiedSchoolEmailAlreadyLinkedToAppleAccount() {
+        EmailSignUpRequest request = new EmailSignUpRequest("verify-token", "Passw0rd!@", "device-1");
+
+        when(verificationService.resolveVerifiedEmail("verify-token")).thenReturn("student@office.hanseo.ac.kr");
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "student@office.hanseo.ac.kr"))
+                .thenReturn(Optional.empty());
+        when(userRepository.existsByEmailIgnoreCase("student@office.hanseo.ac.kr")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.emailSignUp(request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.EMAIL_ALREADY_REGISTERED);
+    }
+
+    @Test
     void emailLogin_succeedsWithEmailAndPasswordOnly() {
         EmailLoginRequest request = new EmailLoginRequest("user@office.hanseo.ac.kr", "Passw0rd!@", "device-1");
         User user = User.createEmailUser("user@office.hanseo.ac.kr", "encoded-password");

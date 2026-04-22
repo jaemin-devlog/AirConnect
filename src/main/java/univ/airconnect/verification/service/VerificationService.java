@@ -88,6 +88,7 @@ public class VerificationService {
 
         clearVerificationData(normalizedEmail);
         clearActiveVerifiedSession(normalizedEmail);
+        linkVerifiedEmailToUser(userId, normalizedEmail);
         grantMilestoneIfNotAlreadyGranted(userId, normalizedEmail);
         VerifiedEmailSession verifiedSession = issueVerifiedSession(normalizedEmail);
 
@@ -216,7 +217,8 @@ public class VerificationService {
         }
         boolean existsEmailAccount = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
                 .isPresent();
-        if (existsEmailAccount) {
+        boolean linkedToAnyUser = userRepository.existsByEmailIgnoreCase(normalizedEmail);
+        if (existsEmailAccount || linkedToAnyUser) {
             throw new VerificationException(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
         }
     }
@@ -275,6 +277,15 @@ public class VerificationService {
                 rewardTickets,
                 user.getTickets()
         );
+    }
+
+    private void linkVerifiedEmailToUser(Long userId, String verifiedEmail) {
+        if (userId == null) {
+            return;
+        }
+
+        userRepository.findById(userId)
+                .ifPresent(user -> user.updateEmail(verifiedEmail));
     }
 
     private String maskEmail(String email) {

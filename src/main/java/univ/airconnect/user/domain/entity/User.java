@@ -23,7 +23,7 @@ import univ.airconnect.user.domain.UserStatus;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User {
 
-    private static final int INITIAL_TICKETS = 50;
+    private static final int INITIAL_TICKETS = 10;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -250,5 +250,9 @@ public class User {
     public void changePasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
         this.lastActiveAt = LocalDateTime.now();
+    }
+
+    public void updateEmail(String email) {
+        this.email = email;
     }
 }

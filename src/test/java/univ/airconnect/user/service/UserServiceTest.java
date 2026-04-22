@@ -299,8 +299,8 @@ class UserServiceTest {
         User socialUser = User.create(SocialProvider.KAKAO, "social-50", "social50@test.dev");
         User emailUser = User.createEmailUser("email50@test.dev", "encoded-password");
 
-        assertThat(socialUser.getTickets()).isEqualTo(50);
-        assertThat(emailUser.getTickets()).isEqualTo(50);
+        assertThat(socialUser.getTickets()).isEqualTo(10);
+        assertThat(emailUser.getTickets()).isEqualTo(10);
     }
 
     private UserService createService() {
