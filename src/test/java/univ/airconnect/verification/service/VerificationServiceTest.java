@@ -99,6 +99,7 @@ class VerificationServiceTest {
         when(redisTemplate.hasKey("email_verification_cooldown:" + email)).thenReturn(false);
         when(valueOperations.get("email_verified_active:" + email)).thenReturn("active-token");
         when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.empty());
+        when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(false);
 
         service.sendCode(email, VerificationPurpose.SIGN_UP);
 
@@ -123,6 +124,7 @@ class VerificationServiceTest {
         ReflectionTestUtils.setField(existing, "id", 101L);
 
         when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.of(existing));
+        when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(true);
 
         assertThatThrownBy(() -> service.sendCode(email, VerificationPurpose.SIGN_UP))
                 .isInstanceOf(VerificationException.class)
@@ -130,5 +132,60 @@ class VerificationServiceTest {
                 .isEqualTo(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
 
         verify(mailService, never()).sendVerificationCode(any(), any());
+    }
+
+    @Test
+    void sendCode_signupPurpose_failsWhenEmailAlreadyLinkedToSocialAccount() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                rewardProperties
+        );
+
+        String email = "student@office.hanseo.ac.kr";
+
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.empty());
+        when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.sendCode(email, VerificationPurpose.SIGN_UP))
+                .isInstanceOf(VerificationException.class)
+                .extracting(ex -> ((VerificationException) ex).getErrorCode())
+                .isEqualTo(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
+
+        verify(mailService, never()).sendVerificationCode(any(), any());
+    }
+
+    @Test
+    void verifyCode_linksVerifiedSchoolEmailToAuthenticatedUser() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        rewardProperties.setEmailVerifiedTickets(0);
+
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                rewardProperties
+        );
+
+        Long userId = 10L;
+        String email = "student@office.hanseo.ac.kr";
+        String code = "123456";
+        User user = User.create(SocialProvider.APPLE, "apple-social-10", "relay@privaterelay.appleid.com");
+        ReflectionTestUtils.setField(user, "id", userId);
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn(null);
+        when(valueOperations.get("email_verification:" + email)).thenReturn(code);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.EMAIL_VERIFIED))
+                .thenReturn(false);
+
+        service.verifyCode(userId, email, code, VerificationPurpose.SIGN_UP);
+
+        assertThat(user.getEmail()).isEqualTo(email);
     }
 }

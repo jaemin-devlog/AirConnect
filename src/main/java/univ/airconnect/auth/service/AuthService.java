@@ -61,7 +61,7 @@ public class AuthService {
 
         SocialAuthClient client = socialAuthResolver.getClient(request.getProvider());
         String socialId = client.getSocialId(request.getSocialToken());
-        String email = resolveEmail(request);
+        String email = normalizeOptionalEmail(resolveEmail(request));
 
         User user = userRepository.findByProviderAndSocialId(request.getProvider(), socialId)
                 .orElseGet(() -> {
@@ -84,7 +84,8 @@ public class AuthService {
         String verifiedEmail = verificationService.resolveVerifiedEmail(request.getVerificationToken());
         String normalizedEmail = normalizeEmail(verifiedEmail);
 
-        if (userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail).isPresent()) {
+        if (userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail).isPresent()
+                || userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
             throw new AuthException(AuthErrorCode.EMAIL_ALREADY_REGISTERED);
         }
 
@@ -334,6 +335,13 @@ public class AuthService {
             throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
         }
         return normalized;
+    }
+
+    private String normalizeOptionalEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        return normalizeEmail(email);
     }
 
     private String buildRefreshTokenKey(Long userId, String deviceId) {
