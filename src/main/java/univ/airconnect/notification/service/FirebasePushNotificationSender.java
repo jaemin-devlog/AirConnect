@@ -34,6 +34,12 @@ import java.util.Set;
 @ConditionalOnProperty(prefix = "notification.push.fcm", name = "enabled", havingValue = "true")
 public class FirebasePushNotificationSender implements PushNotificationSender {
 
+    private static final String NOTIFICATION_TYPE_KEY = "notificationType";
+    private static final String CHAT_MESSAGE_RECEIVED_TYPE = "CHAT_MESSAGE_RECEIVED";
+    private static final String CHAT_ROOM_ID_KEY = "chatRoomId";
+    private static final String CHAT_PUSH_CHANNEL_ID = "airconnect_chat_push";
+    private static final String CHAT_PUSH_TAG_PREFIX = "chat-";
+
     private static final Set<String> INVALID_TOKEN_ERROR_CODES = Set.of(
             "UNREGISTERED",
             "SENDER_ID_MISMATCH",
@@ -82,18 +88,15 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
      * 공통 알림 본문, Android 설정, APNs 설정을 포함한 FCM 메시지를 구성한다.
      */
     private Message buildMessage(NotificationOutbox outbox) {
+        Map<String, String> data = buildDataMap(outbox.getDataJson());
+
         Message.Builder builder = Message.builder()
                 .setToken(outbox.getTargetToken())
                 .setNotification(com.google.firebase.messaging.Notification.builder()
                         .setTitle(outbox.getTitle())
                         .setBody(outbox.getBody())
                         .build())
-                .setAndroidConfig(AndroidConfig.builder()
-                        .setPriority(AndroidConfig.Priority.HIGH)
-                        .setNotification(AndroidNotification.builder()
-                                .setSound("default")
-                                .build())
-                        .build())
+                .setAndroidConfig(buildAndroidConfig(data))
                 .setApnsConfig(ApnsConfig.builder()
                         .putHeader("apns-priority", "10")
                         .setAps(Aps.builder()
@@ -101,11 +104,35 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
                                 .build())
                         .build());
 
-        Map<String, String> data = buildDataMap(outbox.getDataJson());
         if (!data.isEmpty()) {
             builder.putAllData(data);
         }
         return builder.build();
+    }
+
+    private AndroidConfig buildAndroidConfig(Map<String, String> data) {
+        AndroidNotification.Builder notificationBuilder = AndroidNotification.builder()
+                .setSound("default");
+
+        if (isChatMessageReceived(data)) {
+            notificationBuilder
+                    .setChannelId(CHAT_PUSH_CHANNEL_ID)
+                    .setPriority(AndroidNotification.Priority.DEFAULT);
+
+            String chatRoomId = data.get(CHAT_ROOM_ID_KEY);
+            if (chatRoomId != null && !chatRoomId.isBlank()) {
+                notificationBuilder.setTag(CHAT_PUSH_TAG_PREFIX + chatRoomId.trim());
+            }
+        }
+
+        return AndroidConfig.builder()
+                .setPriority(AndroidConfig.Priority.HIGH)
+                .setNotification(notificationBuilder.build())
+                .build();
+    }
+
+    private boolean isChatMessageReceived(Map<String, String> data) {
+        return CHAT_MESSAGE_RECEIVED_TYPE.equals(data.get(NOTIFICATION_TYPE_KEY));
     }
 
     /**
