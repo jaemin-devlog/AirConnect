@@ -43,9 +43,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/verification/**").permitAll()
 
                         .requestMatchers("/api/v1/statistics/**").permitAll()
-
-                        // Admin API is protected by a dedicated admin token interceptor.
-                        .requestMatchers("/api/v1/admin/**").permitAll()
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
 
                         // 프로필 이미지 조회
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/profile-images/**").permitAll()

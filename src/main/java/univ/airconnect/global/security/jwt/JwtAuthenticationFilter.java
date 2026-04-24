@@ -13,12 +13,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
+import univ.airconnect.user.domain.UserStatus;
+import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.repository.UserRepository;
 
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtProvider jwtProvider;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -36,8 +40,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 jwtProvider.validateAccessToken(accessToken);
                 Long userId = jwtProvider.getUserId(accessToken);
+                User user = userRepository.findById(userId).orElse(null);
 
-                CustomUserPrincipal principal = new CustomUserPrincipal(userId);
+                if (user == null || isBlocked(user.getStatus())) {
+                    SecurityContextHolder.clearContext();
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+
+                CustomUserPrincipal principal = new CustomUserPrincipal(userId, user.getRole());
 
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(
@@ -53,5 +64,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isBlocked(UserStatus status) {
+        return status == UserStatus.DELETED
+                || status == UserStatus.SUSPENDED
+                || status == UserStatus.RESTRICTED;
     }
 }

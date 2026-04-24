@@ -144,8 +144,6 @@ moderation:
     contact-text: ${SUPPORT_CONTACT_TEXT:}
 
 app:
-  admin:
-    api-token: ${ADMIN_API_TOKEN:}
   rewards:
     milestone:
       profile-image-uploaded-tickets: ${PROFILE_IMAGE_UPLOADED_REWARD_TICKETS:2}

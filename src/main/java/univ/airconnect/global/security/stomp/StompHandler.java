@@ -97,9 +97,9 @@ public class StompHandler implements ChannelInterceptor {
         try {
             jwtProvider.validateAccessToken(token);
             Long userId = jwtProvider.getUserId(token);
-            ensureActiveUser(userId);
+            User user = ensureActiveUser(userId);
 
-            CustomUserPrincipal principal = new CustomUserPrincipal(userId);
+            CustomUserPrincipal principal = new CustomUserPrincipal(userId, user.getRole());
             Authentication authentication =
                     new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 
@@ -321,12 +321,15 @@ public class StompHandler implements ChannelInterceptor {
         return null;
     }
 
-    private void ensureActiveUser(Long userId) {
+    private User ensureActiveUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AccessDeniedException("사용자를 찾을 수 없습니다."));
 
-        if (user.getStatus() == UserStatus.DELETED) {
-            throw new AccessDeniedException("Deleted user cannot use websocket.");
+        if (user.getStatus() == UserStatus.DELETED
+                || user.getStatus() == UserStatus.SUSPENDED
+                || user.getStatus() == UserStatus.RESTRICTED) {
+            throw new AccessDeniedException("Blocked user cannot use websocket.");
         }
+        return user;
     }
 }

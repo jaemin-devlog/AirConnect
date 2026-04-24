@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.user.domain.OnboardingStatus;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 
 @Entity
@@ -62,6 +63,10 @@ public class User {
     @Column(nullable = false, length = 20)
     private OnboardingStatus onboardingStatus;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private UserRole role;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -105,6 +110,7 @@ public class User {
             Integer studentNum,
             UserStatus status,
             OnboardingStatus onboardingStatus,
+            UserRole role,
             LocalDateTime createdAt,
             LocalDateTime lastActiveAt,
             LocalDateTime deletedAt,
@@ -126,6 +132,7 @@ public class User {
         this.studentNum = studentNum;
         this.status = status;
         this.onboardingStatus = onboardingStatus;
+        this.role = role != null ? role : UserRole.USER;
         this.createdAt = createdAt;
         this.lastActiveAt = lastActiveAt;
         this.deletedAt = deletedAt;
@@ -150,6 +157,7 @@ public class User {
                 .email(email)
                 .status(UserStatus.ACTIVE)
                 .onboardingStatus(OnboardingStatus.BASIC)
+                .role(UserRole.USER)
                 .tickets(INITIAL_TICKETS)
                 .iosAppAccountToken(UUID.randomUUID().toString())
                 .createdAt(LocalDateTime.now())
@@ -164,6 +172,7 @@ public class User {
                 .passwordHash(passwordHash)
                 .status(UserStatus.ACTIVE)
                 .onboardingStatus(OnboardingStatus.BASIC)
+                .role(UserRole.USER)
                 .tickets(INITIAL_TICKETS)
                 .iosAppAccountToken(UUID.randomUUID().toString())
                 .createdAt(LocalDateTime.now())
@@ -253,6 +262,19 @@ public class User {
 
     public boolean isEmailProvider() {
         return this.provider == SocialProvider.EMAIL;
+    }
+
+    public UserRole getRole() {
+        return this.role != null ? this.role : UserRole.USER;
+    }
+
+    public boolean isAdmin() {
+        return getRole() == UserRole.ADMIN;
+    }
+
+    public void changeRole(UserRole role) {
+        this.role = role != null ? role : UserRole.USER;
+        this.lastActiveAt = LocalDateTime.now();
     }
 
     public void changePasswordHash(String passwordHash) {

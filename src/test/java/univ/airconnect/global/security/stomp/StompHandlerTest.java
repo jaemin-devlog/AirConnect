@@ -15,6 +15,7 @@ import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
 import univ.airconnect.groupmatching.service.GMatchingService;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -155,7 +156,7 @@ class StompHandlerTest {
         accessor.setSubscriptionId(subscriptionId);
         accessor.setDestination("/sub/chat/room/" + roomId);
         accessor.setUser(new UsernamePasswordAuthenticationToken(
-                new CustomUserPrincipal(userId),
+                new CustomUserPrincipal(userId, UserRole.USER),
                 null,
                 List.of()
         ));
@@ -168,23 +169,8 @@ class StompHandlerTest {
         accessor.setSubscriptionId(subscriptionId);
         accessor.setDestination("/sub/chat/list/" + subscribedUserId);
         accessor.setUser(new UsernamePasswordAuthenticationToken(
-                new CustomUserPrincipal(principalUserId),
+                new CustomUserPrincipal(principalUserId, UserRole.USER),
                 null,
                 List.of()
         ));
         return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
-    }
-
-    private Message<byte[]> unsubscribeMessage(String sessionId, String subscriptionId) {
-        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.UNSUBSCRIBE);
-        accessor.setSessionId(sessionId);
-        accessor.setSubscriptionId(subscriptionId);
-        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
-    }
-
-    private User activeUser() {
-        User user = mock(User.class);
-        when(user.getStatus()).thenReturn(null);
-        return user;
-    }
-}
