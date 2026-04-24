@@ -74,7 +74,7 @@ public class GMatchResult {
     @Builder
     private GMatchResult(Long team1RoomId, Long team2RoomId) {
         if (team1RoomId == null || team2RoomId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "teamRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "팀방 ID는 필수입니다.");
         }
         if (Objects.equals(team1RoomId, team2RoomId)) {
             throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "동일한 팀끼리는 매칭할 수 없습니다.");
@@ -100,7 +100,7 @@ public class GMatchResult {
 
     public void completeFinalRoomCreation(Long finalGroupChatRoomId) {
         if (finalGroupChatRoomId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "finalGroupChatRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "최종 그룹 채팅방 ID는 필수입니다.");
         }
         if (this.status != GMatchResultStatus.MATCHED) {
             throw new BusinessException(ErrorCode.MATCH_RESULT_STATE_INVALID, "매칭 성사 상태에서만 최종방 생성 완료 처리할 수 있습니다.");

@@ -17,6 +17,7 @@ import lombok.NoArgsConstructor;
 import univ.airconnect.notification.domain.NotificationCategory;
 import univ.airconnect.notification.domain.NotificationType;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 
 /**
@@ -124,7 +125,7 @@ public class Notification {
         this.imageUrl = imageUrl;
         this.payloadJson = payloadJson;
         this.dedupeKey = dedupeKey;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = LocalDateTime.now(Clock.systemUTC());
     }
 
     /**
@@ -160,7 +161,7 @@ public class Notification {
         if (this.readAt != null) {
             return;
         }
-        this.readAt = LocalDateTime.now();
+        this.readAt = LocalDateTime.now(Clock.systemUTC());
     }
 
     /**
@@ -171,7 +172,7 @@ public class Notification {
         if (this.deletedAt != null) {
             return;
         }
-        this.deletedAt = LocalDateTime.now();
+        this.deletedAt = LocalDateTime.now(Clock.systemUTC());
     }
 
     /** 알림이 읽힘 상태인지 반환한다. */
@@ -194,22 +195,22 @@ public class Notification {
                           String payloadJson,
                           String dedupeKey) {
         if (userId == null) {
-            throw new IllegalArgumentException("userId is required");
+            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
         }
         if (type == null) {
-            throw new IllegalArgumentException("type is required");
+            throw new IllegalArgumentException("알림 유형은 필수입니다.");
         }
         if (title == null || title.isBlank()) {
-            throw new IllegalArgumentException("title is required");
+            throw new IllegalArgumentException("알림 제목은 필수입니다.");
         }
         if (body == null || body.isBlank()) {
-            throw new IllegalArgumentException("body is required");
+            throw new IllegalArgumentException("알림 본문은 필수입니다.");
         }
         if (payloadJson == null || payloadJson.isBlank()) {
-            throw new IllegalArgumentException("payloadJson is required");
+            throw new IllegalArgumentException("알림 payloadJson은 필수입니다.");
         }
         if (type.requiresDedupeKey() && (dedupeKey == null || dedupeKey.isBlank())) {
-            throw new IllegalArgumentException("dedupeKey is required for type " + type.name());
+            throw new IllegalArgumentException(type.name() + " 유형에는 dedupeKey가 필요합니다.");
         }
     }
 }

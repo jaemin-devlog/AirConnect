@@ -66,19 +66,19 @@ public class PushEvent {
                       LocalDateTime occurredAt,
                       String deviceId) {
         if (userId == null) {
-            throw new IllegalArgumentException("userId is required");
+            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
         }
         if (notificationId == null) {
-            throw new IllegalArgumentException("notificationId is required");
+            throw new IllegalArgumentException("알림 ID는 필수입니다.");
         }
         if (eventType == null) {
-            throw new IllegalArgumentException("eventType is required");
+            throw new IllegalArgumentException("이벤트 유형은 필수입니다.");
         }
         if (occurredAt == null) {
-            throw new IllegalArgumentException("occurredAt is required");
+            throw new IllegalArgumentException("이벤트 발생 시각은 필수입니다.");
         }
         if (deviceId == null || deviceId.isBlank()) {
-            throw new IllegalArgumentException("deviceId is required");
+            throw new IllegalArgumentException("디바이스 ID는 필수입니다.");
         }
         this.userId = userId;
         this.notificationId = notificationId;

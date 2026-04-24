@@ -42,21 +42,32 @@ public class ChatRoomMember {
     @Column(name = "hidden_reason", length = 40)
     private String hiddenReason;
 
-    private ChatRoomMember(ChatRoom chatRoom, User user) {
+    private ChatRoomMember(ChatRoom chatRoom, User user, Long lastReadMessageId) {
         this.chatRoom = chatRoom;
         this.user = user;
-        this.joinedAt = LocalDateTime.now();
+        this.joinedAt = LocalDateTime.now(java.time.Clock.systemUTC());
+        this.lastReadMessageId = lastReadMessageId;
     }
 
     public void updateLastReadMessageId(Long messageId) {
+        if (messageId == null) {
+            return;
+        }
+        if (this.lastReadMessageId != null && this.lastReadMessageId >= messageId) {
+            return;
+        }
         this.lastReadMessageId = messageId;
+    }
+
+    public boolean hasRead(Long messageId) {
+        return messageId != null && this.lastReadMessageId != null && this.lastReadMessageId >= messageId;
     }
 
     public void hide(String reason) {
         if (this.hiddenAt != null) {
             return;
         }
-        this.hiddenAt = LocalDateTime.now();
+        this.hiddenAt = LocalDateTime.now(java.time.Clock.systemUTC());
         this.hiddenReason = reason;
     }
 
@@ -70,6 +81,10 @@ public class ChatRoomMember {
     }
 
     public static ChatRoomMember create(ChatRoom chatRoom, User user) {
-        return new ChatRoomMember(chatRoom, user);
+        return new ChatRoomMember(chatRoom, user, null);
+    }
+
+    public static ChatRoomMember create(ChatRoom chatRoom, User user, Long lastReadMessageId) {
+        return new ChatRoomMember(chatRoom, user, lastReadMessageId);
     }
 }

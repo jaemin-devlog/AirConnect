@@ -52,4 +52,11 @@ public final class GMatchingRequest {
         @NotNull(message = "ready 값은 필수입니다.")
         private Boolean ready;
     }
+    @Getter
+    @NoArgsConstructor
+    public static class UpdateVisibilityRequest {
+
+        @NotNull
+        private GTeamVisibility visibility;
+    }
 }

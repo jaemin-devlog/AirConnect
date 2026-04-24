@@ -24,6 +24,7 @@ class GMatchingQueueWorkerTest {
                 .thenReturn(new GMatchingService.QueueReconcileResult(GTeamSize.THREE, false, false, true, 0, 0));
         when(matchingService.processQueueUntilStable(GTeamSize.TWO)).thenReturn(2);
         when(matchingService.processQueueUntilStable(GTeamSize.THREE)).thenReturn(0);
+        when(matchingService.finalizePendingMatches()).thenReturn(1);
 
         GMatchingQueueWorker worker = new GMatchingQueueWorker(matchingService);
         worker.drainQueues();
@@ -32,5 +33,6 @@ class GMatchingQueueWorkerTest {
         verify(matchingService, times(1)).reconcileQueue(GTeamSize.THREE);
         verify(matchingService, times(1)).processQueueUntilStable(GTeamSize.TWO);
         verify(matchingService, times(1)).processQueueUntilStable(GTeamSize.THREE);
+        verify(matchingService, times(1)).finalizePendingMatches();
     }
 }

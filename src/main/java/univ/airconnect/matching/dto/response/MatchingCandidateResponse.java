@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import univ.airconnect.user.domain.OnboardingStatus;
+import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.dto.response.UserProfileResponse;
 
@@ -25,6 +26,7 @@ public class MatchingCandidateResponse {
     private String nickname;
     private String deptName;
     private String profileImage;
+    private Gender gender;
     private UserProfileResponse profile;
 }
 

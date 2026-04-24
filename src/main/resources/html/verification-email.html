@@ -1,106 +1,179 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <title>AirConnect 이메일 인증</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 </head>
-<body style="margin:0; padding:0; background-color:#f4f7fb; font-family:Arial, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color:#1f2937;">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f7fb; margin:0; padding:24px 0;">
+
+<body style="margin:0; padding:0; background:#f7f6f2; font-family:Arial, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color:#333;">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f7f6f2; padding:30px 12px;">
     <tr>
         <td align="center">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:640px; background-color:#ffffff; border-radius:20px; overflow:hidden; box-shadow:0 8px 30px rgba(15, 23, 42, 0.08);">
 
-                <!-- hidden preview text -->
+            <!-- 전체 카드 -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                   style="max-width:620px; background:#fffdf9; border:1px solid #efe6d2; border-radius:22px; overflow:hidden; box-shadow:0 12px 28px rgba(0,0,0,0.05);">
+
+                <!-- preview text -->
                 <tr>
-                    <td style="display:none; font-size:1px; color:#ffffff; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;">
-                        AirConnect 학교 이메일 인증을 완료하려면 5분 이내에 인증 코드를 입력해주세요.
+                    <td style="display:none; font-size:1px; color:#fff; opacity:0;">
+                        인증 코드를 입력하여 회원가입을 완료해주세요.
                     </td>
                 </tr>
 
-                <!-- header -->
+                <!-- 상단 얇은 포인트 -->
                 <tr>
-                    <td style="padding:0; background:linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);">
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                    <td style="height:5px; background:linear-gradient(90deg,#f3e5a3,#f9efcc,#f3e5a3);"></td>
+                </tr>
+
+                <!-- 헤더 -->
+                <tr>
+                    <td style="padding:30px 30px 24px 30px; background:#fffaf0;">
+                        <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
                             <tr>
-                                <td style="padding:36px 40px 28px 40px; color:#ffffff;">
-                                    <div style="font-size:14px; font-weight:700; letter-spacing:1.2px; opacity:0.9;">
+                                <td valign="top" style="padding-right:16px;">
+                                    <div style="
+display:inline-block;
+padding:7px 14px;
+border-radius:999px;
+background:#f5ebc8;
+color:#7b6a2c;
+font-size:12px;
+font-weight:700;">
                                         AIRCONNECT
                                     </div>
-                                    <div style="margin-top:10px; font-size:28px; font-weight:800; line-height:1.3;">
-                                        학교 이메일 인증 코드
+
+                                    <div style="
+margin-top:16px;
+font-size:28px;
+font-weight:800;
+color:#3c382f;">
+                                        이메일 인증
                                     </div>
-                                    <div style="margin-top:10px; font-size:15px; line-height:1.7; color:rgba(255,255,255,0.92);">
-                                        한서대학교 구성원 인증을 위해 아래 코드를 입력해주세요.
+
+                                    <div style="
+margin-top:10px;
+font-size:14px;
+line-height:1.8;
+color:#6d675a;">
+                                        학교 이메일 인증을 진행해주세요.
                                     </div>
+                                </td>
+                                <td valign="top" align="right" style="width:132px;">
+                                    <img
+                                            src="../static/image-Photoroom.png"
+                                            alt="AirConnect"
+                                            width="120"
+                                            style="display:block; width:120px; max-width:120px; height:auto; border:0; outline:none; text-decoration:none;"
+                                    />
                                 </td>
                             </tr>
                         </table>
                     </td>
                 </tr>
 
-                <!-- body -->
+                <!-- 본문 -->
                 <tr>
-                    <td style="padding:40px;">
-                        <div style="font-size:16px; font-weight:700; color:#111827;">
-                            안녕하세요, AirConnect입니다.
+                    <td style="padding:34px 36px 10px 36px;">
+
+                        <div style="font-size:15px; font-weight:700; color:#3c382f;">
+                            안녕하세요,
                         </div>
 
-                        <div style="margin-top:14px; font-size:15px; line-height:1.8; color:#4b5563;">
-                            회원가입을 계속 진행하려면 아래 <strong>이메일 인증 코드</strong>를 입력해주세요.<br>
-                            인증 코드는 발급 후 <strong>5분 동안만 유효</strong>합니다.
+                        <div style="
+margin-top:12px;
+font-size:14px;
+line-height:1.9;
+color:#6a6457;">
+                            회원가입을 완료하려면 아래 인증 코드를 입력해주세요.<br>
+                            인증 코드는 <strong>{{EXPIRE_MINUTES}}분 동안 유효</strong>합니다.
                         </div>
 
-                        <!-- code box -->
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:28px;">
+                        <!-- 인증코드 카드 -->
+                        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:26px;">
                             <tr>
-                                <td align="center" style="background-color:#f8fbff; border:1px solid #dbeafe; border-radius:18px; padding:28px 20px;">
-                                    <div style="font-size:13px; color:#6b7280; letter-spacing:0.8px; margin-bottom:10px;">
+                                <td align="center"
+                                    style="
+background:#fff6d8;
+border:1px solid #eadfa8;
+border-radius:18px;
+padding:26px 16px;">
+
+                                    <div style="
+font-size:12px;
+letter-spacing:1px;
+color:#8c7a3c;
+margin-bottom:10px;
+font-weight:600;">
                                         VERIFICATION CODE
                                     </div>
-                                    <div style="font-size:36px; line-height:1; font-weight:800; letter-spacing:10px; color:#2563eb;">
+
+                                    <div style="
+font-size:34px;
+letter-spacing:6px;
+font-weight:800;
+color:#4a4332;">
                                         {{VERIFICATION_CODE}}
                                     </div>
+
                                 </td>
                             </tr>
                         </table>
 
-                        <!-- info box -->
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:24px; background-color:#f9fafb; border-radius:14px; border:1px solid #e5e7eb;">
+                        <!-- 안내 -->
+                        <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                               style="margin-top:22px; background:#fffaf2; border:1px solid #eee3c9; border-radius:16px;">
                             <tr>
                                 <td style="padding:18px 20px;">
-                                    <div style="font-size:14px; font-weight:700; color:#111827; margin-bottom:10px;">
+
+                                    <div style="font-size:13px; font-weight:700; margin-bottom:8px; color:#4a4332;">
                                         안내사항
                                     </div>
-                                    <div style="font-size:14px; line-height:1.8; color:#4b5563;">
-                                        • 인증 코드는 <strong>{{EXPIRE_MINUTES}}분</strong> 후 만료됩니다.<br>
-                                        • 학교 이메일(<strong>@{{SCHOOL_DOMAIN}}</strong>)만 인증할 수 있습니다.<br>
-                                        • 본인이 요청하지 않았다면 이 메일은 무시하셔도 됩니다.
+
+                                    <div style="font-size:13px; line-height:1.8; color:#6a6457;">
+                                        • 인증 코드는 {{EXPIRE_MINUTES}}분 후 만료됩니다<br>
+                                        • @{{SCHOOL_DOMAIN}} 이메일만 인증 가능합니다<br>
+                                        • 요청하지 않은 경우 무시하셔도 됩니다
                                     </div>
+
                                 </td>
                             </tr>
                         </table>
 
-                        <div style="margin-top:28px; font-size:14px; line-height:1.8; color:#6b7280;">
+                        <div style="
+margin-top:26px;
+font-size:13px;
+line-height:1.8;
+color:#6a6457;">
                             감사합니다.<br>
-                            <strong style="color:#111827;">AirConnect 팀</strong>
+                            <strong style="color:#3c382f;">AirConnect 팀</strong>
                         </div>
+
                     </td>
                 </tr>
 
                 <!-- footer -->
                 <tr>
-                    <td style="padding:24px 40px 32px 40px; background-color:#f9fafb; border-top:1px solid #e5e7eb;">
-                        <div style="font-size:12px; line-height:1.8; color:#9ca3af; text-align:center;">
-                            본 메일은 발신 전용입니다.<br>
-                            © AirConnect. All rights reserved.
-                        </div>
+                    <td style="
+padding:22px 30px;
+text-align:center;
+background:#fdf7e6;
+border-top:1px solid #eee3c9;
+font-size:11px;
+color:#9a9076;
+line-height:1.8;">
+                        본 메일은 발신 전용입니다.<br>
+                        © AirConnect. All rights reserved.
                     </td>
                 </tr>
 
             </table>
+
         </td>
     </tr>
 </table>
+
 </body>
 </html>

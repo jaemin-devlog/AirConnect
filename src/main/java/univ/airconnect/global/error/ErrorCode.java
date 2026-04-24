@@ -29,7 +29,7 @@ public enum ErrorCode {
     TEAM_GENDER_REQUIRED(HttpStatus.BAD_REQUEST, "GMATCH-017", "팀 성별 정보가 필요합니다."),
     PROFILE_GENDER_REQUIRED(HttpStatus.BAD_REQUEST, "GMATCH-018", "프로필 성별을 먼저 설정해 주세요."),
     TEAM_GENDER_MISMATCH(HttpStatus.FORBIDDEN, "GMATCH-019", "팀 성별과 사용자 성별이 일치하지 않습니다."),
-    TEAM_SIZE_REQUIRED(HttpStatus.BAD_REQUEST, "GMATCH-020", "teamSize는 필수입니다."),
+    TEAM_SIZE_REQUIRED(HttpStatus.BAD_REQUEST, "GMATCH-020", "팀 인원 수는 필수입니다."),
     INVALID_TEAM_SIZE(HttpStatus.BAD_REQUEST, "GMATCH-021", "지원하지 않는 팀 인원 수입니다."),
     TEAM_ROOM_STATE_INVALID(HttpStatus.BAD_REQUEST, "GMATCH-022", "현재 팀방 상태에서는 요청을 처리할 수 없습니다."),
     LEADER_ONLY_ACTION(HttpStatus.FORBIDDEN, "GMATCH-023", "방장만 수행할 수 있습니다."),
