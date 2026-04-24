@@ -85,7 +85,8 @@ public class AuthService {
         String normalizedEmail = normalizeEmail(verifiedEmail);
 
         if (userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail).isPresent()
-                || userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
+                || userRepository.existsByEmailIgnoreCase(normalizedEmail)
+                || userRepository.existsByVerifiedSchoolEmailIgnoreCase(normalizedEmail)) {
             throw new AuthException(AuthErrorCode.EMAIL_ALREADY_REGISTERED);
         }
 

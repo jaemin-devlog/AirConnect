@@ -212,7 +212,8 @@ class AuthServiceTest {
         when(verificationService.resolveVerifiedEmail("verify-token")).thenReturn("student@office.hanseo.ac.kr");
         when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "student@office.hanseo.ac.kr"))
                 .thenReturn(Optional.empty());
-        when(userRepository.existsByEmailIgnoreCase("student@office.hanseo.ac.kr")).thenReturn(true);
+        when(userRepository.existsByEmailIgnoreCase("student@office.hanseo.ac.kr")).thenReturn(false);
+        when(userRepository.existsByVerifiedSchoolEmailIgnoreCase("student@office.hanseo.ac.kr")).thenReturn(true);
 
         assertThatThrownBy(() -> authService.emailSignUp(request))
                 .isInstanceOf(AuthException.class)

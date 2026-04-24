@@ -21,6 +21,14 @@ public interface MatchingConnectionRepository extends JpaRepository<MatchingConn
 
     List<MatchingConnection> findByRequesterIdAndStatus(Long requesterId, ConnectionStatus status);
 
+    @Query("""
+        SELECT mc
+        FROM MatchingConnection mc
+        WHERE mc.requesterId = :requesterId
+        ORDER BY COALESCE(mc.respondedAt, mc.connectedAt) DESC, mc.id DESC
+    """)
+    List<MatchingConnection> findTop20ByRequesterIdOrderByRecentDesc(@Param("requesterId") Long requesterId);
+
     // 요청 받은 목록
     @Query("""
         SELECT mc FROM MatchingConnection mc 

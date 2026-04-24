@@ -8,8 +8,16 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import univ.airconnect.analytics.domain.AnalyticsEventType;
+import univ.airconnect.analytics.domain.entity.AnalyticsEvent;
+import univ.airconnect.analytics.repository.AnalyticsEventRepository;
+import univ.airconnect.iap.domain.IapEnvironment;
+import univ.airconnect.iap.domain.IapStore;
+import univ.airconnect.iap.domain.entity.IapOrder;
 import univ.airconnect.iap.domain.entity.TicketLedger;
+import univ.airconnect.iap.repository.IapOrderRepository;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
+import univ.airconnect.matching.domain.entity.MatchingConnection;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.moderation.domain.ReportStatus;
 import univ.airconnect.moderation.repository.UserReportRepository;
@@ -43,7 +51,11 @@ class AdminServiceTest {
     @Mock
     private MatchingConnectionRepository matchingConnectionRepository;
     @Mock
+    private IapOrderRepository iapOrderRepository;
+    @Mock
     private TicketLedgerRepository ticketLedgerRepository;
+    @Mock
+    private AnalyticsEventRepository analyticsEventRepository;
     @Mock
     private UserService userService;
     @Mock
@@ -59,7 +71,9 @@ class AdminServiceTest {
                 userRepository,
                 userReportRepository,
                 matchingConnectionRepository,
+                iapOrderRepository,
                 ticketLedgerRepository,
+                analyticsEventRepository,
                 userService,
                 notificationService,
                 statisticsService,
@@ -116,11 +130,52 @@ class AdminServiceTest {
     }
 
     @Test
+    void getUserDetail_includesRecentHistories() {
+        User user = user(5L, 10);
+        User target = user(6L, 20);
+        ReflectionTestUtils.setField(target, "nickname", "상대방");
+
+        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+        when(userReportRepository.countByReportedUserIdAndStatus(5L, ReportStatus.OPEN)).thenReturn(2L);
+        when(iapOrderRepository.findTop20ByUserIdOrderByCreatedAtDesc(5L)).thenReturn(List.of(iapOrder(5L)));
+        when(matchingConnectionRepository.findTop20ByRequesterIdOrderByRecentDesc(5L)).thenReturn(List.of(connection(100L, 5L, 6L)));
+        when(userRepository.findAllByIdWithProfile(java.util.Set.of(6L))).thenReturn(List.of(target));
+        when(ticketLedgerRepository.findTop20UsageHistoryByUserId(5L)).thenReturn(List.of(ticketUsage(5L)));
+        when(analyticsEventRepository.findTop20ByUserIdOrderByOccurredAtDescIdDesc(5L)).thenReturn(List.of(apiEvent(5L)));
+
+        AdminDtos.UserDetail detail = adminService.getUserDetail(5L);
+
+        assertThat(detail.openReportCount()).isEqualTo(2L);
+        assertThat(detail.purchaseHistories()).hasSize(1);
+        assertThat(detail.purchaseHistories().get(0).productId()).isEqualTo("ticket_10");
+        assertThat(detail.sentRequestHistories()).hasSize(1);
+        assertThat(detail.sentRequestHistories().get(0).targetNickname()).isEqualTo("상대방");
+        assertThat(detail.ticketUsageHistories()).hasSize(1);
+        assertThat(detail.ticketUsageHistories().get(0).usedAmount()).isEqualTo(2);
+        assertThat(detail.apiUsageHistories()).hasSize(1);
+        assertThat(detail.apiUsageHistories().get(0).type()).isEqualTo(AnalyticsEventType.USER_LOGGED_IN);
+    }
+
+    @Test
     void getStatisticsOverview_combinesExistingStatsAndTicketData() {
         MainStatisticsResponse main = MainStatisticsResponse.builder()
                 .totalRegisteredUsers(100)
                 .dailyActiveUsers(25)
+                .genderRatio(MainStatisticsResponse.GenderRatio.builder()
+                        .maleUsers(40)
+                        .femaleUsers(50)
+                        .unknownUsers(10)
+                        .malePercentage(44)
+                        .femalePercentage(56)
+                        .build())
                 .totalMatchSuccessCount(13)
+                .topRequestedDepartments(List.of(
+                        MainStatisticsResponse.DepartmentRanking.builder()
+                                .rank(1)
+                                .deptName("컴퓨터공학과")
+                                .requestCount(12)
+                                .build()
+                ))
                 .generatedAt(LocalDateTime.now())
                 .build();
         when(statisticsService.getMainStatistics()).thenReturn(main);
@@ -131,6 +186,10 @@ class AdminServiceTest {
         AdminDtos.StatisticsOverview response = adminService.getStatisticsOverview();
 
         assertThat(response.totalRegisteredUsers()).isEqualTo(100);
+        assertThat(response.genderRatio()).isNotNull();
+        assertThat(response.genderRatio().maleUsers()).isEqualTo(40);
+        assertThat(response.topRequestedDepartments()).hasSize(1);
+        assertThat(response.topRequestedDepartments().get(0).deptName()).isEqualTo("컴퓨터공학과");
         assertThat(response.grantedTickets()).isEqualTo(200L);
         assertThat(response.consumedTickets()).isEqualTo(150L);
         assertThat(response.openReports()).isEqualTo(3L);
@@ -148,5 +207,47 @@ class AdminServiceTest {
                 .build();
         ReflectionTestUtils.setField(user, "id", id);
         return user;
+    }
+
+    private IapOrder iapOrder(Long userId) {
+        IapOrder order = IapOrder.createPending(
+                userId,
+                IapStore.APPLE,
+                "ticket_10",
+                "tx-1",
+                "origin-tx-1",
+                null,
+                "order-1",
+                "account-token",
+                IapEnvironment.SANDBOX,
+                "hash",
+                "{}"
+        );
+        order.markGranted(10, 0, 10);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        return order;
+    }
+
+    private MatchingConnection connection(Long id, Long requesterId, Long targetUserId) {
+        MatchingConnection connection = MatchingConnection.createPending(requesterId, targetUserId);
+        ReflectionTestUtils.setField(connection, "id", id);
+        return connection;
+    }
+
+    private TicketLedger ticketUsage(Long userId) {
+        TicketLedger ledger = TicketLedger.consumeForMatchingConnect(userId, 2, 10, 8, "ref-1");
+        ReflectionTestUtils.setField(ledger, "id", 11L);
+        return ledger;
+    }
+
+    private AnalyticsEvent apiEvent(Long userId) {
+        AnalyticsEvent event = AnalyticsEvent.server(
+                userId,
+                AnalyticsEventType.USER_LOGGED_IN,
+                LocalDateTime.now(),
+                "{\"provider\":\"APPLE\"}"
+        );
+        ReflectionTestUtils.setField(event, "id", 21L);
+        return event;
     }
 }

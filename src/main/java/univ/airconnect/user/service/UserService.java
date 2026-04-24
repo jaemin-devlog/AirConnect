@@ -180,7 +180,7 @@ public class UserService {
                 .userId(user.getId())
                 .provider(user.getProvider())
                 .socialId(user.getSocialId())
-                .email(user.getEmail())
+                .email(user.getPrimaryEmail())
                 .name(user.getName())
                 .deptName(user.getDeptName())
                 .nickname(user.getNickname())
@@ -323,7 +323,8 @@ public class UserService {
         validatePasswordFormat(request.getNewPassword());
 
         String verifiedEmail = verificationService.resolveVerifiedEmail(request.getVerificationToken());
-        if (user.getEmail() == null || !user.getEmail().trim().equalsIgnoreCase(verifiedEmail)) {
+        String registeredEmail = user.getPrimaryEmail();
+        if (registeredEmail == null || !registeredEmail.trim().equalsIgnoreCase(verifiedEmail)) {
             throw new VerificationException(VerificationErrorCode.VERIFIED_EMAIL_MISMATCH);
         }
 
