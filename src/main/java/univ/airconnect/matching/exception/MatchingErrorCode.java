@@ -3,8 +3,10 @@ package univ.airconnect.matching.exception;
 import org.springframework.http.HttpStatus;
 
 public enum MatchingErrorCode {
+
     PROFILE_REQUIRED(HttpStatus.BAD_REQUEST, "PROFILE_REQUIRED", "매칭을 이용하려면 프로필이 필요합니다."),
     PROFILE_GENDER_REQUIRED(HttpStatus.BAD_REQUEST, "PROFILE_GENDER_REQUIRED", "매칭을 이용하려면 프로필 성별 정보가 필요합니다."),
+    MATCHING_RESTRICTED(HttpStatus.FORBIDDEN, "MATCHING_RESTRICTED", "매칭이 제한된 사용자입니다."),
     INSUFFICIENT_TICKETS(HttpStatus.BAD_REQUEST, "INSUFFICIENT_TICKETS", "매칭에 필요한 티켓이 부족합니다."),
     INVALID_TARGET(HttpStatus.BAD_REQUEST, "INVALID_TARGET", "유효하지 않은 대상 사용자입니다."),
     CANDIDATE_NOT_EXPOSED(HttpStatus.BAD_REQUEST, "CANDIDATE_NOT_EXPOSED", "대상 사용자가 추천 후보로 노출되지 않았습니다."),
