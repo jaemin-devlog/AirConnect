@@ -183,6 +183,25 @@ public class NotificationOutbox {
     /**
      * 워커가 현재 작업을 집어간 시점을 기록한다.
      */
+    public void coalesceToLatest(Long notificationId,
+                                 String targetToken,
+                                 String title,
+                                 String body,
+                                 String dataJson,
+                                 LocalDateTime nextAttemptAt) {
+        if (this.status != NotificationDeliveryStatus.PENDING) {
+            throw new IllegalStateException("Only pending outboxes can be coalesced.");
+        }
+        validate(notificationId, this.userId, this.pushDeviceId, this.provider, targetToken, title, body, dataJson, nextAttemptAt);
+        this.notificationId = notificationId;
+        this.targetToken = targetToken;
+        this.title = title;
+        this.body = body;
+        this.dataJson = dataJson;
+        this.nextAttemptAt = nextAttemptAt;
+        touch();
+    }
+
     public void claim() {
         if (this.status != NotificationDeliveryStatus.PENDING) {
             throw new IllegalStateException("대기 중인 아웃박스만 점유할 수 있습니다.");
