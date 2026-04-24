@@ -14,6 +14,21 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
 
     List<NotificationOutbox> findByIdInOrderByIdAsc(Collection<Long> ids);
 
+    @Query("""
+            SELECT outbox
+            FROM NotificationOutbox outbox
+            WHERE outbox.pushDeviceId = :pushDeviceId
+              AND outbox.status = :status
+              AND outbox.attemptCount = :attemptCount
+              AND outbox.nextAttemptAt BETWEEN :from AND :to
+            ORDER BY outbox.id ASC
+            """)
+    List<NotificationOutbox> findPendingCandidatesForCoalescing(@Param("pushDeviceId") Long pushDeviceId,
+                                                                @Param("status") NotificationDeliveryStatus status,
+                                                                @Param("attemptCount") Integer attemptCount,
+                                                                @Param("from") LocalDateTime from,
+                                                                @Param("to") LocalDateTime to);
+
     @Query(value = """
             SELECT no.id
             FROM notification_outbox no
