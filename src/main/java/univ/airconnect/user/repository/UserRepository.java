@@ -25,6 +25,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmailIgnoreCase(String email);
 
+    boolean existsByVerifiedSchoolEmailIgnoreCase(String verifiedSchoolEmail);
+
     @Query("""
         SELECT u
         FROM User u

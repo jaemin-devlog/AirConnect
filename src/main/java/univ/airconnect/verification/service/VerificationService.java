@@ -217,7 +217,8 @@ public class VerificationService {
         }
         boolean existsEmailAccount = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
                 .isPresent();
-        boolean linkedToAnyUser = userRepository.existsByEmailIgnoreCase(normalizedEmail);
+        boolean linkedToAnyUser = userRepository.existsByEmailIgnoreCase(normalizedEmail)
+                || userRepository.existsByVerifiedSchoolEmailIgnoreCase(normalizedEmail);
         if (existsEmailAccount || linkedToAnyUser) {
             throw new VerificationException(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
         }
@@ -285,7 +286,7 @@ public class VerificationService {
         }
 
         userRepository.findById(userId)
-                .ifPresent(user -> user.updateEmail(verifiedEmail));
+                .ifPresent(user -> user.updateVerifiedSchoolEmail(verifiedEmail));
     }
 
     private String maskEmail(String email) {

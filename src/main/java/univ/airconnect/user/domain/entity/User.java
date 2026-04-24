@@ -40,6 +40,9 @@ public class User {
     @Column(length = 255)
     private String email;
 
+    @Column(length = 255)
+    private String verifiedSchoolEmail;
+
     @Column(name = "password_hash", length = 255)
     private String passwordHash;
 
@@ -103,6 +106,7 @@ public class User {
             SocialProvider provider,
             String socialId,
             String email,
+            String verifiedSchoolEmail,
             String passwordHash,
             String name,
             String nickname,
@@ -125,6 +129,7 @@ public class User {
         this.provider = provider;
         this.socialId = socialId;
         this.email = email;
+        this.verifiedSchoolEmail = verifiedSchoolEmail;
         this.passwordHash = passwordHash;
         this.name = name;
         this.nickname = nickname;
@@ -155,6 +160,7 @@ public class User {
                 .provider(provider)
                 .socialId(socialId)
                 .email(email)
+                .verifiedSchoolEmail(null)
                 .status(UserStatus.ACTIVE)
                 .onboardingStatus(OnboardingStatus.BASIC)
                 .role(UserRole.USER)
@@ -169,6 +175,7 @@ public class User {
                 .provider(SocialProvider.EMAIL)
                 .socialId(email)
                 .email(email)
+                .verifiedSchoolEmail(email)
                 .passwordHash(passwordHash)
                 .status(UserStatus.ACTIVE)
                 .onboardingStatus(OnboardingStatus.BASIC)
@@ -211,6 +218,7 @@ public class User {
 
     public void anonymizeForDeletion() {
         this.email = null;
+        this.verifiedSchoolEmail = null;
         this.passwordHash = null;
         this.name = null;
         this.nickname = null;
@@ -282,8 +290,19 @@ public class User {
         this.lastActiveAt = LocalDateTime.now();
     }
 
-    public void updateEmail(String email) {
+    public void updateSocialEmail(String email) {
         this.email = email;
+    }
+
+    public void updateVerifiedSchoolEmail(String verifiedSchoolEmail) {
+        this.verifiedSchoolEmail = verifiedSchoolEmail;
+    }
+
+    public String getPrimaryEmail() {
+        if (this.verifiedSchoolEmail != null && !this.verifiedSchoolEmail.isBlank()) {
+            return this.verifiedSchoolEmail;
+        }
+        return this.email;
     }
 
     public void suspend(LocalDateTime until, String reason) {

@@ -100,6 +100,7 @@ class VerificationServiceTest {
         when(valueOperations.get("email_verified_active:" + email)).thenReturn("active-token");
         when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.empty());
         when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(false);
+        when(userRepository.existsByVerifiedSchoolEmailIgnoreCase(email)).thenReturn(false);
 
         service.sendCode(email, VerificationPurpose.SIGN_UP);
 
@@ -148,7 +149,8 @@ class VerificationServiceTest {
         String email = "student@office.hanseo.ac.kr";
 
         when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.empty());
-        when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(true);
+        when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(false);
+        when(userRepository.existsByVerifiedSchoolEmailIgnoreCase(email)).thenReturn(true);
 
         assertThatThrownBy(() -> service.sendCode(email, VerificationPurpose.SIGN_UP))
                 .isInstanceOf(VerificationException.class)
@@ -186,6 +188,7 @@ class VerificationServiceTest {
 
         service.verifyCode(userId, email, code, VerificationPurpose.SIGN_UP);
 
-        assertThat(user.getEmail()).isEqualTo(email);
+        assertThat(user.getEmail()).isEqualTo("relay@privaterelay.appleid.com");
+        assertThat(user.getPrimaryEmail()).isEqualTo(email);
     }
 }

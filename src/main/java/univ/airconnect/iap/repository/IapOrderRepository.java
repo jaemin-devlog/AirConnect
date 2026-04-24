@@ -13,6 +13,8 @@ import java.util.Optional;
 
 public interface IapOrderRepository extends JpaRepository<IapOrder, Long> {
 
+    List<IapOrder> findTop20ByUserIdOrderByCreatedAtDesc(Long userId);
+
     Optional<IapOrder> findByStoreAndTransactionId(IapStore store, String transactionId);
 
     Optional<IapOrder> findByStoreAndPurchaseToken(IapStore store, String purchaseToken);

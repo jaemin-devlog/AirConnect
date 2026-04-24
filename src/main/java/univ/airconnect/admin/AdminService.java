@@ -2,6 +2,8 @@ package univ.airconnect.admin;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import univ.airconnect.analytics.domain.entity.AnalyticsEvent;
+import univ.airconnect.analytics.repository.AnalyticsEventRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -9,7 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
+import univ.airconnect.iap.domain.entity.IapOrder;
 import univ.airconnect.iap.domain.entity.TicketLedger;
+import univ.airconnect.iap.repository.IapOrderRepository;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
@@ -39,7 +43,9 @@ public class AdminService {
     private final UserRepository userRepository;
     private final UserReportRepository userReportRepository;
     private final MatchingConnectionRepository matchingConnectionRepository;
+    private final IapOrderRepository iapOrderRepository;
     private final TicketLedgerRepository ticketLedgerRepository;
+    private final AnalyticsEventRepository analyticsEventRepository;
     private final UserService userService;
     private final NotificationService notificationService;
     private final StatisticsService statisticsService;
@@ -211,7 +217,9 @@ public class AdminService {
         return new AdminDtos.StatisticsOverview(
                 main.getTotalRegisteredUsers(),
                 main.getDailyActiveUsers(),
+                AdminDtos.GenderRatio.from(main.getGenderRatio()),
                 main.getTotalMatchSuccessCount(),
+                mapDepartmentRankings(main.getTopRequestedDepartments()),
                 ticketLedgerRepository.sumGrantedTickets(),
                 ticketLedgerRepository.sumConsumedTickets(),
                 userReportRepository.countByStatus(ReportStatus.OPEN),
@@ -269,8 +277,8 @@ public class AdminService {
                 user.getId(),
                 user.getProvider().name(),
                 user.getSocialId(),
-                user.getEmail(),
-                deriveSchoolName(user.getEmail()),
+                user.getPrimaryEmail(),
+                deriveSchoolName(user.getPrimaryEmail()),
                 user.getDeptName(),
                 user.getNickname(),
                 user.getRole(),
@@ -289,8 +297,8 @@ public class AdminService {
                 user.getId(),
                 user.getProvider().name(),
                 user.getSocialId(),
-                user.getEmail(),
-                deriveSchoolName(user.getEmail()),
+                user.getPrimaryEmail(),
+                deriveSchoolName(user.getPrimaryEmail()),
                 user.getDeptName(),
                 user.getNickname(),
                 user.getName(),
@@ -307,7 +315,11 @@ public class AdminService {
                 user.getRestrictedAt(),
                 user.getRestrictedUntil(),
                 user.getRestrictedReason(),
-                userReportRepository.countByReportedUserIdAndStatus(user.getId(), ReportStatus.OPEN)
+                userReportRepository.countByReportedUserIdAndStatus(user.getId(), ReportStatus.OPEN),
+                loadPurchaseHistories(user.getId()),
+                loadSentRequestHistories(user.getId()),
+                loadTicketUsageHistories(user.getId()),
+                loadApiUsageHistories(user.getId())
         );
     }
 
@@ -316,6 +328,98 @@ public class AdminService {
             return null;
         }
         return email.toLowerCase(Locale.ROOT).endsWith("@office.hanseo.ac.kr") ? "HANSEO" : null;
+    }
+
+    private List<AdminDtos.DepartmentRanking> mapDepartmentRankings(List<MainStatisticsResponse.DepartmentRanking> rankings) {
+        if (rankings == null || rankings.isEmpty()) {
+            return List.of();
+        }
+        return rankings.stream()
+                .map(AdminDtos.DepartmentRanking::from)
+                .toList();
+    }
+
+    private List<AdminDtos.PurchaseHistoryItem> loadPurchaseHistories(Long userId) {
+        return iapOrderRepository.findTop20ByUserIdOrderByCreatedAtDesc(userId).stream()
+                .map(order -> new AdminDtos.PurchaseHistoryItem(
+                        order.getId(),
+                        order.getStore(),
+                        order.getProductId(),
+                        order.getStatus(),
+                        order.getGrantedTickets(),
+                        order.getBeforeTickets(),
+                        order.getAfterTickets(),
+                        order.getTransactionId(),
+                        firstNonBlank(order.getOrderId(), order.getPurchaseToken()),
+                        order.getProcessedAt(),
+                        order.getCreatedAt()
+                ))
+                .toList();
+    }
+
+    private List<AdminDtos.SentRequestHistoryItem> loadSentRequestHistories(Long userId) {
+        List<MatchingConnection> connections = matchingConnectionRepository.findTop20ByRequesterIdOrderByRecentDesc(userId);
+        Set<Long> targetUserIds = new LinkedHashSet<>();
+        for (MatchingConnection connection : connections) {
+            targetUserIds.add(otherUserId(connection, userId));
+        }
+        Map<Long, User> users = loadUsers(targetUserIds);
+
+        return connections.stream()
+                .map(connection -> {
+                    Long targetUserId = otherUserId(connection, userId);
+                    return new AdminDtos.SentRequestHistoryItem(
+                            connection.getId(),
+                            connection.getStatus(),
+                            targetUserId,
+                            getNickname(users.get(targetUserId)),
+                            connection.getChatRoomId(),
+                            connection.getConnectedAt(),
+                            connection.getRespondedAt()
+                    );
+                })
+                .toList();
+    }
+
+    private List<AdminDtos.TicketUsageHistoryItem> loadTicketUsageHistories(Long userId) {
+        return ticketLedgerRepository.findTop20UsageHistoryByUserId(userId).stream()
+                .map(ledger -> new AdminDtos.TicketUsageHistoryItem(
+                        ledger.getId(),
+                        Math.abs(ledger.getChangeAmount()),
+                        ledger.getBeforeAmount(),
+                        ledger.getAfterAmount(),
+                        ledger.getReason(),
+                        ledger.getRefType().name(),
+                        ledger.getRefId(),
+                        ledger.getCreatedAt()
+                ))
+                .toList();
+    }
+
+    private List<AdminDtos.ApiUsageHistoryItem> loadApiUsageHistories(Long userId) {
+        return analyticsEventRepository.findTop20ByUserIdOrderByOccurredAtDescIdDesc(userId).stream()
+                .map(event -> new AdminDtos.ApiUsageHistoryItem(
+                        event.getId(),
+                        event.getType(),
+                        event.getSource(),
+                        event.getScreenName(),
+                        event.getSessionId(),
+                        event.getDeviceId(),
+                        event.getPayloadJson(),
+                        event.getOccurredAt()
+                ))
+                .toList();
+    }
+
+    private Long otherUserId(MatchingConnection connection, Long userId) {
+        return Objects.equals(connection.getUser1Id(), userId) ? connection.getUser2Id() : connection.getUser1Id();
+    }
+
+    private String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        return second;
     }
 
     private String getNickname(User user) {

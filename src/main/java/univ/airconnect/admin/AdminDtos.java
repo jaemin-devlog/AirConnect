@@ -1,6 +1,10 @@
 package univ.airconnect.admin;
 
 import org.springframework.data.domain.Page;
+import univ.airconnect.analytics.domain.AnalyticsEventSource;
+import univ.airconnect.analytics.domain.AnalyticsEventType;
+import univ.airconnect.iap.domain.IapOrderStatus;
+import univ.airconnect.iap.domain.IapStore;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.moderation.domain.ReportReasonCode;
 import univ.airconnect.moderation.domain.ReportStatus;
@@ -78,7 +82,11 @@ public final class AdminDtos {
             LocalDateTime restrictedAt,
             LocalDateTime restrictedUntil,
             String restrictedReason,
-            long openReportCount
+            long openReportCount,
+            List<PurchaseHistoryItem> purchaseHistories,
+            List<SentRequestHistoryItem> sentRequestHistories,
+            List<TicketUsageHistoryItem> ticketUsageHistories,
+            List<ApiUsageHistoryItem> apiUsageHistories
     ) {
     }
 
@@ -128,15 +136,102 @@ public final class AdminDtos {
     ) {
     }
 
+    public record PurchaseHistoryItem(
+            Long orderId,
+            IapStore store,
+            String productId,
+            IapOrderStatus status,
+            Integer grantedTickets,
+            Integer beforeTickets,
+            Integer afterTickets,
+            String transactionId,
+            String orderKey,
+            LocalDateTime processedAt,
+            LocalDateTime createdAt
+    ) {
+    }
+
+    public record SentRequestHistoryItem(
+            Long connectionId,
+            ConnectionStatus status,
+            Long targetUserId,
+            String targetNickname,
+            Long chatRoomId,
+            LocalDateTime connectedAt,
+            LocalDateTime respondedAt
+    ) {
+    }
+
+    public record TicketUsageHistoryItem(
+            Long ledgerId,
+            Integer usedAmount,
+            Integer beforeAmount,
+            Integer afterAmount,
+            String reason,
+            String refType,
+            String refId,
+            LocalDateTime createdAt
+    ) {
+    }
+
+    public record ApiUsageHistoryItem(
+            Long eventId,
+            AnalyticsEventType type,
+            AnalyticsEventSource source,
+            String screenName,
+            String sessionId,
+            String deviceId,
+            String payloadJson,
+            LocalDateTime occurredAt
+    ) {
+    }
+
     public record StatisticsOverview(
             long totalRegisteredUsers,
             long dailyActiveUsers,
+            GenderRatio genderRatio,
             long totalMatchSuccessCount,
+            List<DepartmentRanking> topRequestedDepartments,
             long grantedTickets,
             long consumedTickets,
             long openReports,
             LocalDateTime generatedAt
     ) {
+    }
+
+    public record GenderRatio(
+            long maleUsers,
+            long femaleUsers,
+            long unknownUsers,
+            int malePercentage,
+            int femalePercentage
+    ) {
+        public static GenderRatio from(univ.airconnect.statistics.dto.response.MainStatisticsResponse.GenderRatio value) {
+            if (value == null) {
+                return null;
+            }
+            return new GenderRatio(
+                    value.getMaleUsers(),
+                    value.getFemaleUsers(),
+                    value.getUnknownUsers(),
+                    value.getMalePercentage(),
+                    value.getFemalePercentage()
+            );
+        }
+    }
+
+    public record DepartmentRanking(
+            int rank,
+            String deptName,
+            long requestCount
+    ) {
+        public static DepartmentRanking from(univ.airconnect.statistics.dto.response.MainStatisticsResponse.DepartmentRanking value) {
+            return new DepartmentRanking(
+                    value.getRank(),
+                    value.getDeptName(),
+                    value.getRequestCount()
+            );
+        }
     }
 
     public record NoticeBroadcastResult(
