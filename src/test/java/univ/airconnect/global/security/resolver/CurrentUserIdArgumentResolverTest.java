@@ -9,6 +9,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.exception.UserErrorCode;
@@ -45,7 +46,7 @@ class CurrentUserIdArgumentResolverTest {
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
-                        new CustomUserPrincipal(userId),
+                        new CustomUserPrincipal(userId, UserRole.USER),
                         null
                 )
         );
@@ -69,7 +70,7 @@ class CurrentUserIdArgumentResolverTest {
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
-                        new CustomUserPrincipal(userId),
+                        new CustomUserPrincipal(userId, UserRole.USER),
                         null
                 )
         );

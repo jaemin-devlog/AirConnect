@@ -58,10 +58,10 @@ public class GTeamReadyState {
     @Builder
     private GTeamReadyState(Long teamRoomId, Long userId) {
         if (teamRoomId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "teamRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "팀방 ID는 필수입니다.");
         }
         if (userId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "userId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "사용자 ID는 필수입니다.");
         }
         this.teamRoomId = teamRoomId;
         this.userId = userId;

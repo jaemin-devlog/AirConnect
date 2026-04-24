@@ -6,6 +6,7 @@ import univ.airconnect.moderation.domain.ReportReasonCode;
 import univ.airconnect.moderation.domain.ReportStatus;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.OnboardingStatus;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 
 import java.time.LocalDateTime;
@@ -44,6 +45,7 @@ public final class AdminDtos {
             String schoolName,
             String deptName,
             String nickname,
+            UserRole role,
             UserStatus status,
             OnboardingStatus onboardingStatus,
             Gender gender,
@@ -64,6 +66,7 @@ public final class AdminDtos {
             String nickname,
             String name,
             Integer studentNum,
+            UserRole role,
             UserStatus status,
             OnboardingStatus onboardingStatus,
             Gender gender,

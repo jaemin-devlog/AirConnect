@@ -6,12 +6,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import univ.airconnect.global.response.ApiResponse;
 
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 
@@ -72,5 +74,21 @@ class GlobalExceptionHandlerTest {
                 .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.map(String.class, Object.class))
                 .containsEntry("method", HttpMethod.POST.name())
                 .containsEntry("path", path);
+    }
+
+    @Test
+    void handleAsyncRequestNotUsable_doesNotPropagateClientAbort() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        String traceId = "trace-broken-pipe";
+        String path = "/images/profile/test.png";
+
+        MockHttpServletRequest request = new MockHttpServletRequest(HttpMethod.GET.name(), path);
+        request.setAttribute(TRACE_ID_ATTRIBUTE, traceId);
+
+        AsyncRequestNotUsableException exception =
+                new AsyncRequestNotUsableException("ServletOutputStream failed to write: java.io.IOException: Broken pipe");
+
+        assertThatCode(() -> handler.handleAsyncRequestNotUsable(exception, request))
+                .doesNotThrowAnyException();
     }
 }

@@ -36,6 +36,8 @@ public interface GFinalGroupChatRoomRepository extends JpaRepository<GFinalGroup
 
     List<GFinalGroupChatRoom> findByStatusIn(Collection<GFinalGroupRoomStatus> statuses);
 
+    long countByTeamSize(univ.airconnect.groupmatching.domain.GTeamSize teamSize);
+
     long countByStatusIn(Collection<GFinalGroupRoomStatus> statuses);
 
     /**

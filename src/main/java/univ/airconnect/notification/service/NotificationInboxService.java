@@ -11,6 +11,7 @@ import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.domain.entity.Notification;
 import univ.airconnect.notification.repository.NotificationRepository;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -88,7 +89,11 @@ public class NotificationInboxService {
      */
     @Transactional
     public int markAllRead(Long userId) {
-        return notificationRepository.markAllReadExcludingType(userId, EXCLUDED_INBOX_TYPE, LocalDateTime.now());
+        return notificationRepository.markAllReadExcludingType(
+                userId,
+                EXCLUDED_INBOX_TYPE,
+                LocalDateTime.now(Clock.systemUTC())
+        );
     }
 
     /**

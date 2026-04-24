@@ -21,7 +21,7 @@ spring:
     time-zone: Asia/Seoul
 
   datasource:
-    url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?serverTimezone=Asia/Seoul&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -144,8 +144,6 @@ moderation:
     contact-text: ${SUPPORT_CONTACT_TEXT:}
 
 app:
-  admin:
-    api-token: ${ADMIN_API_TOKEN:}
   rewards:
     milestone:
       profile-image-uploaded-tickets: ${PROFILE_IMAGE_UPLOADED_REWARD_TICKETS:2}

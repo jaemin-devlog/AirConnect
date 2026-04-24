@@ -14,6 +14,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -332,7 +333,7 @@ public class GlobalExceptionHandler {
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
-                "Unsupported Content-Type. Please use multipart/form-data.",
+                "지원하지 않는 Content-Type입니다. multipart/form-data 형식을 사용해 주세요.",
                 e.getStatusCode().value(),
                 traceId,
                 null
@@ -353,7 +354,7 @@ public class GlobalExceptionHandler {
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
-                "Invalid multipart request format.",
+                "멀티파트 요청 형식이 올바르지 않습니다.",
                 ec.getHttpStatus().value(),
                 traceId,
                 null
@@ -430,6 +431,17 @@ public class GlobalExceptionHandler {
         );
 
         return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
+    }
+
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(
+            AsyncRequestNotUsableException e,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+
+        log.debug("Client disconnected during response [{}] - {} {}",
+                traceId, request.getMethod(), request.getRequestURI());
     }
 
     @ExceptionHandler(Exception.class)

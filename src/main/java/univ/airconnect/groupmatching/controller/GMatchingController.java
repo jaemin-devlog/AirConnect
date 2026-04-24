@@ -78,9 +78,11 @@ public class GMatchingController {
     public ResponseEntity<GMatchingResponse.RecruitableTeamRoomPageResponse> getRecruitableTeamRooms(
             @RequestParam("teamSize") univ.airconnect.groupmatching.domain.GTeamSize teamSize,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            Authentication authentication
     ) {
-        return ResponseEntity.ok(matchingService.findRecruitableTeamRooms(teamSize, page, size));
+        Long userId = currentUserId(authentication);
+        return ResponseEntity.ok(matchingService.findRecruitableTeamRooms(userId, teamSize, page, size));
     }
 
     /**
@@ -200,7 +202,7 @@ public class GMatchingController {
             Authentication authentication
     ) {
         Long userId = currentUserId(authentication);
-        long recruitableTeamRoomCount = matchingService.countRecruitableTeamRooms();
+        long recruitableTeamRoomCount = matchingService.countRecruitableTeamRooms(userId);
 
         return matchingService.findMyActiveTeamRoom(userId)
                 .map(room -> {
@@ -302,6 +304,28 @@ public class GMatchingController {
     ) {
         Long userId = currentUserId(authentication);
         GTemporaryTeamRoom teamRoom = matchingService.leaveTeamRoom(teamRoomId, userId);
+        return ResponseEntity.ok(toRoomResponse(teamRoom, userId));
+    }
+
+    @DeleteMapping("/{teamRoomId}/members/{targetUserId}")
+    public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> expelTeamMember(
+            @PathVariable Long teamRoomId,
+            @PathVariable Long targetUserId,
+            Authentication authentication
+    ) {
+        Long userId = currentUserId(authentication);
+        GTemporaryTeamRoom teamRoom = matchingService.expelTeamMember(teamRoomId, userId, targetUserId);
+        return ResponseEntity.ok(toRoomResponse(teamRoom, userId));
+    }
+
+    @PatchMapping("/{teamRoomId}/visibility")
+    public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> updateVisibility(
+            @PathVariable Long teamRoomId,
+            @Valid @RequestBody GMatchingRequest.UpdateVisibilityRequest request,
+            Authentication authentication
+    ) {
+        Long userId = currentUserId(authentication);
+        GTemporaryTeamRoom teamRoom = matchingService.updateVisibility(teamRoomId, userId, request.getVisibility());
         return ResponseEntity.ok(toRoomResponse(teamRoom, userId));
     }
 
@@ -433,7 +457,7 @@ public class GMatchingController {
             }
         }
 
-        throw new BusinessException(ErrorCode.UNAUTHORIZED, "인증 principal에서 userId를 추출할 수 없습니다.");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "인증 정보에서 사용자 ID를 추출할 수 없습니다.");
     }
 }
 

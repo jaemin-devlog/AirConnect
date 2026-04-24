@@ -30,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 public class StompHandler implements ChannelInterceptor {
 
     private static final String CHAT_ROOM_SUB_PREFIX = "/sub/chat/room/";
+    private static final String CHAT_LIST_SUB_PREFIX = "/sub/chat/list/";
     private static final String MATCHING_TEAM_ROOM_SUB_PREFIX = "/sub/matching/team-room/";
 
     private final JwtProvider jwtProvider;
@@ -68,6 +69,8 @@ public class StompHandler implements ChannelInterceptor {
                 handleConnectWithLogging(accessor);
             } else if (StompCommand.SUBSCRIBE.equals(command)) {
                 handleSubscribe(accessor);
+            } else if (StompCommand.UNSUBSCRIBE.equals(command)) {
+                handleUnsubscribe(accessor);
             } else if (StompCommand.DISCONNECT.equals(command)) {
                 handleDisconnect(accessor);
             }
@@ -94,9 +97,9 @@ public class StompHandler implements ChannelInterceptor {
         try {
             jwtProvider.validateAccessToken(token);
             Long userId = jwtProvider.getUserId(token);
-            ensureActiveUser(userId);
+            User user = ensureActiveUser(userId);
 
-            CustomUserPrincipal principal = new CustomUserPrincipal(userId);
+            CustomUserPrincipal principal = new CustomUserPrincipal(userId, user.getRole());
             Authentication authentication =
                     new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 
@@ -145,6 +148,11 @@ public class StompHandler implements ChannelInterceptor {
             return;
         }
 
+        if (destination.startsWith(CHAT_LIST_SUB_PREFIX)) {
+            handleChatListSubscribe(destination, userId);
+            return;
+        }
+
         if (destination.startsWith(MATCHING_TEAM_ROOM_SUB_PREFIX)) {
             handleMatchingSubscribe(accessor, destination, userId);
         }
@@ -162,8 +170,12 @@ public class StompHandler implements ChannelInterceptor {
         // 구독 자체 권한은 이미 검증되었으므로, 부가 동기화 실패는 구독까지 차단하지 않는다.
         try {
             chatService.enterChatRoom(roomId.toString());
-            chatService.mapSessionToRoom(accessor.getSessionId(), roomId.toString());
-            chatService.updateLastRead(roomId, userId);
+            chatService.registerSessionRoomSubscription(
+                    accessor.getSessionId(),
+                    accessor.getSubscriptionId(),
+                    roomId.toString()
+            );
+            chatService.syncReadStateOnRoomViewed(roomId, userId);
         } catch (RuntimeException ex) {
             stompOpsMonitor.recordSideEffectFailure("SUBSCRIBE_SYNC", ex);
             log.warn("STOMP SUBSCRIBE SIDE-EFFECT FAIL: sessionId={}, userId={}, roomId={}, type={}, message={}",
@@ -194,6 +206,21 @@ public class StompHandler implements ChannelInterceptor {
                 accessor.getSessionId(), userId, teamRoomId);
     }
 
+    private void handleChatListSubscribe(String destination, Long userId) {
+        Long subscribedUserId = extractId(destination, CHAT_LIST_SUB_PREFIX, "chat list user");
+        if (!subscribedUserId.equals(userId)) {
+            log.error("STOMP SUBSCRIBE REJECTED: destination={}, userId={}, reason=list_forbidden", destination, userId);
+            stompOpsMonitor.recordSubscribeFailure(new AccessDeniedException("list_forbidden"));
+            throw new AccessDeniedException("No permission to subscribe this chat list.");
+        }
+
+        stompOpsMonitor.recordSubscribeSuccess();
+    }
+
+    private void handleUnsubscribe(StompHeaderAccessor accessor) {
+        chatService.unregisterSessionRoomSubscription(accessor.getSessionId(), accessor.getSubscriptionId());
+    }
+
     private void handleDisconnect(StompHeaderAccessor accessor) {
         log.info("STOMP DISCONNECT: sessionId={}", accessor.getSessionId());
         chatService.removeSessionInfo(accessor.getSessionId());
@@ -206,16 +233,16 @@ public class StompHandler implements ChannelInterceptor {
         }
 
         if (!StringUtils.hasText(bearerToken)) {
-            throw new IllegalArgumentException("Authorization header is required.");
+            throw new IllegalArgumentException("Authorization 헤더는 필수입니다.");
         }
 
         if (!bearerToken.startsWith("Bearer ")) {
-            throw new IllegalArgumentException("Authorization header must be Bearer token.");
+            throw new IllegalArgumentException("Authorization 헤더는 Bearer 토큰 형식이어야 합니다.");
         }
 
         String token = bearerToken.substring(7);
         if (!StringUtils.hasText(token)) {
-            throw new IllegalArgumentException("JWT token is empty.");
+            throw new IllegalArgumentException("JWT 토큰이 비어 있습니다.");
         }
 
         return token;
@@ -262,11 +289,11 @@ public class StompHandler implements ChannelInterceptor {
         try {
             Long id = Long.valueOf(destination.substring(prefix.length()));
             if (id <= 0) {
-                throw new IllegalArgumentException(target + " id must be positive");
+                throw new IllegalArgumentException(target + " ID는 1 이상이어야 합니다.");
             }
             return id;
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid destination for " + target);
+            throw new IllegalArgumentException(target + " 대상 경로가 올바르지 않습니다.");
         }
     }
 
@@ -294,12 +321,15 @@ public class StompHandler implements ChannelInterceptor {
         return null;
     }
 
-    private void ensureActiveUser(Long userId) {
+    private User ensureActiveUser(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AccessDeniedException("User not found."));
+                .orElseThrow(() -> new AccessDeniedException("사용자를 찾을 수 없습니다."));
 
-        if (user.getStatus() == UserStatus.DELETED) {
-            throw new AccessDeniedException("Deleted user cannot use websocket.");
+        if (user.getStatus() == UserStatus.DELETED
+                || user.getStatus() == UserStatus.SUSPENDED
+                || user.getStatus() == UserStatus.RESTRICTED) {
+            throw new AccessDeniedException("Blocked user cannot use websocket.");
         }
+        return user;
     }
 }
