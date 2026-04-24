@@ -1,5 +1,7 @@
 package univ.airconnect.moderation.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,6 +16,19 @@ import java.util.List;
 public interface UserReportRepository extends JpaRepository<UserReport, Long> {
 
     List<UserReport> findTop50ByReporterUserIdOrderByCreatedAtDesc(Long reporterUserId);
+
+    @Query("""
+        SELECT r
+        FROM UserReport r
+        WHERE (:status IS NULL OR r.status = :status)
+          AND (:reportedUserId IS NULL OR r.reportedUserId = :reportedUserId)
+        ORDER BY r.createdAt DESC, r.id DESC
+    """)
+    Page<UserReport> searchForAdmin(@Param("status") ReportStatus status,
+                                    @Param("reportedUserId") Long reportedUserId,
+                                    Pageable pageable);
+
+    long countByStatus(ReportStatus status);
 
     long countByReportedUserIdAndStatus(Long reportedUserId, ReportStatus status);
 

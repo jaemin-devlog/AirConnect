@@ -227,6 +227,14 @@ public class User {
         this.tickets += amount;
     }
 
+    public void adjustTickets(int delta) {
+        if (delta >= 0) {
+            addTickets(delta);
+            return;
+        }
+        consumeTickets(Math.abs(delta));
+    }
+
     public void markActive() {
         if (this.status == UserStatus.DELETED) {
             return;
@@ -254,5 +262,41 @@ public class User {
 
     public void updateEmail(String email) {
         this.email = email;
+    }
+
+    public void suspend(LocalDateTime until, String reason) {
+        if (this.status == UserStatus.DELETED) {
+            return;
+        }
+        this.status = UserStatus.SUSPENDED;
+        this.suspendedUntil = until;
+        this.lastActiveAt = null;
+    }
+
+    public void reactivate() {
+        if (this.status == UserStatus.DELETED) {
+            return;
+        }
+        this.status = UserStatus.ACTIVE;
+        this.suspendedUntil = null;
+    }
+
+    public void restrictMatching(LocalDateTime until, String reason) {
+        this.restrictedAt = LocalDateTime.now();
+        this.restrictedUntil = until;
+        this.restrictedReason = reason;
+    }
+
+    public void clearMatchingRestriction() {
+        this.restrictedAt = null;
+        this.restrictedUntil = null;
+        this.restrictedReason = null;
+    }
+
+    public boolean isMatchingRestricted() {
+        if (this.restrictedAt == null) {
+            return false;
+        }
+        return this.restrictedUntil == null || this.restrictedUntil.isAfter(LocalDateTime.now());
     }
 }

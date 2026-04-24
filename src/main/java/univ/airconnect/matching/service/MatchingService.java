@@ -23,6 +23,8 @@ import univ.airconnect.matching.repository.MatchingExposureRepository;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
+import univ.airconnect.iap.domain.entity.TicketLedger;
+import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
@@ -33,6 +35,7 @@ import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.util.*;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -53,6 +56,7 @@ public class MatchingService {
     private final ObjectMapper objectMapper;
     private final AnalyticsService analyticsService;
     private final UserBlockPolicyService userBlockPolicyService;
+    private final TicketLedgerRepository ticketLedgerRepository;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -145,7 +149,17 @@ public class MatchingService {
 
         boolean ticketConsumed = false;
         if (candidates.size() >= RECOMMENDATION_LIMIT) {
+            int beforeTickets = user.getTickets();
             user.consumeTickets(1);
+            ticketLedgerRepository.save(
+                    TicketLedger.consumeForMatchingRecommendation(
+                            userId,
+                            1,
+                            beforeTickets,
+                            user.getTickets(),
+                            "match-recommendation:" + UUID.randomUUID()
+                    )
+            );
             ticketConsumed = true;
             log.info("🎫 매칭 티켓 사용: userId={}, 사용한 티켓=1, 남은 티켓={}", userId, user.getTickets());
         } else {
@@ -226,7 +240,17 @@ public class MatchingService {
                 connection.reopenAsPending(userId);
                 
                 // ✅ 모든 검증 완료 후 티켓 차감
+                int beforeTickets = user.getTickets();
                 user.consumeTickets(2);
+                ticketLedgerRepository.save(
+                        TicketLedger.consumeForMatchingConnect(
+                                userId,
+                                2,
+                                beforeTickets,
+                                user.getTickets(),
+                                "match-connect:" + connection.getId() + ":" + UUID.randomUUID()
+                        )
+                );
                 log.info("🎫 컨택 티켓 사용: userId={}, 사용한 티켓=2, 남은 티켓={}", userId, user.getTickets());
                 sendMatchRequestReceivedNotification(userId, targetUserId, connection);
                 analyticsService.trackServerEvent(
@@ -256,7 +280,17 @@ public class MatchingService {
         }
 
         // ✅ 모든 검증과 로직이 성공한 후에만 티켓 차감
+        int beforeTickets = user.getTickets();
         user.consumeTickets(2);
+        ticketLedgerRepository.save(
+                TicketLedger.consumeForMatchingConnect(
+                        userId,
+                        2,
+                        beforeTickets,
+                        user.getTickets(),
+                        "match-connect:" + connection.getId() + ":" + UUID.randomUUID()
+                )
+        );
         log.info("🎫 컨택 티켓 사용: userId={}, 사용한 티켓=2, 남은 티켓={}", userId, user.getTickets());
 
         log.info("✅ 매칭 요청 생성 완료: requester={}, target={}, connectionId={}", userId, targetUserId, connection.getId());
@@ -287,7 +321,17 @@ public class MatchingService {
         }
 
         connection.reopenAsPending(userId);
+        int beforeTickets = requester.getTickets();
         requester.consumeTickets(2);
+        ticketLedgerRepository.save(
+                TicketLedger.consumeForMatchingConnect(
+                        userId,
+                        2,
+                        beforeTickets,
+                        requester.getTickets(),
+                        "match-connect:" + connection.getId() + ":" + UUID.randomUUID()
+                )
+        );
         log.info("🎫 컨택 티켓 사용(경쟁복구): userId={}, 사용한 티켓=2, 남은 티켓={}", userId, requester.getTickets());
         sendMatchRequestReceivedNotification(userId, targetUserId, connection);
         analyticsService.trackServerEvent(
@@ -654,6 +698,9 @@ public class MatchingService {
 
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new MatchingException(MatchingErrorCode.INVALID_TARGET);
+        }
+        if (user.isMatchingRestricted()) {
+            throw new MatchingException(MatchingErrorCode.MATCHING_RESTRICTED);
         }
     }
 

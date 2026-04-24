@@ -3,7 +3,6 @@ package univ.airconnect.matching.exception;
 import org.springframework.http.HttpStatus;
 
 public enum MatchingErrorCode {
-
     PROFILE_REQUIRED(HttpStatus.BAD_REQUEST, "PROFILE_REQUIRED", "매칭을 이용하려면 프로필이 필요합니다."),
     PROFILE_GENDER_REQUIRED(HttpStatus.BAD_REQUEST, "PROFILE_GENDER_REQUIRED", "매칭을 이용하려면 프로필 성별 정보가 필요합니다."),
     INSUFFICIENT_TICKETS(HttpStatus.BAD_REQUEST, "INSUFFICIENT_TICKETS", "매칭에 필요한 티켓이 부족합니다."),

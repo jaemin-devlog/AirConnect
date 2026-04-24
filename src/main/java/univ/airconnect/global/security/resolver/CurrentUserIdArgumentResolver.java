@@ -54,6 +54,9 @@ public class CurrentUserIdArgumentResolver implements HandlerMethodArgumentResol
         if (user.getStatus() == UserStatus.DELETED) {
             throw new UserException(UserErrorCode.USER_DELETED);
         }
+        if (user.getStatus() == UserStatus.SUSPENDED) {
+            throw new UserException(UserErrorCode.USER_SUSPENDED);
+        }
 
         return userId;
     }
