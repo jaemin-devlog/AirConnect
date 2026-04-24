@@ -99,7 +99,7 @@ public class NotificationPreference {
                                    LocalTime quietHoursEnd,
                                    String timezone) {
         if (userId == null) {
-            throw new IllegalArgumentException("userId is required");
+            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
         }
         this.userId = userId;
         this.pushEnabled = valueOrDefault(pushEnabled, true);
@@ -190,7 +190,7 @@ public class NotificationPreference {
     private void validateQuietHours() {
         if (Boolean.TRUE.equals(this.quietHoursEnabled)) {
             if (this.quietHoursStart == null || this.quietHoursEnd == null) {
-                throw new IllegalArgumentException("quiet hours require start and end");
+                throw new IllegalArgumentException("방해 금지 시간의 시작과 종료 시각은 모두 필요합니다.");
             }
             return;
         }
@@ -198,7 +198,7 @@ public class NotificationPreference {
             return;
         }
         if (this.quietHoursStart == null || this.quietHoursEnd == null) {
-            throw new IllegalArgumentException("quiet hours start and end must be set together");
+            throw new IllegalArgumentException("방해 금지 시간의 시작과 종료 시각은 함께 설정해야 합니다.");
         }
     }
 

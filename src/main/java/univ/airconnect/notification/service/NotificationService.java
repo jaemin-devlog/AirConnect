@@ -154,22 +154,22 @@ public class NotificationService {
      */
     private void validate(CreateCommand command) {
         if (command == null) {
-            throw new IllegalArgumentException("command is required");
+            throw new IllegalArgumentException("요청 명령은 필수입니다.");
         }
         if (command.userId() == null) {
-            throw new IllegalArgumentException("userId is required");
+            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
         }
         if (command.type() == null) {
-            throw new IllegalArgumentException("type is required");
+            throw new IllegalArgumentException("알림 유형은 필수입니다.");
         }
         if (command.title() == null || command.title().isBlank()) {
-            throw new IllegalArgumentException("title is required");
+            throw new IllegalArgumentException("알림 제목은 필수입니다.");
         }
         if (command.body() == null || command.body().isBlank()) {
-            throw new IllegalArgumentException("body is required");
+            throw new IllegalArgumentException("알림 본문은 필수입니다.");
         }
         if (command.payloadJson() == null || command.payloadJson().isBlank()) {
-            throw new IllegalArgumentException("payloadJson is required");
+            throw new IllegalArgumentException("알림 payloadJson은 필수입니다.");
         }
     }
 

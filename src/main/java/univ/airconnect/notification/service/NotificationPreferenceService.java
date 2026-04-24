@@ -164,7 +164,7 @@ public class NotificationPreferenceService {
         try {
             ZoneId.of(timezone);
         } catch (DateTimeException e) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "유효하지 않은 timezone 입니다.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "유효하지 않은 시간대입니다.");
         }
     }
 

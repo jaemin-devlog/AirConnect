@@ -185,7 +185,7 @@ public class NotificationOutbox {
      */
     public void claim() {
         if (this.status != NotificationDeliveryStatus.PENDING) {
-            throw new IllegalStateException("only pending outbox can be claimed");
+            throw new IllegalStateException("대기 중인 아웃박스만 점유할 수 있습니다.");
         }
         this.status = NotificationDeliveryStatus.PROCESSING;
         this.claimedAt = LocalDateTime.now();
@@ -210,7 +210,7 @@ public class NotificationOutbox {
      */
     public void markRetry(String errorCode, String errorMessage, LocalDateTime nextAttemptAt) {
         if (nextAttemptAt == null) {
-            throw new IllegalArgumentException("nextAttemptAt is required for retry");
+            throw new IllegalArgumentException("재시도 시각은 필수입니다.");
         }
         this.status = NotificationDeliveryStatus.PENDING;
         this.attemptCount = this.attemptCount + 1;
@@ -262,31 +262,31 @@ public class NotificationOutbox {
                           String dataJson,
                           LocalDateTime nextAttemptAt) {
         if (notificationId == null) {
-            throw new IllegalArgumentException("notificationId is required");
+            throw new IllegalArgumentException("알림 ID는 필수입니다.");
         }
         if (userId == null) {
-            throw new IllegalArgumentException("userId is required");
+            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
         }
         if (pushDeviceId == null) {
-            throw new IllegalArgumentException("pushDeviceId is required");
+            throw new IllegalArgumentException("푸시 디바이스 ID는 필수입니다.");
         }
         if (provider == null) {
-            throw new IllegalArgumentException("provider is required");
+            throw new IllegalArgumentException("푸시 제공자는 필수입니다.");
         }
         if (targetToken == null || targetToken.isBlank()) {
-            throw new IllegalArgumentException("targetToken is required");
+            throw new IllegalArgumentException("대상 토큰은 필수입니다.");
         }
         if (title == null || title.isBlank()) {
-            throw new IllegalArgumentException("title is required");
+            throw new IllegalArgumentException("알림 제목은 필수입니다.");
         }
         if (body == null || body.isBlank()) {
-            throw new IllegalArgumentException("body is required");
+            throw new IllegalArgumentException("알림 본문은 필수입니다.");
         }
         if (dataJson == null || dataJson.isBlank()) {
-            throw new IllegalArgumentException("dataJson is required");
+            throw new IllegalArgumentException("알림 dataJson은 필수입니다.");
         }
         if (nextAttemptAt == null) {
-            throw new IllegalArgumentException("nextAttemptAt is required");
+            throw new IllegalArgumentException("다음 시도 시각은 필수입니다.");
         }
     }
 }

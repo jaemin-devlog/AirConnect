@@ -144,34 +144,34 @@ public class PushDeviceService {
         return pushDeviceRepository.findByUserIdAndDeviceId(userId, deviceId)
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.NOT_FOUND,
-                        "Registered push device was not found."
+                        "등록된 푸시 디바이스를 찾을 수 없습니다."
                 ));
     }
 
     private void validate(UpsertCommand command) {
         if (command == null) {
-            throw new IllegalArgumentException("command is required");
+            throw new IllegalArgumentException("요청 명령은 필수입니다.");
         }
         if (command.userId() == null) {
-            throw new IllegalArgumentException("userId is required");
+            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
         }
         if (command.deviceId() == null || command.deviceId().isBlank()) {
-            throw new IllegalArgumentException("deviceId is required");
+            throw new IllegalArgumentException("디바이스 ID는 필수입니다.");
         }
         if (command.platform() == null) {
-            throw new IllegalArgumentException("platform is required");
+            throw new IllegalArgumentException("플랫폼은 필수입니다.");
         }
         if (command.provider() == null) {
-            throw new IllegalArgumentException("provider is required");
+            throw new IllegalArgumentException("푸시 제공자는 필수입니다.");
         }
         if (command.provider() != PushProvider.FCM) {
-            throw new IllegalArgumentException("Only FCM provider is currently supported");
+            throw new IllegalArgumentException("현재는 FCM 제공자만 지원합니다.");
         }
         if (command.pushToken() == null || command.pushToken().isBlank()) {
-            throw new IllegalArgumentException("pushToken is required");
+            throw new IllegalArgumentException("푸시 토큰은 필수입니다.");
         }
         if (command.notificationPermissionGranted() == null) {
-            throw new IllegalArgumentException("notificationPermissionGranted is required");
+            throw new IllegalArgumentException("알림 권한 허용 여부는 필수입니다.");
         }
     }
 

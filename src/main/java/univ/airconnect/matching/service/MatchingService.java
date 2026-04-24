@@ -540,6 +540,7 @@ public class MatchingService {
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
                 .profileImage(profile != null ? profile.getProfileImagePath() : null)
+                .gender(profile != null ? profile.getGender() : null)
                 .studentNum(user.getStudentNum())
                 .age(profile != null ? profile.getAge() : null)
                 .status(user.getStatus())

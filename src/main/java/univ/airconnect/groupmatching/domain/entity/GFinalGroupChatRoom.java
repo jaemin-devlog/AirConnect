@@ -88,19 +88,19 @@ public class GFinalGroupChatRoom {
             GTeamSize teamSize
     ) {
         if (chatRoomId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "chatRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "채팅방 ID는 필수입니다.");
         }
         if (team1RoomId == null || team2RoomId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "teamRoomId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "팀방 ID는 필수입니다.");
         }
         if (Objects.equals(team1RoomId, team2RoomId)) {
             throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "동일한 팀끼리는 최종 그룹방을 만들 수 없습니다.");
         }
         if (matchResultId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "matchResultId는 필수입니다.");
+            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "매칭 결과 ID는 필수입니다.");
         }
         if (teamSize == null) {
-            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED, "teamSize는 필수입니다.");
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED, "팀 인원 수는 필수입니다.");
         }
 
         Long smaller = Math.min(team1RoomId, team2RoomId);

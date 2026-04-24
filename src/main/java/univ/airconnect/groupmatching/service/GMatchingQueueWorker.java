@@ -26,6 +26,11 @@ public class GMatchingQueueWorker {
     public void drainQueues() {
         drainQueue(GTeamSize.TWO);
         drainQueue(GTeamSize.THREE);
+
+        int finalizedCount = matchingService.finalizePendingMatches();
+        if (finalizedCount > 0) {
+            log.info("과팅 지연 매칭이 최종 방 생성까지 완료되었습니다. finalizedCount={}", finalizedCount);
+        }
     }
 
     private void drainQueue(GTeamSize teamSize) {
