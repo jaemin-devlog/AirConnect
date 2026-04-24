@@ -14,8 +14,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.PushProvider;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
+import univ.airconnect.notification.domain.entity.PushDevice;
+import univ.airconnect.notification.repository.PushDeviceRepository;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -62,6 +65,7 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
 
     private final FirebaseMessaging firebaseMessaging;
     private final ObjectMapper objectMapper;
+    private final PushDeviceRepository pushDeviceRepository;
 
     /**
      * outbox 한 건을 Firebase Cloud Messaging으로 발송한다.
@@ -85,24 +89,29 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
     }
 
     /**
-     * 공통 알림 본문, Android 설정, APNs 설정을 포함한 FCM 메시지를 구성한다.
+     * FCM 메시지를 구성한다.
+     *
+     * <p>Android 채팅 푸시는 앱의 onMessageReceived() 경로를 보장하기 위해 data-only로 보낸다.
+     * iOS 채팅과 그 외 푸시는 기존 notification/APNs 경로를 유지한다.</p>
      */
     private Message buildMessage(NotificationOutbox outbox) {
         Map<String, String> data = buildDataMap(outbox.getDataJson());
+        PushPlatform platform = resolveTargetPlatform(outbox);
+        boolean androidChatMessage = isAndroidChatMessageReceived(platform, data);
 
         Message.Builder builder = Message.builder()
                 .setToken(outbox.getTargetToken())
-                .setNotification(com.google.firebase.messaging.Notification.builder()
-                        .setTitle(outbox.getTitle())
-                        .setBody(outbox.getBody())
-                        .build())
-                .setAndroidConfig(buildAndroidConfig(data))
-                .setApnsConfig(ApnsConfig.builder()
-                        .putHeader("apns-priority", "10")
-                        .setAps(Aps.builder()
-                                .setSound("default")
-                                .build())
-                        .build());
+                .setAndroidConfig(androidChatMessage
+                        ? buildAndroidDataOnlyConfig()
+                        : buildAndroidNotificationConfig(data));
+
+        if (!androidChatMessage) {
+            builder.setNotification(com.google.firebase.messaging.Notification.builder()
+                    .setTitle(outbox.getTitle())
+                    .setBody(outbox.getBody())
+                    .build());
+            builder.setApnsConfig(buildApnsConfig());
+        }
 
         if (!data.isEmpty()) {
             builder.putAllData(data);
@@ -110,7 +119,32 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
         return builder.build();
     }
 
-    private AndroidConfig buildAndroidConfig(Map<String, String> data) {
+    private PushPlatform resolveTargetPlatform(NotificationOutbox outbox) {
+        return pushDeviceRepository.findById(outbox.getPushDeviceId())
+                .map(PushDevice::getPlatform)
+                .orElseGet(() -> {
+                    log.warn("Push device not found while building FCM message. Falling back to generic payload: outboxId={}, pushDeviceId={}",
+                            outbox.getId(), outbox.getPushDeviceId());
+                    return null;
+                });
+    }
+
+    private ApnsConfig buildApnsConfig() {
+        return ApnsConfig.builder()
+                .putHeader("apns-priority", "10")
+                .setAps(Aps.builder()
+                        .setSound("default")
+                        .build())
+                .build();
+    }
+
+    private AndroidConfig buildAndroidDataOnlyConfig() {
+        return AndroidConfig.builder()
+                .setPriority(AndroidConfig.Priority.HIGH)
+                .build();
+    }
+
+    private AndroidConfig buildAndroidNotificationConfig(Map<String, String> data) {
         AndroidNotification.Builder notificationBuilder = AndroidNotification.builder()
                 .setSound("default");
 
@@ -129,6 +163,10 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
                 .setPriority(AndroidConfig.Priority.HIGH)
                 .setNotification(notificationBuilder.build())
                 .build();
+    }
+
+    private boolean isAndroidChatMessageReceived(PushPlatform platform, Map<String, String> data) {
+        return platform == PushPlatform.ANDROID && isChatMessageReceived(data);
     }
 
     private boolean isChatMessageReceived(Map<String, String> data) {
