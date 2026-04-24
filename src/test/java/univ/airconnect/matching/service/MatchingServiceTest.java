@@ -480,6 +480,19 @@ class MatchingServiceTest {
                 .isEqualTo(MatchingErrorCode.BLOCKED_USER_INTERACTION);
     }
 
+    @Test
+    @DisplayName("matching restricted user cannot receive recommendations")
+    void recommend_failsWhenUserIsMatchingRestricted() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        requester.restrictMatching(null, "admin restriction");
+        saveUserWithProfile("u2", Gender.FEMALE, 100);
+
+        assertThatThrownBy(() -> matchingService.recommend(requester.getId()))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.MATCHING_RESTRICTED);
+    }
+
     private User saveUserWithProfile(String socialId, Gender gender, int tickets) {
         String uniqueSocialId = socialId + "-" + UUID.randomUUID();
         User user = User.builder()

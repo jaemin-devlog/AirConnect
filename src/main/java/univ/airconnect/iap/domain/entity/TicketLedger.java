@@ -102,8 +102,56 @@ public class TicketLedger {
                 .build();
     }
 
+    public static TicketLedger consumeForMatchingRecommendation(Long userId,
+                                                                int amount,
+                                                                int beforeAmount,
+                                                                int afterAmount,
+                                                                String refId) {
+        return TicketLedger.builder()
+                .userId(userId)
+                .changeAmount(-Math.abs(amount))
+                .beforeAmount(beforeAmount)
+                .afterAmount(afterAmount)
+                .reason("MATCH_RECOMMENDATION")
+                .refType(LedgerRefType.MATCHING_RECOMMENDATION)
+                .refId(refId)
+                .build();
+    }
+
+    public static TicketLedger consumeForMatchingConnect(Long userId,
+                                                         int amount,
+                                                         int beforeAmount,
+                                                         int afterAmount,
+                                                         String refId) {
+        return TicketLedger.builder()
+                .userId(userId)
+                .changeAmount(-Math.abs(amount))
+                .beforeAmount(beforeAmount)
+                .afterAmount(afterAmount)
+                .reason("MATCH_CONNECT")
+                .refType(LedgerRefType.MATCHING_CONNECT)
+                .refId(refId)
+                .build();
+    }
+
+    public static TicketLedger adjustByAdmin(Long userId,
+                                             int amount,
+                                             int beforeAmount,
+                                             int afterAmount,
+                                             String reason,
+                                             String refId) {
+        return TicketLedger.builder()
+                .userId(userId)
+                .changeAmount(amount)
+                .beforeAmount(beforeAmount)
+                .afterAmount(afterAmount)
+                .reason(reason)
+                .refType(LedgerRefType.ADMIN_ADJUSTMENT)
+                .refId(refId)
+                .build();
+    }
+
     public String ledgerExternalId() {
         return "TICKET_LEDGER_" + id;
     }
 }
-

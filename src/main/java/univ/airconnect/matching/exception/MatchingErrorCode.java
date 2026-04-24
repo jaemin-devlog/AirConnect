@@ -6,6 +6,7 @@ public enum MatchingErrorCode {
 
     PROFILE_REQUIRED(HttpStatus.BAD_REQUEST, "PROFILE_REQUIRED", "Profile is required to use matching"),
     PROFILE_GENDER_REQUIRED(HttpStatus.BAD_REQUEST, "PROFILE_GENDER_REQUIRED", "Profile gender is required to use matching"),
+    MATCHING_RESTRICTED(HttpStatus.FORBIDDEN, "MATCHING_RESTRICTED", "User is restricted from matching"),
     INSUFFICIENT_TICKETS(HttpStatus.BAD_REQUEST, "INSUFFICIENT_TICKETS", "Insufficient tickets for matching"),
     INVALID_TARGET(HttpStatus.BAD_REQUEST, "INVALID_TARGET", "Invalid target user"),
     CANDIDATE_NOT_EXPOSED(HttpStatus.BAD_REQUEST, "CANDIDATE_NOT_EXPOSED", "Target user was not exposed as a candidate"),

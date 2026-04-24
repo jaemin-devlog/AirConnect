@@ -1,5 +1,6 @@
 package univ.airconnect.matching.repository;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -37,6 +38,17 @@ public interface MatchingConnectionRepository extends JpaRepository<MatchingConn
     List<MatchingConnection> findReceivedRequestsByStatus(@Param("userId") Long userId, @Param("status") ConnectionStatus status);
 
     long countByStatus(ConnectionStatus status);
+
+    @Query("""
+        SELECT mc
+        FROM MatchingConnection mc
+        WHERE (:status IS NULL OR mc.status = :status)
+          AND (:userId IS NULL OR mc.user1Id = :userId OR mc.user2Id = :userId)
+        ORDER BY COALESCE(mc.respondedAt, mc.connectedAt) DESC, mc.id DESC
+    """)
+    Page<MatchingConnection> searchForAdmin(@Param("status") ConnectionStatus status,
+                                            @Param("userId") Long userId,
+                                            Pageable pageable);
 
     @Query(value = """
         SELECT u.dept_name AS deptName, COUNT(*) AS requestCount

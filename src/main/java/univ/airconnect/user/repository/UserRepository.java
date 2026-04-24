@@ -5,11 +5,14 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 
 import jakarta.persistence.LockModeType;
@@ -21,6 +24,40 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
 
     boolean existsByEmailIgnoreCase(String email);
+
+    @Query("""
+        SELECT u
+        FROM User u
+        WHERE (:status IS NULL OR u.status = :status)
+          AND (
+                :keyword IS NULL
+                OR LOWER(COALESCE(u.name, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(COALESCE(u.nickname, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(COALESCE(u.email, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(COALESCE(u.socialId, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(COALESCE(u.deptName, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+             )
+        ORDER BY u.createdAt DESC
+    """)
+    Page<User> searchForAdmin(@Param("status") UserStatus status,
+                              @Param("keyword") String keyword,
+                              Pageable pageable);
+
+    @Query("""
+        SELECT u.id
+        FROM User u
+        WHERE u.status = :status
+        ORDER BY u.id ASC
+    """)
+    List<Long> findIdsByStatus(@Param("status") UserStatus status);
+
+    @Query("""
+        SELECT u.id
+        FROM User u
+        WHERE u.status <> :status
+        ORDER BY u.id ASC
+    """)
+    List<Long> findIdsByStatusNot(@Param("status") UserStatus status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT u FROM User u WHERE u.id = :userId")
