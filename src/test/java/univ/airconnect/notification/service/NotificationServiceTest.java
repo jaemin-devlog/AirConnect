@@ -76,7 +76,7 @@ class NotificationServiceTest {
         ReflectionTestUtils.setField(existingOutbox, "id", 70L);
 
         when(notificationPreferenceService.getDeliveryPolicy(9L, NotificationType.CHAT_MESSAGE_RECEIVED))
-                .thenReturn(new NotificationPreferenceService.DeliveryPolicy(true, true));
+                .thenReturn(NotificationPreferenceService.DeliveryPolicy.sendNow(true));
         when(notificationRepository.findByUserIdAndDedupeKey(9L, "chat-5512"))
                 .thenReturn(Optional.empty());
         when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
@@ -89,6 +89,7 @@ class NotificationServiceTest {
                 eq(androidDevice),
                 eq(NotificationType.CHAT_MESSAGE_RECEIVED),
                 any(String.class),
+                any(LocalDateTime.class),
                 any(LocalDateTime.class)))
                 .thenReturn(new AndroidChatPushCoalescingService.Decision(
                         LocalDateTime.of(2026, 4, 25, 11, 0, 2),

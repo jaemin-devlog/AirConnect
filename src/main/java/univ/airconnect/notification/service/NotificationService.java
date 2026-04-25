@@ -10,20 +10,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.domain.PushPayloadType;
+import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.entity.Notification;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
 import univ.airconnect.notification.repository.NotificationRepository;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * 알림 원본을 저장하고 필요할 때 푸시 outbox 행을 적재한다.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -37,9 +36,6 @@ public class NotificationService {
     private final AndroidChatPushCoalescingService androidChatPushCoalescingService;
     private final ObjectMapper objectMapper;
 
-    /**
-     * 알림을 저장하고 푸시가 허용된 경우 즉시 outbox를 적재한다.
-     */
     @Transactional
     public Notification createAndEnqueue(CreateCommand command) {
         validate(command);
@@ -49,9 +45,9 @@ public class NotificationService {
         CreateResult createResult = createInternal(command, deliveryPolicy);
         Notification notification = createResult.notification();
 
-        if (!deliveryPolicy.pushAllowed()) {
-            log.debug("Push skipped by preference or quiet hours: userId={}, type={}",
-                    command.userId(), command.type());
+        if (!deliveryPolicy.pushQueueable()) {
+            log.debug("Push skipped by preference: userId={}, type={}, reason={}",
+                    command.userId(), command.type(), deliveryPolicy.reason());
             return notification;
         }
 
@@ -67,13 +63,28 @@ public class NotificationService {
             return notification;
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(Clock.systemUTC());
+        LocalDateTime baseNextAttemptAt = deliveryPolicy.pushDecision() == PushDecision.DEFER
+                ? deliveryPolicy.nextAllowedAt()
+                : now;
+        if (baseNextAttemptAt == null) {
+            baseNextAttemptAt = now;
+        }
+
         String outboxPayloadJson = buildOutboxPayload(notification, now);
         List<NotificationOutbox> outboxes = new ArrayList<>();
         int coalescedCount = 0;
         for (PushDevice pushDevice : pushDevices) {
+            if (deliveryPolicy.pushDecision() == PushDecision.DEFER
+                    && pushDevice.getPlatform() != PushPlatform.ANDROID) {
+                log.debug("Deferred quiet-hours push is queued only for Android in the first patch: userId={}, deviceId={}",
+                        command.userId(), pushDevice.getDeviceId());
+                continue;
+            }
+
             AndroidChatPushCoalescingService.Decision decision =
-                    androidChatPushCoalescingService.decide(pushDevice, command.type(), outboxPayloadJson, now);
+                    androidChatPushCoalescingService.decide(pushDevice, command.type(), outboxPayloadJson, now, baseNextAttemptAt);
+            LocalDateTime nextAttemptAt = laterOf(decision.nextAttemptAt(), baseNextAttemptAt);
 
             if (decision.existingPendingOutbox().isPresent()) {
                 NotificationOutbox existingOutbox = decision.existingPendingOutbox().get();
@@ -83,7 +94,7 @@ public class NotificationService {
                         notification.getTitle(),
                         notification.getBody(),
                         decision.payloadJson(),
-                        decision.nextAttemptAt()
+                        nextAttemptAt
                 );
                 coalescedCount++;
                 continue;
@@ -98,7 +109,7 @@ public class NotificationService {
                     notification.getTitle(),
                     notification.getBody(),
                     decision.payloadJson(),
-                    decision.nextAttemptAt()
+                    nextAttemptAt
             ));
         }
         notificationOutboxRepository.saveAll(outboxes);
@@ -107,9 +118,6 @@ public class NotificationService {
         return notification;
     }
 
-    /**
-     * 알림 원본만 저장한다.
-     */
     @Transactional
     public Notification create(CreateCommand command) {
         validate(command);
@@ -118,9 +126,6 @@ public class NotificationService {
         return createInternal(command, deliveryPolicy).notification();
     }
 
-    /**
-     * 알림을 한 번만 저장하고 새 행이 생성됐는지 함께 반환한다.
-     */
     private CreateResult createInternal(CreateCommand command,
                                         NotificationPreferenceService.DeliveryPolicy deliveryPolicy) {
         if (command.dedupeKey() != null && !command.dedupeKey().isBlank()) {
@@ -145,7 +150,6 @@ public class NotificationService {
                 command.dedupeKey()
         );
 
-        // outbox 원본 행은 유지하되, 인앱 채널이 꺼져 있으면 알림함에서는 숨긴다.
         if (!deliveryPolicy.inAppAllowed()) {
             notification.softDelete();
         }
@@ -168,69 +172,106 @@ public class NotificationService {
         }
     }
 
-    /**
-     * 알림 생성에 필요한 최소 필드를 검증한다.
-     */
     private void validate(CreateCommand command) {
         if (command == null) {
-            throw new IllegalArgumentException("요청 명령은 필수입니다.");
+            throw new IllegalArgumentException("Create command is required.");
         }
         if (command.userId() == null) {
-            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
+            throw new IllegalArgumentException("User id is required.");
         }
         if (command.type() == null) {
-            throw new IllegalArgumentException("알림 유형은 필수입니다.");
+            throw new IllegalArgumentException("Notification type is required.");
         }
         if (command.title() == null || command.title().isBlank()) {
-            throw new IllegalArgumentException("알림 제목은 필수입니다.");
+            throw new IllegalArgumentException("Notification title is required.");
         }
         if (command.body() == null || command.body().isBlank()) {
-            throw new IllegalArgumentException("알림 본문은 필수입니다.");
+            throw new IllegalArgumentException("Notification body is required.");
         }
         if (command.payloadJson() == null || command.payloadJson().isBlank()) {
-            throw new IllegalArgumentException("알림 payloadJson은 필수입니다.");
+            throw new IllegalArgumentException("Notification payloadJson is required.");
         }
     }
 
-    /**
-     * 모든 푸시 발송에 공통으로 사용하는 정규화된 FCM data payload를 만든다.
-     */
-    private String buildOutboxPayload(Notification notification, LocalDateTime sentAt) {
+    private String buildOutboxPayload(Notification notification, LocalDateTime enqueuedAt) {
         ObjectNode root = objectMapper.createObjectNode();
-        root.put("notificationId", String.valueOf(notification.getId()));
-        root.put("type", mapPushPayloadType(notification.getType()).name());
-        root.put("notificationType", notification.getType().name());
-        root.put("title", notification.getTitle());
-        root.put("body", notification.getBody());
-        root.put("deeplink", notification.getDeeplink() != null ? notification.getDeeplink() : "");
-        root.put("sentAt", sentAt.toString());
-
         String payloadJson = notification.getPayloadJson();
-        if (payloadJson == null || payloadJson.isBlank()) {
-            return stringifyPayload(root, "{}");
-        }
-
-        try {
-            JsonNode payloadNode = objectMapper.readTree(payloadJson);
-            if (payloadNode.isObject()) {
-                root.setAll((ObjectNode) payloadNode);
-            } else {
+        if (payloadJson != null && !payloadJson.isBlank()) {
+            try {
+                JsonNode payloadNode = objectMapper.readTree(payloadJson);
+                if (payloadNode.isObject()) {
+                    root.setAll((ObjectNode) payloadNode);
+                } else {
+                    root.put("payload", payloadJson);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse notification payload JSON. Falling back to raw payload: {}", e.getMessage());
                 root.put("payload", payloadJson);
             }
-        } catch (Exception e) {
-            log.warn("Failed to parse notification payload JSON. Falling back to raw payload: {}", e.getMessage());
-            root.put("payload", payloadJson);
         }
 
-        // 도메인 payload에 같은 이름의 키가 있어도 앱 공통 키는 항상 이 값으로 고정한다.
+        root.put("schemaVersion", "android-fcm-v1");
         root.put("notificationId", String.valueOf(notification.getId()));
         root.put("type", mapPushPayloadType(notification.getType()).name());
         root.put("notificationType", notification.getType().name());
         root.put("title", notification.getTitle());
         root.put("body", notification.getBody());
-        root.put("deeplink", notification.getDeeplink() != null ? notification.getDeeplink() : "");
-        root.put("sentAt", sentAt.toString());
-        return stringifyPayload(root, payloadJson);
+        root.put("deeplink", notification.getDeeplink() != null ? notification.getDeeplink() : "/notifications/" + notification.getId());
+        root.put("resourceType", resolveResourceType(notification.getType(), root));
+        root.put("resourceId", resolveResourceId(notification, root));
+        root.put("createdAt", notification.getCreatedAt().toString());
+        root.put("enqueuedAt", enqueuedAt.toString());
+        root.put("sentAt", enqueuedAt.toString());
+        return stringifyPayload(root, payloadJson == null || payloadJson.isBlank() ? "{}" : payloadJson);
+    }
+
+    private String resolveResourceType(NotificationType notificationType, ObjectNode root) {
+        String existing = textOrNull(root, "resourceType");
+        if (existing != null) {
+            return existing;
+        }
+        return notificationType.resourceType();
+    }
+
+    private String resolveResourceId(Notification notification, ObjectNode root) {
+        String existing = textOrNull(root, "resourceId");
+        if (existing != null) {
+            return existing;
+        }
+        return firstNonBlank(root, notification.getType().resourceIdCandidateKeys())
+                .orElse(String.valueOf(notification.getId()));
+    }
+
+    private Optional<String> firstNonBlank(ObjectNode root, String... keys) {
+        for (String key : keys) {
+            String value = textOrNull(root, key);
+            if (value != null) {
+                return Optional.of(value);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private String textOrNull(ObjectNode root, String key) {
+        JsonNode value = root.get(key);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        String text = value.asText();
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        return text.trim();
+    }
+
+    private LocalDateTime laterOf(LocalDateTime left, LocalDateTime right) {
+        if (left == null) {
+            return right;
+        }
+        if (right == null) {
+            return left;
+        }
+        return left.isAfter(right) ? left : right;
     }
 
     private PushPayloadType mapPushPayloadType(NotificationType notificationType) {
@@ -251,9 +292,6 @@ public class NotificationService {
         }
     }
 
-    /**
-     * 알림 생성 입력 모델이다.
-     */
     public record CreateCommand(
             Long userId,
             NotificationType type,
@@ -267,9 +305,6 @@ public class NotificationService {
     ) {
     }
 
-    /**
-     * dedupe 결과로 기존 행을 재사용했는지 알려주는 내부 결과 모델이다.
-     */
     private record CreateResult(Notification notification, boolean created) {
     }
 }
