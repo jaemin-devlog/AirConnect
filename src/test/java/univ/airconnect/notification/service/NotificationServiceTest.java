@@ -62,6 +62,7 @@ class NotificationServiceTest {
     @Test
     void createAndEnqueue_updatesExistingPendingAndroidChatOutbox() {
         PushDevice androidDevice = pushDevice();
+        LocalDateTime expectedNextAttemptAt = LocalDateTime.now(java.time.Clock.systemUTC()).plusSeconds(2);
         NotificationOutbox existingOutbox = NotificationOutbox.create(
                 4001L,
                 9L,
@@ -92,7 +93,7 @@ class NotificationServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)))
                 .thenReturn(new AndroidChatPushCoalescingService.Decision(
-                        LocalDateTime.of(2026, 4, 25, 11, 0, 2),
+                        expectedNextAttemptAt,
                         "{\"notificationType\":\"CHAT_MESSAGE_RECEIVED\",\"chatRoomId\":\"88\",\"batchedMessageCount\":2}",
                         Optional.of(existingOutbox),
                         true
@@ -115,21 +116,69 @@ class NotificationServiceTest {
         assertThat(existingOutbox.getTitle()).isEqualTo("Minsu");
         assertThat(existingOutbox.getBody()).isEqualTo("Hello there");
         assertThat(existingOutbox.getDataJson()).contains("\"batchedMessageCount\":2");
-        assertThat(existingOutbox.getNextAttemptAt()).isEqualTo(LocalDateTime.of(2026, 4, 25, 11, 0, 2));
+        assertThat(existingOutbox.getNextAttemptAt()).isEqualTo(expectedNextAttemptAt);
 
         ArgumentCaptor<List<NotificationOutbox>> outboxesCaptor = ArgumentCaptor.forClass(List.class);
         verify(notificationOutboxRepository).saveAll(outboxesCaptor.capture());
         assertThat(outboxesCaptor.getValue()).isEmpty();
     }
 
+    @Test
+    void createAndEnqueue_skipsAndroidReadyChangedPushButKeepsOtherPlatforms() {
+        PushDevice androidDevice = pushDevice(PushPlatform.ANDROID);
+        PushDevice iosDevice = pushDevice(PushPlatform.IOS);
+
+        when(notificationPreferenceService.getDeliveryPolicy(9L, NotificationType.TEAM_MEMBER_READY_CHANGED))
+                .thenReturn(NotificationPreferenceService.DeliveryPolicy.sendNow(true));
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            ReflectionTestUtils.setField(notification, "id", 6001L);
+            return notification;
+        });
+        when(pushDeviceService.findPushableDevices(9L)).thenReturn(List.of(androidDevice, iosDevice));
+        when(androidChatPushCoalescingService.decide(
+                eq(iosDevice),
+                eq(NotificationType.TEAM_MEMBER_READY_CHANGED),
+                any(String.class),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)))
+                .thenReturn(new AndroidChatPushCoalescingService.Decision(
+                        LocalDateTime.of(2026, 4, 25, 11, 0, 0),
+                        "{\"notificationType\":\"TEAM_MEMBER_READY_CHANGED\",\"teamRoomId\":\"77\"}",
+                        Optional.empty(),
+                        false
+                ));
+
+        service.createAndEnqueue(new NotificationService.CreateCommand(
+                9L,
+                NotificationType.TEAM_MEMBER_READY_CHANGED,
+                "준비 상태 변경",
+                "팀원이 준비 상태를 변경했어요.",
+                "airconnect://matching/team-rooms/77",
+                22L,
+                null,
+                "{\"teamRoomId\":\"77\",\"readyUserId\":\"22\"}",
+                null
+        ));
+
+        ArgumentCaptor<List<NotificationOutbox>> outboxesCaptor = ArgumentCaptor.forClass(List.class);
+        verify(notificationOutboxRepository).saveAll(outboxesCaptor.capture());
+        assertThat(outboxesCaptor.getValue()).hasSize(1);
+        assertThat(outboxesCaptor.getValue().get(0).getPushDeviceId()).isEqualTo(iosDevice.getId());
+    }
+
     private PushDevice pushDevice() {
+        return pushDevice(PushPlatform.ANDROID);
+    }
+
+    private PushDevice pushDevice(PushPlatform platform) {
         PushDevice device = PushDevice.register(
                 9L,
                 "device-1",
-                PushPlatform.ANDROID,
+                platform,
                 PushProvider.FCM,
                 "fcm-token",
-                null,
+                platform == PushPlatform.IOS ? "apns-token" : null,
                 true,
                 "1.0.0",
                 "17",
@@ -137,7 +186,7 @@ class NotificationServiceTest {
                 "Asia/Seoul",
                 LocalDateTime.now()
         );
-        ReflectionTestUtils.setField(device, "id", 17L);
+        ReflectionTestUtils.setField(device, "id", platform == PushPlatform.IOS ? 18L : 17L);
         return device;
     }
 }
