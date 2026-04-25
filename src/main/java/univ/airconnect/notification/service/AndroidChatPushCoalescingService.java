@@ -12,6 +12,7 @@ import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
+import univ.airconnect.notification.repository.PushDeviceRepository;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -33,6 +34,7 @@ public class AndroidChatPushCoalescingService {
     private static final String BATCHED_WINDOW_STARTED_AT_KEY = "batchedWindowStartedAt";
 
     private final NotificationOutboxRepository notificationOutboxRepository;
+    private final PushDeviceRepository pushDeviceRepository;
     private final ObjectMapper objectMapper;
 
     public Decision decide(PushDevice pushDevice,
@@ -44,26 +46,26 @@ public class AndroidChatPushCoalescingService {
             return Decision.notCandidate(now, payloadJson);
         }
 
-        try {
-            String chatRoomId = extractChatRoomId(payloadJson).orElse(null);
-            if (chatRoomId == null) {
-                return Decision.notCandidate(now, payloadJson);
-            }
-
-            LocalDateTime nextAttemptAt = now.plus(COALESCING_WINDOW);
-            LocalDateTime lookupBaseTime = resolveLookupBaseTime(now, deliveryAnchorTime);
-            Optional<NotificationOutbox> existing = findExistingPendingOutbox(pushDevice.getId(), chatRoomId, lookupBaseTime);
-            if (existing.isPresent()) {
-                String mergedPayload = mergePayload(existing.get().getDataJson(), payloadJson, now);
-                return Decision.candidate(nextAttemptAt, mergedPayload, existing);
-            }
-
-            return Decision.candidate(nextAttemptAt, initializePayload(payloadJson, now), Optional.empty());
-        } catch (RuntimeException e) {
-            log.warn("Android chat push coalescing failed. Fallback to normal enqueue: pushDeviceId={}, message={}",
-                    pushDevice.getId(), e.getMessage());
+        Optional<PushDevice> lockedDevice = pushDeviceRepository.findByIdForUpdate(pushDevice.getId());
+        if (lockedDevice.isEmpty()) {
+            log.warn("Push device not found while locking Android chat coalescing target: pushDeviceId={}", pushDevice.getId());
             return Decision.notCandidate(now, payloadJson);
         }
+
+        String chatRoomId = extractChatRoomId(payloadJson).orElse(null);
+        if (chatRoomId == null) {
+            return Decision.notCandidate(now, payloadJson);
+        }
+
+        LocalDateTime nextAttemptAt = now.plus(COALESCING_WINDOW);
+        LocalDateTime lookupBaseTime = resolveLookupBaseTime(now, deliveryAnchorTime);
+        Optional<NotificationOutbox> existing = findExistingPendingOutbox(lockedDevice.get().getId(), chatRoomId, lookupBaseTime);
+        if (existing.isPresent()) {
+            String mergedPayload = mergePayload(existing.get().getDataJson(), payloadJson, now);
+            return Decision.candidate(nextAttemptAt, mergedPayload, existing);
+        }
+
+        return Decision.candidate(nextAttemptAt, initializePayload(payloadJson, now), Optional.empty());
     }
 
     private boolean isCandidate(PushDevice pushDevice, NotificationType notificationType, String payloadJson) {

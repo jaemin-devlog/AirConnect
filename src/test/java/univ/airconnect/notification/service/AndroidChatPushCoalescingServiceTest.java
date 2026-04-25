@@ -15,6 +15,7 @@ import univ.airconnect.notification.domain.PushProvider;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
+import univ.airconnect.notification.repository.PushDeviceRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,13 +37,15 @@ class AndroidChatPushCoalescingServiceTest {
     private NotificationOutboxRepository notificationOutboxRepository;
 
     @Mock
+    private PushDeviceRepository pushDeviceRepository;
+
     private ObjectMapper objectMapper;
     private AndroidChatPushCoalescingService service;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        service = new AndroidChatPushCoalescingService(notificationOutboxRepository, objectMapper);
+        service = new AndroidChatPushCoalescingService(notificationOutboxRepository, pushDeviceRepository, objectMapper);
     }
 
     @Test
@@ -58,12 +61,13 @@ class AndroidChatPushCoalescingServiceTest {
 
         assertThat(decision.candidate()).isFalse();
         assertThat(decision.payloadJson()).isEqualTo(chatPayload("1041", "5512"));
-        verify(notificationOutboxRepository, never()).findPendingCandidatesForCoalescing(any(), any(), any(), any(), any());
+        verify(pushDeviceRepository, never()).findByIdForUpdate(any());
     }
 
     @Test
     void decide_initializesBatchMetadataForAndroidChat() throws Exception {
         PushDevice androidDevice = pushDevice(PushPlatform.ANDROID);
+        when(pushDeviceRepository.findByIdForUpdate(PUSH_DEVICE_ID)).thenReturn(Optional.of(androidDevice));
         when(notificationOutboxRepository.findPendingCandidatesForCoalescing(
                 eq(PUSH_DEVICE_ID),
                 eq(NotificationDeliveryStatus.PENDING),
@@ -117,6 +121,7 @@ class AndroidChatPushCoalescingServiceTest {
         );
         ReflectionTestUtils.setField(existingOutbox, "id", 99L);
 
+        when(pushDeviceRepository.findByIdForUpdate(PUSH_DEVICE_ID)).thenReturn(Optional.of(androidDevice));
         when(notificationOutboxRepository.findPendingCandidatesForCoalescing(
                 eq(PUSH_DEVICE_ID),
                 eq(NotificationDeliveryStatus.PENDING),
@@ -157,6 +162,7 @@ class AndroidChatPushCoalescingServiceTest {
         );
         ReflectionTestUtils.setField(deferredOutbox, "id", 109L);
 
+        when(pushDeviceRepository.findByIdForUpdate(PUSH_DEVICE_ID)).thenReturn(Optional.of(androidDevice));
         when(notificationOutboxRepository.findPendingCandidatesForCoalescing(
                 eq(PUSH_DEVICE_ID),
                 eq(NotificationDeliveryStatus.PENDING),
@@ -174,31 +180,6 @@ class AndroidChatPushCoalescingServiceTest {
         );
 
         assertThat(decision.existingPendingOutbox()).contains(deferredOutbox);
-    }
-
-    @Test
-    void decide_fallsBackToNormalEnqueueWhenCoalescingQueryFails() {
-        PushDevice androidDevice = pushDevice(PushPlatform.ANDROID);
-        LocalDateTime now = LocalDateTime.of(2026, 4, 25, 10, 0);
-        when(notificationOutboxRepository.findPendingCandidatesForCoalescing(
-                eq(PUSH_DEVICE_ID),
-                eq(NotificationDeliveryStatus.PENDING),
-                eq(0),
-                any(),
-                any()))
-                .thenThrow(new RuntimeException("query failed"));
-
-        AndroidChatPushCoalescingService.Decision decision = service.decide(
-                androidDevice,
-                NotificationType.CHAT_MESSAGE_RECEIVED,
-                chatPayload("1041", "5512"),
-                now,
-                now
-        );
-
-        assertThat(decision.candidate()).isFalse();
-        assertThat(decision.payloadJson()).isEqualTo(chatPayload("1041", "5512"));
-        assertThat(decision.nextAttemptAt()).isEqualTo(now);
     }
 
     private PushDevice pushDevice(PushPlatform platform) {
