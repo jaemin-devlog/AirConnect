@@ -34,7 +34,6 @@ public class NotificationService {
     private final NotificationOutboxRepository notificationOutboxRepository;
     private final NotificationPreferenceService notificationPreferenceService;
     private final PushDeviceService pushDeviceService;
-    private final AndroidChatPushCoalescingService androidChatPushCoalescingService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -70,25 +69,7 @@ public class NotificationService {
         LocalDateTime now = LocalDateTime.now();
         String outboxPayloadJson = buildOutboxPayload(notification, now);
         List<NotificationOutbox> outboxes = new ArrayList<>();
-        int coalescedCount = 0;
         for (PushDevice pushDevice : pushDevices) {
-            AndroidChatPushCoalescingService.Decision decision =
-                    androidChatPushCoalescingService.decide(pushDevice, command.type(), outboxPayloadJson, now);
-
-            if (decision.existingPendingOutbox().isPresent()) {
-                NotificationOutbox existingOutbox = decision.existingPendingOutbox().get();
-                existingOutbox.coalesceToLatest(
-                        notification.getId(),
-                        pushDevice.getPushToken(),
-                        notification.getTitle(),
-                        notification.getBody(),
-                        decision.payloadJson(),
-                        decision.nextAttemptAt()
-                );
-                coalescedCount++;
-                continue;
-            }
-
             outboxes.add(NotificationOutbox.create(
                     notification.getId(),
                     notification.getUserId(),
@@ -97,13 +78,13 @@ public class NotificationService {
                     pushDevice.getPushToken(),
                     notification.getTitle(),
                     notification.getBody(),
-                    decision.payloadJson(),
-                    decision.nextAttemptAt()
+                    outboxPayloadJson,
+                    now
             ));
         }
         notificationOutboxRepository.saveAll(outboxes);
-        log.info("Notification outboxes enqueued: notificationId={}, count={}, coalescedCount={}",
-                notification.getId(), outboxes.size(), coalescedCount);
+        log.info("Notification outboxes enqueued: notificationId={}, count={}",
+                notification.getId(), outboxes.size());
         return notification;
     }
 

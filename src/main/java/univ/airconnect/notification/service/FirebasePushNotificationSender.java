@@ -40,10 +40,7 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
     private static final String NOTIFICATION_TYPE_KEY = "notificationType";
     private static final String CHAT_MESSAGE_RECEIVED_TYPE = "CHAT_MESSAGE_RECEIVED";
     private static final String CHAT_ROOM_ID_KEY = "chatRoomId";
-    private static final String ROOM_ID_KEY = "roomId";
-    private static final String CHAT_ID_KEY = "chatId";
-    private static final String CHAT_COLLAPSE_KEY_PREFIX = "chat_room_";
-    private static final String CHAT_PUSH_CHANNEL_ID = "airconnect_chat_push_v2";
+    private static final String CHAT_PUSH_CHANNEL_ID = "airconnect_chat_push";
     private static final String CHAT_PUSH_TAG_PREFIX = "chat-";
 
     private static final Set<String> INVALID_TOKEN_ERROR_CODES = Set.of(
@@ -105,7 +102,7 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
         Message.Builder builder = Message.builder()
                 .setToken(outbox.getTargetToken())
                 .setAndroidConfig(androidChatMessage
-                        ? buildAndroidDataOnlyConfig(data)
+                        ? buildAndroidDataOnlyConfig()
                         : buildAndroidNotificationConfig(data));
 
         if (!androidChatMessage) {
@@ -141,35 +138,10 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
                 .build();
     }
 
-    private AndroidConfig buildAndroidDataOnlyConfig(Map<String, String> data) {
-        AndroidConfig.Builder builder = AndroidConfig.builder()
-                .setPriority(AndroidConfig.Priority.HIGH);
-        String collapseKey = buildChatRoomCollapseKey(data);
-        if (collapseKey != null) {
-            builder.setCollapseKey(collapseKey);
-        }
-        return builder.build();
-    }
-
-    private String buildChatRoomCollapseKey(Map<String, String> data) {
-        String chatRoomId = firstNonBlank(data, CHAT_ROOM_ID_KEY, ROOM_ID_KEY, CHAT_ID_KEY);
-        if (chatRoomId == null) {
-            return null;
-        }
-        return CHAT_COLLAPSE_KEY_PREFIX + chatRoomId;
-    }
-
-    private String firstNonBlank(Map<String, String> data, String... keys) {
-        if (data == null || data.isEmpty()) {
-            return null;
-        }
-        for (String key : keys) {
-            String value = data.get(key);
-            if (value != null && !value.isBlank()) {
-                return value.trim();
-            }
-        }
-        return null;
+    private AndroidConfig buildAndroidDataOnlyConfig() {
+        return AndroidConfig.builder()
+                .setPriority(AndroidConfig.Priority.HIGH)
+                .build();
     }
 
     private AndroidConfig buildAndroidNotificationConfig(Map<String, String> data) {
@@ -181,9 +153,9 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
                     .setChannelId(CHAT_PUSH_CHANNEL_ID)
                     .setPriority(AndroidNotification.Priority.DEFAULT);
 
-            String chatRoomId = firstNonBlank(data, CHAT_ROOM_ID_KEY, ROOM_ID_KEY, CHAT_ID_KEY);
-            if (chatRoomId != null) {
-                notificationBuilder.setTag(CHAT_PUSH_TAG_PREFIX + chatRoomId);
+            String chatRoomId = data.get(CHAT_ROOM_ID_KEY);
+            if (chatRoomId != null && !chatRoomId.isBlank()) {
+                notificationBuilder.setTag(CHAT_PUSH_TAG_PREFIX + chatRoomId.trim());
             }
         }
 
