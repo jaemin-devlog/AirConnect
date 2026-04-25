@@ -7,6 +7,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.domain.entity.AnalyticsEvent;
@@ -119,7 +121,8 @@ class AdminServiceTest {
 
     @Test
     void broadcastNotice_sendsSystemAnnouncementToActiveUsers() {
-        when(userRepository.findIdsByStatus(UserStatus.ACTIVE)).thenReturn(List.of(10L, 20L));
+        when(userRepository.findIdsByStatus(org.mockito.ArgumentMatchers.eq(UserStatus.ACTIVE), any()))
+                .thenReturn(new PageImpl<>(List.of(10L, 20L), PageRequest.of(0, 500), 2));
 
         AdminDtos.NoticeBroadcastResult response = adminService.broadcastNotice(
                 new AdminRequests.NoticeBroadcastRequest("공지", "점검 예정", "airconnect://notice", true)

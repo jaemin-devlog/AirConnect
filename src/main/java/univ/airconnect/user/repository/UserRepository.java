@@ -56,10 +56,26 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("""
         SELECT u.id
         FROM User u
+        WHERE u.status = :status
+        ORDER BY u.id ASC
+    """)
+    Page<Long> findIdsByStatus(@Param("status") UserStatus status, Pageable pageable);
+
+    @Query("""
+        SELECT u.id
+        FROM User u
         WHERE u.status <> :status
         ORDER BY u.id ASC
     """)
     List<Long> findIdsByStatusNot(@Param("status") UserStatus status);
+
+    @Query("""
+        SELECT u.id
+        FROM User u
+        WHERE u.status <> :status
+        ORDER BY u.id ASC
+    """)
+    Page<Long> findIdsByStatusNot(@Param("status") UserStatus status, Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT u FROM User u WHERE u.id = :userId")
