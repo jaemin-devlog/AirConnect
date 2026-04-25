@@ -42,6 +42,7 @@ public class PushDeviceService {
         Optional<PushDevice> existing = pushDeviceRepository.findByUserIdAndDeviceId(command.userId(), command.deviceId());
         if (existing.isPresent()) {
             PushDevice pushDevice = existing.get();
+            validateExistingDeviceIdentity(pushDevice, command);
             pushDevice.refreshToken(
                     command.pushToken(),
                     command.apnsToken(),
@@ -74,6 +75,15 @@ public class PushDeviceService {
         );
         log.info("Push device registered: userId={}, deviceId={}", command.userId(), command.deviceId());
         return pushDevice;
+    }
+
+    private void validateExistingDeviceIdentity(PushDevice existing, UpsertCommand command) {
+        if (existing.getPlatform() != command.platform()) {
+            throw new IllegalArgumentException("Platform mismatch for existing device.");
+        }
+        if (existing.getProvider() != command.provider()) {
+            throw new IllegalArgumentException("Provider mismatch for existing device.");
+        }
     }
 
     /**
