@@ -14,19 +14,6 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
 
     List<NotificationOutbox> findByIdInOrderByIdAsc(Collection<Long> ids);
 
-    java.util.Optional<NotificationOutbox> findTopByNotificationIdAndPushDeviceIdAndStatusOrderByIdDesc(
-            Long notificationId,
-            Long pushDeviceId,
-            NotificationDeliveryStatus status
-    );
-
-    java.util.Optional<NotificationOutbox> findTopByNotificationIdAndPushDeviceIdAndProviderMessageIdAndStatusOrderByIdDesc(
-            Long notificationId,
-            Long pushDeviceId,
-            String providerMessageId,
-            NotificationDeliveryStatus status
-    );
-
     @Query("""
             SELECT outbox
             FROM NotificationOutbox outbox

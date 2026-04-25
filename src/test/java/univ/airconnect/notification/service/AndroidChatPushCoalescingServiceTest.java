@@ -55,7 +55,6 @@ class AndroidChatPushCoalescingServiceTest {
                 iosDevice,
                 NotificationType.CHAT_MESSAGE_RECEIVED,
                 chatPayload("1041", "5512"),
-                LocalDateTime.of(2026, 4, 25, 10, 0),
                 LocalDateTime.of(2026, 4, 25, 10, 0)
         );
 
@@ -81,7 +80,6 @@ class AndroidChatPushCoalescingServiceTest {
                 androidDevice,
                 NotificationType.CHAT_MESSAGE_RECEIVED,
                 chatPayload("1041", "5512"),
-                now,
                 now
         );
 
@@ -134,7 +132,6 @@ class AndroidChatPushCoalescingServiceTest {
                 androidDevice,
                 NotificationType.CHAT_MESSAGE_RECEIVED,
                 chatPayload("1042", "5512"),
-                LocalDateTime.of(2026, 4, 25, 10, 0, 2),
                 LocalDateTime.of(2026, 4, 25, 10, 0, 2)
         );
 
@@ -144,42 +141,6 @@ class AndroidChatPushCoalescingServiceTest {
         assertThat(payload.path("messageId").asText()).isEqualTo("5512");
         assertThat(payload.path("batchedMessageCount").asInt()).isEqualTo(3);
         assertThat(payload.path("batchedWindowStartedAt").asText()).isEqualTo("2026-04-25T09:59:59");
-    }
-
-    @Test
-    void decide_usesDeferredDeliveryAnchorForQuietHoursCoalescing() {
-        PushDevice androidDevice = pushDevice(PushPlatform.ANDROID);
-        NotificationOutbox deferredOutbox = NotificationOutbox.create(
-                2041L,
-                17L,
-                PUSH_DEVICE_ID,
-                PushProvider.FCM,
-                "fcm-token",
-                "old-title",
-                "old-body",
-                chatPayload("2041", "7711"),
-                LocalDateTime.of(2026, 4, 25, 8, 0)
-        );
-        ReflectionTestUtils.setField(deferredOutbox, "id", 109L);
-
-        when(pushDeviceRepository.findByIdForUpdate(PUSH_DEVICE_ID)).thenReturn(Optional.of(androidDevice));
-        when(notificationOutboxRepository.findPendingCandidatesForCoalescing(
-                eq(PUSH_DEVICE_ID),
-                eq(NotificationDeliveryStatus.PENDING),
-                eq(0),
-                eq(LocalDateTime.of(2026, 4, 25, 8, 0)),
-                eq(LocalDateTime.of(2026, 4, 25, 8, 0).plus(AndroidChatPushCoalescingService.COALESCING_WINDOW))))
-                .thenReturn(List.of(deferredOutbox));
-
-        AndroidChatPushCoalescingService.Decision decision = service.decide(
-                androidDevice,
-                NotificationType.CHAT_MESSAGE_RECEIVED,
-                chatPayload("2042", "7712"),
-                LocalDateTime.of(2026, 4, 25, 1, 0),
-                LocalDateTime.of(2026, 4, 25, 8, 0)
-        );
-
-        assertThat(decision.existingPendingOutbox()).contains(deferredOutbox);
     }
 
     private PushDevice pushDevice(PushPlatform platform) {

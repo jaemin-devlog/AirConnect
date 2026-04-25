@@ -7,12 +7,13 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * outbox를 주기적으로 가져와 외부 푸시를 발송하는 워커다.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -20,24 +21,16 @@ import java.util.concurrent.ThreadLocalRandom;
 public class NotificationOutboxWorker {
 
     private static final int DEFAULT_BATCH_SIZE = 100;
-    private static final List<Duration> RETRY_DELAYS = List.of(
-            Duration.ofMinutes(1),
-            Duration.ofMinutes(5),
-            Duration.ofMinutes(30)
-    );
-    private static final List<Duration> RETRY_JITTERS = List.of(
-            Duration.ofSeconds(30),
-            Duration.ofMinutes(2),
-            Duration.ofMinutes(5)
-    );
-    private static final int MAX_ATTEMPTS = RETRY_DELAYS.size() + 1;
+    private static final int MAX_ATTEMPTS = 3;
     private static final Duration CLAIM_TIMEOUT = Duration.ofMinutes(5);
 
     private final NotificationOutboxService notificationOutboxService;
     private final PushNotificationSender pushNotificationSender;
     private final PushDeviceService pushDeviceService;
-    private final NotificationDeliveryGuard notificationDeliveryGuard;
 
+    /**
+     * 발송 가능한 outbox를 batch 단위로 처리한다.
+     */
     @Scheduled(fixedDelayString = "${notification.outbox.worker.delay-ms:1000}")
     public void drain() {
         List<NotificationOutbox> batch = notificationOutboxService.claimNextBatch(DEFAULT_BATCH_SIZE);
@@ -50,19 +43,19 @@ public class NotificationOutboxWorker {
         }
     }
 
+    /**
+     * 장애나 프로세스 중단으로 고아가 된 PROCESSING 행을 복구한다.
+     */
     @Scheduled(fixedDelayString = "${notification.outbox.worker.recovery-delay-ms:60000}")
     public void recoverStuckClaims() {
         notificationOutboxService.recoverTimedOutProcessing(CLAIM_TIMEOUT);
     }
 
+    /**
+     * 개별 outbox를 발송하고 결과에 따라 상태를 전이한다.
+     */
     private void dispatch(NotificationOutbox outbox) {
         try {
-            GuardResult guardResult = notificationDeliveryGuard.evaluate(outbox);
-            if (guardResult.decision() != DeliveryDecision.SEND_NOW) {
-                handleGuardResult(outbox, guardResult);
-                return;
-            }
-
             PushNotificationSender.PushSendResult result = pushNotificationSender.send(outbox);
             if (result.success()) {
                 notificationOutboxService.markSent(outbox.getId(), result.providerMessageId());
@@ -101,40 +94,22 @@ public class NotificationOutboxWorker {
         }
     }
 
-    private void handleGuardResult(NotificationOutbox outbox, GuardResult guardResult) {
-        if (guardResult.decision() == DeliveryDecision.DEFER) {
-            notificationOutboxService.markDeferred(
-                    outbox.getId(),
-                    guardResult.reason(),
-                    guardResult.message(),
-                    guardResult.nextAttemptAt()
-            );
-            return;
-        }
-        if (guardResult.decision() == DeliveryDecision.SKIP) {
-            notificationOutboxService.markSkipped(outbox.getId(), guardResult.reason(), guardResult.message());
-            return;
-        }
-        notificationOutboxService.markFailed(outbox.getId(), guardResult.reason(), guardResult.message());
-    }
-
+    /**
+     * 현재 시도 이후에도 재시도 여유가 있는지 계산한다.
+     */
     private boolean canRetry(NotificationOutbox outbox) {
-        return outbox.getAttemptCount() < RETRY_DELAYS.size()
-                && outbox.getAttemptCount() + 1 < MAX_ATTEMPTS;
+        return outbox.getAttemptCount() + 1 < MAX_ATTEMPTS;
     }
 
+    /**
+     * 지수적으로 길어지는 단순 재시도 시각을 계산한다.
+     */
     private LocalDateTime nextAttemptAt(NotificationOutbox outbox) {
-        Duration delay = RETRY_DELAYS.get(outbox.getAttemptCount());
-        Duration jitter = RETRY_JITTERS.get(outbox.getAttemptCount());
-        return LocalDateTime.now(Clock.systemUTC()).plus(delay).plus(randomJitter(jitter));
-    }
-
-    private Duration randomJitter(Duration maxJitter) {
-        if (maxJitter == null || maxJitter.isNegative() || maxJitter.isZero()) {
-            return Duration.ZERO;
-        }
-        long maxMillis = maxJitter.toMillis();
-        long jitterMillis = ThreadLocalRandom.current().nextLong(maxMillis + 1);
-        return Duration.ofMillis(jitterMillis);
+        int nextAttemptNumber = outbox.getAttemptCount() + 1;
+        return switch (nextAttemptNumber) {
+            case 1 -> LocalDateTime.now().plusMinutes(1);
+            case 2 -> LocalDateTime.now().plusMinutes(5);
+            default -> LocalDateTime.now().plusMinutes(30);
+        };
     }
 }

@@ -2,7 +2,6 @@ package univ.airconnect.notification.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -21,7 +20,7 @@ public class PushEventCreateRequest {
     @NotBlank
     private String notificationId;
 
-    @Size(max = 200)
+    @NotBlank
     private String providerMessageId;
 
     @NotNull

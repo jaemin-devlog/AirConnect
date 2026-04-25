@@ -10,14 +10,14 @@ import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.domain.entity.NotificationPreference;
 import univ.airconnect.notification.repository.NotificationPreferenceRepository;
 
-import java.time.Clock;
 import java.time.DateTimeException;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 
+/**
+ * 사용자별 알림 설정을 해석하고 필요 시 기본 설정 행을 생성한다.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -28,16 +28,22 @@ public class NotificationPreferenceService {
 
     private final NotificationPreferenceRepository notificationPreferenceRepository;
 
+    /**
+     * 사용자의 설정 행을 조회하고, 없으면 기본 설정 행을 생성한다.
+     */
     @Transactional
     public NotificationPreference getOrCreate(Long userId) {
         return notificationPreferenceRepository.findByUserId(userId)
                 .orElseGet(() -> notificationPreferenceRepository.save(NotificationPreference.createDefault(userId)));
     }
 
+    /**
+     * 알림 설정 부분 수정 요청을 적용한다.
+     */
     @Transactional
     public NotificationPreference update(Long userId, UpdateCommand command) {
         if (command == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Notification preference request is required.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "알림 설정 요청 본문이 필요합니다.");
         }
 
         validateTimezone(command.timezone());
@@ -60,39 +66,39 @@ public class NotificationPreferenceService {
         return preference;
     }
 
+    /**
+     * 알림 타입별로 앱 내 노출과 푸시 발송 허용 여부를 함께 계산한다.
+     */
     @Transactional
     public DeliveryPolicy getDeliveryPolicy(Long userId, NotificationType type) {
         NotificationPreference preference = getOrCreate(userId);
         boolean typeEnabled = isTypeEnabled(preference, type);
         boolean inAppAllowed = Boolean.TRUE.equals(preference.getInAppEnabled()) && typeEnabled;
-
-        if (!Boolean.TRUE.equals(preference.getPushEnabled())) {
-            return DeliveryPolicy.skip(inAppAllowed, "PUSH_DISABLED");
-        }
-        if (!typeEnabled) {
-            return DeliveryPolicy.skip(inAppAllowed, "NOTIFICATION_TYPE_DISABLED");
-        }
-
-        QuietHoursDecision quietHoursDecision = evaluateQuietHours(preference, type);
-        if (quietHoursDecision.active()) {
-            if (quietHoursDecision.deferable() && quietHoursDecision.nextAllowedAt() != null) {
-                return DeliveryPolicy.defer(inAppAllowed, quietHoursDecision.nextAllowedAt(), "QUIET_HOURS");
-            }
-            return DeliveryPolicy.skip(inAppAllowed, "QUIET_HOURS");
-        }
-        return DeliveryPolicy.sendNow(inAppAllowed);
+        boolean pushAllowed = Boolean.TRUE.equals(preference.getPushEnabled())
+                && typeEnabled
+                && !isQuietHoursActive(preference);
+        return new DeliveryPolicy(pushAllowed, inAppAllowed);
     }
 
+    /**
+     * 주어진 사용자와 알림 타입에 대해 푸시 발송이 허용되는지 반환한다.
+     */
     @Transactional
     public boolean isPushAllowed(Long userId, NotificationType type) {
         return getDeliveryPolicy(userId, type).pushAllowed();
     }
 
+    /**
+     * 알림이 앱 내 알림함에 계속 노출되어야 하는지 반환한다.
+     */
     @Transactional
     public boolean isInAppAllowed(Long userId, NotificationType type) {
         return getDeliveryPolicy(userId, type).inAppAllowed();
     }
 
+    /**
+     * 알림 타입을 해당 설정 플래그와 매핑한다.
+     */
     private boolean isTypeEnabled(NotificationPreference preference, NotificationType type) {
         return switch (type) {
             case MATCH_REQUEST_RECEIVED ->
@@ -112,59 +118,33 @@ public class NotificationPreferenceService {
         };
     }
 
-    private QuietHoursDecision evaluateQuietHours(NotificationPreference preference, NotificationType type) {
+    /**
+     * 사용자의 방해금지 시간대를 푸시 발송 여부에만 적용한다.
+     */
+    private boolean isQuietHoursActive(NotificationPreference preference) {
         if (!Boolean.TRUE.equals(preference.getQuietHoursEnabled())) {
-            return QuietHoursDecision.inactive();
+            return false;
         }
 
         LocalTime quietHoursStart = preference.getQuietHoursStart();
         LocalTime quietHoursEnd = preference.getQuietHoursEnd();
         if (quietHoursStart == null || quietHoursEnd == null) {
-            return QuietHoursDecision.inactive();
+            return false;
         }
 
+        LocalTime currentTime = ZonedDateTime.now(resolveZoneId(preference.getTimezone())).toLocalTime();
         if (quietHoursStart.equals(quietHoursEnd)) {
-            return new QuietHoursDecision(true, false, null);
+            return true;
         }
-
-        ZonedDateTime now = ZonedDateTime.now(Clock.systemUTC())
-                .withZoneSameInstant(resolveZoneId(preference.getTimezone()));
-        QuietHoursWindow quietHoursWindow = resolveQuietHoursWindow(now, quietHoursStart, quietHoursEnd);
-        if (!quietHoursWindow.active()) {
-            return QuietHoursDecision.inactive();
-        }
-
-        LocalDateTime nextAllowedAtUtc = quietHoursWindow.endsAt()
-                .withZoneSameInstant(ZoneOffset.UTC)
-                .toLocalDateTime();
-        return new QuietHoursDecision(true, isDelayableDuringQuietHours(type), nextAllowedAtUtc);
-    }
-
-    private QuietHoursWindow resolveQuietHoursWindow(ZonedDateTime now,
-                                                     LocalTime quietHoursStart,
-                                                     LocalTime quietHoursEnd) {
         if (quietHoursStart.isBefore(quietHoursEnd)) {
-            boolean active = !now.toLocalTime().isBefore(quietHoursStart)
-                    && now.toLocalTime().isBefore(quietHoursEnd);
-            return new QuietHoursWindow(active, now.toLocalDate().atTime(quietHoursEnd).atZone(now.getZone()));
+            return !currentTime.isBefore(quietHoursStart) && currentTime.isBefore(quietHoursEnd);
         }
-
-        if (!now.toLocalTime().isBefore(quietHoursStart)) {
-            return new QuietHoursWindow(true, now.toLocalDate().plusDays(1).atTime(quietHoursEnd).atZone(now.getZone()));
-        }
-        if (now.toLocalTime().isBefore(quietHoursEnd)) {
-            return new QuietHoursWindow(true, now.toLocalDate().atTime(quietHoursEnd).atZone(now.getZone()));
-        }
-        return new QuietHoursWindow(false, now.toLocalDate().atTime(quietHoursEnd).atZone(now.getZone()));
+        return !currentTime.isBefore(quietHoursStart) || currentTime.isBefore(quietHoursEnd);
     }
 
-    private boolean isDelayableDuringQuietHours(NotificationType type) {
-        return switch (type) {
-            case APPOINTMENT_REMINDER_1H, APPOINTMENT_REMINDER_10M -> false;
-            default -> true;
-        };
-    }
-
+    /**
+     * 잘못된 시간대 문자열이 저장돼 있으면 Asia/Seoul로 대체한다.
+     */
     private ZoneId resolveZoneId(String timezone) {
         if (timezone == null || timezone.isBlank()) {
             return DEFAULT_ZONE_ID;
@@ -184,44 +164,19 @@ public class NotificationPreferenceService {
         try {
             ZoneId.of(timezone);
         } catch (DateTimeException e) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Invalid timezone.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "유효하지 않은 시간대입니다.");
         }
     }
 
-    public record DeliveryPolicy(PushDecision pushDecision,
-                                 boolean inAppAllowed,
-                                 LocalDateTime nextAllowedAt,
-                                 String reason) {
-        public boolean pushAllowed() {
-            return pushDecision == PushDecision.SEND_NOW;
-        }
-
-        public boolean pushQueueable() {
-            return pushDecision == PushDecision.SEND_NOW || pushDecision == PushDecision.DEFER;
-        }
-
-        public static DeliveryPolicy sendNow(boolean inAppAllowed) {
-            return new DeliveryPolicy(PushDecision.SEND_NOW, inAppAllowed, null, "SEND_NOW");
-        }
-
-        public static DeliveryPolicy defer(boolean inAppAllowed, LocalDateTime nextAllowedAt, String reason) {
-            return new DeliveryPolicy(PushDecision.DEFER, inAppAllowed, nextAllowedAt, reason);
-        }
-
-        public static DeliveryPolicy skip(boolean inAppAllowed, String reason) {
-            return new DeliveryPolicy(PushDecision.SKIP, inAppAllowed, null, reason);
-        }
+    /**
+     * 사용자 한 명과 알림 타입 하나에 대한 최종 전달 정책이다.
+     */
+    public record DeliveryPolicy(boolean pushAllowed, boolean inAppAllowed) {
     }
 
-    private record QuietHoursDecision(boolean active, boolean deferable, LocalDateTime nextAllowedAt) {
-        private static QuietHoursDecision inactive() {
-            return new QuietHoursDecision(false, false, null);
-        }
-    }
-
-    private record QuietHoursWindow(boolean active, ZonedDateTime endsAt) {
-    }
-
+    /**
+     * 알림 설정 부분 수정 요청 모델이다.
+     */
     public record UpdateCommand(
             Boolean pushEnabled,
             Boolean inAppEnabled,

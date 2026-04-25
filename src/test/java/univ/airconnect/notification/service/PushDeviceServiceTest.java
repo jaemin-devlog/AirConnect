@@ -13,7 +13,6 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -86,48 +85,5 @@ class PushDeviceServiceTest {
 
         assertThat(response.getNotificationPermissionGranted()).isTrue();
         assertThat(response.getLastSeenAt()).isEqualTo(lastSeenAt);
-    }
-
-    @Test
-    void registerOrUpdate_rejectsPlatformMismatchForExistingDevice() {
-        PushDeviceService service = new PushDeviceService(pushDeviceRepository);
-        PushDevice existing = PushDevice.register(
-                1L,
-                "device-1",
-                PushPlatform.ANDROID,
-                PushProvider.FCM,
-                "old-token",
-                null,
-                true,
-                "1.0.0",
-                "14",
-                "ko-KR",
-                "Asia/Seoul",
-                LocalDateTime.of(2026, 4, 4, 10, 0)
-        );
-
-        PushDeviceService.UpsertCommand command = new PushDeviceService.UpsertCommand(
-                1L,
-                "device-1",
-                PushPlatform.IOS,
-                PushProvider.FCM,
-                "new-token",
-                "apns-token",
-                true,
-                "1.0.0",
-                "18.4",
-                "ko-KR",
-                "Asia/Seoul",
-                LocalDateTime.of(2026, 4, 4, 10, 5)
-        );
-
-        when(pushDeviceRepository.findByProviderAndPushToken(PushProvider.FCM, "new-token"))
-                .thenReturn(Optional.empty());
-        when(pushDeviceRepository.findByUserIdAndDeviceId(1L, "device-1"))
-                .thenReturn(Optional.of(existing));
-
-        assertThatThrownBy(() -> service.registerOrUpdate(command))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Platform mismatch for existing device.");
     }
 }

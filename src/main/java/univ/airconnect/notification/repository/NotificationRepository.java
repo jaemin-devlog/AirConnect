@@ -14,8 +14,6 @@ import java.util.Optional;
 
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
-    Optional<Notification> findByIdAndUserId(Long id, Long userId);
-
     Optional<Notification> findByIdAndUserIdAndDeletedAtIsNull(Long id, Long userId);
 
     Optional<Notification> findByUserIdAndDedupeKey(Long userId, String dedupeKey);

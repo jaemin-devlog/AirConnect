@@ -2,9 +2,7 @@ package univ.airconnect.notification.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.firebase.messaging.FirebaseMessaging;
-import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
-import com.google.firebase.messaging.MessagingErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,12 +15,6 @@ import univ.airconnect.notification.domain.PushProvider;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.PushDeviceRepository;
-import univ.airconnect.notification.service.fcm.FcmDataPayloadMapper;
-import univ.airconnect.notification.service.fcm.FcmDataPayloadValidator;
-import univ.airconnect.notification.service.fcm.PushTargetPlatformResolver;
-import univ.airconnect.notification.service.fcm.android.AndroidFcmMessageBuilder;
-import univ.airconnect.notification.service.fcm.android.AndroidPushPolicyResolver;
-import univ.airconnect.notification.service.fcm.ios.IosFcmMessageBuilder;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -30,7 +22,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -49,51 +40,32 @@ class FirebasePushNotificationSenderTest {
 
     @BeforeEach
     void setUp() {
-        ObjectMapper objectMapper = new ObjectMapper();
-        sender = new FirebasePushNotificationSender(
-                firebaseMessaging,
-                new FcmDataPayloadMapper(objectMapper, new FcmDataPayloadValidator()),
-                new PushTargetPlatformResolver(pushDeviceRepository),
-                new AndroidFcmMessageBuilder(new AndroidPushPolicyResolver()),
-                new IosFcmMessageBuilder()
-        );
+        sender = new FirebasePushNotificationSender(firebaseMessaging, new ObjectMapper(), pushDeviceRepository);
     }
 
     @Test
-    void send_sendsAndroidChatAsNotificationAndData() throws Exception {
+    void send_sendsAndroidChatAsDataOnly() throws Exception {
         Message message = sendAndCapture(chatOutbox(), PushPlatform.ANDROID);
 
-        Object notification = ReflectionTestUtils.getField(message, "notification");
-        assertThat(notification).isNotNull();
-        assertThat(ReflectionTestUtils.getField(notification, "title")).isEqualTo("Minsu");
-        assertThat(ReflectionTestUtils.getField(notification, "body")).isEqualTo("Hello there");
+        assertThat(ReflectionTestUtils.getField(message, "notification")).isNull();
         assertThat(ReflectionTestUtils.getField(message, "apnsConfig")).isNull();
 
         Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");
         assertThat(androidConfig).isNotNull();
         assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("high");
         assertThat(ReflectionTestUtils.getField(androidConfig, "collapseKey")).isEqualTo("chat_room_88");
-
-        Object androidNotification = ReflectionTestUtils.getField(androidConfig, "notification");
-        assertThat(androidNotification).isNotNull();
-        assertThat(ReflectionTestUtils.getField(androidNotification, "channelId")).isEqualTo("airconnect_chat_messages_v1");
-        assertThat(ReflectionTestUtils.getField(androidNotification, "tag")).isEqualTo("chat_room_88");
+        assertThat(ReflectionTestUtils.getField(androidConfig, "notification")).isNull();
 
         Map<String, String> data = readData(message);
         assertThat(data)
-                .containsEntry("schemaVersion", "android-fcm-v1")
                 .containsEntry("notificationType", "CHAT_MESSAGE_RECEIVED")
                 .containsEntry("type", "CHAT_MESSAGE")
                 .containsEntry("chatRoomId", "88")
-                .containsEntry("resourceType", "CHAT_ROOM")
-                .containsEntry("resourceId", "88")
-                .containsEntry("enqueuedAt", "2026-04-24T10:15:00.123456");
-        assertThat(data)
-                .doesNotContainKey("messageId")
-                .doesNotContainKey("senderNickname")
-                .doesNotContainKey("messagePreview")
-                .doesNotContainKey("messageType")
-                .doesNotContainKey("senderUserId");
+                .containsEntry("messageId", "5512")
+                .containsEntry("senderNickname", "Minsu")
+                .containsEntry("messagePreview", "Hello there")
+                .containsEntry("messageType", "TEXT")
+                .containsEntry("senderUserId", "22");
     }
 
     @Test
@@ -105,42 +77,35 @@ class FirebasePushNotificationSenderTest {
         assertThat(ReflectionTestUtils.getField(notification, "title")).isEqualTo("Minsu");
         assertThat(ReflectionTestUtils.getField(notification, "body")).isEqualTo("Hello there");
         assertThat(ReflectionTestUtils.getField(message, "apnsConfig")).isNotNull();
-        assertThat(ReflectionTestUtils.getField(message, "androidConfig")).isNull();
+
+        Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");
+        assertThat(androidConfig).isNotNull();
+        Object androidNotification = ReflectionTestUtils.getField(androidConfig, "notification");
+        assertThat(androidNotification).isNotNull();
+        assertThat(ReflectionTestUtils.getField(androidNotification, "channelId")).isEqualTo("airconnect_chat_push_v2");
+        assertThat(ReflectionTestUtils.getField(androidNotification, "tag")).isEqualTo("chat-88");
+        assertThat(ReflectionTestUtils.getField(androidNotification, "priority")).isEqualTo("PRIORITY_DEFAULT");
     }
 
     @Test
-    void mapFailure_doesNotTreatGenericInvalidArgumentAsInvalidToken() {
-        FirebaseMessagingException exception = mock(FirebaseMessagingException.class);
-        when(exception.getMessagingErrorCode()).thenReturn(MessagingErrorCode.INVALID_ARGUMENT);
-        when(exception.getMessage()).thenReturn("Invalid data payload key");
+    void send_keepsAndroidNonChatOnExistingNotificationPath() throws Exception {
+        Message message = sendAndCapture(matchRequestOutbox(), PushPlatform.ANDROID);
 
-        PushNotificationSender.PushSendResult result = sender.mapFailure(chatOutbox(), exception);
+        Object notification = ReflectionTestUtils.getField(message, "notification");
+        assertThat(notification).isNotNull();
+        assertThat(ReflectionTestUtils.getField(notification, "title")).isEqualTo("New match request");
+        assertThat(ReflectionTestUtils.getField(notification, "body")).isEqualTo("Jimin sent a new match request.");
 
-        assertThat(result.invalidToken()).isFalse();
-        assertThat(result.retryable()).isFalse();
-        assertThat(result.errorCode()).isEqualTo("INVALID_ARGUMENT");
-    }
-
-    @Test
-    void mapFailure_treatsRegistrationTokenInvalidArgumentAsInvalidToken() {
-        FirebaseMessagingException exception = mock(FirebaseMessagingException.class);
-        when(exception.getMessagingErrorCode()).thenReturn(MessagingErrorCode.INVALID_ARGUMENT);
-        when(exception.getMessage()).thenReturn("The registration token is not a valid FCM registration token");
-
-        PushNotificationSender.PushSendResult result = sender.mapFailure(chatOutbox(), exception);
-
-        assertThat(result.invalidToken()).isTrue();
-    }
-
-    @Test
-    void mapFailure_treatsUnregisteredAsInvalidToken() {
-        FirebaseMessagingException exception = mock(FirebaseMessagingException.class);
-        when(exception.getMessagingErrorCode()).thenReturn(MessagingErrorCode.UNREGISTERED);
-        when(exception.getMessage()).thenReturn("Requested entity was not found.");
-
-        PushNotificationSender.PushSendResult result = sender.mapFailure(chatOutbox(), exception);
-
-        assertThat(result.invalidToken()).isTrue();
+        Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");
+        assertThat(androidConfig).isNotNull();
+        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("high");
+        Object androidNotification = ReflectionTestUtils.getField(androidConfig, "notification");
+        assertThat(androidNotification).isNotNull();
+        assertThat(ReflectionTestUtils.getField(androidNotification, "sound")).isEqualTo("default");
+        assertThat(ReflectionTestUtils.getField(androidConfig, "collapseKey")).isNull();
+        assertThat(ReflectionTestUtils.getField(androidNotification, "channelId")).isNull();
+        assertThat(ReflectionTestUtils.getField(androidNotification, "tag")).isNull();
+        assertThat(ReflectionTestUtils.getField(androidNotification, "priority")).isNull();
     }
 
     private Message sendAndCapture(NotificationOutbox outbox, PushPlatform platform) throws Exception {
@@ -201,6 +166,30 @@ class FirebasePushNotificationSenderTest {
                         }
                         """,
                 LocalDateTime.of(2026, 4, 24, 10, 15)
+        );
+    }
+
+    private NotificationOutbox matchRequestOutbox() {
+        return NotificationOutbox.create(
+                2001L,
+                31L,
+                PUSH_DEVICE_ID,
+                PushProvider.FCM,
+                "fcm-token",
+                "New match request",
+                "Jimin sent a new match request.",
+                """
+                        {
+                          "notificationId": "2001",
+                          "type": "SYSTEM",
+                          "notificationType": "MATCH_REQUEST_RECEIVED",
+                          "title": "New match request",
+                          "body": "Jimin sent a new match request.",
+                          "deeplink": "airconnect://matching/requests",
+                          "sentAt": "2026-04-24T10:16:00.123456"
+                        }
+                        """,
+                LocalDateTime.of(2026, 4, 24, 10, 16)
         );
     }
 }
