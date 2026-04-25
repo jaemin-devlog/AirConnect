@@ -17,12 +17,10 @@ import lombok.NoArgsConstructor;
 import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.PushProvider;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * 사용자 한 명의 모바일 디바이스 한 대와 현재 FCM 토큰을 저장한다.
- */
 @Entity
 @Table(
         name = "push_devices",
@@ -123,9 +121,9 @@ public class PushDevice {
         this.locale = locale;
         this.timezone = timezone;
         this.lastSeenAt = lastSeenAt;
-        this.lastTokenRefreshedAt = LocalDateTime.now();
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
+        this.lastTokenRefreshedAt = nowUtc();
+        this.createdAt = nowUtc();
+        this.updatedAt = nowUtc();
     }
 
     public static PushDevice register(Long userId,
@@ -165,10 +163,10 @@ public class PushDevice {
                              String timezone,
                              LocalDateTime lastSeenAt) {
         if (pushToken == null || pushToken.isBlank()) {
-            throw new IllegalArgumentException("푸시 토큰은 필수입니다.");
+            throw new IllegalArgumentException("Push token is required.");
         }
         if (this.platform == PushPlatform.ANDROID && apnsToken != null && !apnsToken.isBlank()) {
-            throw new IllegalArgumentException("안드로이드에서는 APNS 토큰을 사용할 수 없습니다.");
+            throw new IllegalArgumentException("APNS token is not supported for Android.");
         }
         this.pushToken = pushToken;
         this.apnsToken = apnsToken;
@@ -180,14 +178,14 @@ public class PushDevice {
         this.locale = locale;
         this.timezone = timezone;
         this.lastSeenAt = lastSeenAt;
-        this.lastTokenRefreshedAt = LocalDateTime.now();
+        this.lastTokenRefreshedAt = nowUtc();
         this.active = Boolean.TRUE;
         this.deactivatedAt = null;
         touch();
     }
 
     public void touchLastSeen(LocalDateTime lastSeenAt) {
-        this.lastSeenAt = lastSeenAt != null ? lastSeenAt : LocalDateTime.now();
+        this.lastSeenAt = lastSeenAt != null ? lastSeenAt : nowUtc();
         touch();
     }
 
@@ -201,13 +199,13 @@ public class PushDevice {
             return;
         }
         this.active = Boolean.FALSE;
-        this.deactivatedAt = LocalDateTime.now();
+        this.deactivatedAt = nowUtc();
         touch();
     }
 
     public void releaseTokenOwnership() {
         this.active = Boolean.FALSE;
-        this.deactivatedAt = LocalDateTime.now();
+        this.deactivatedAt = nowUtc();
         this.pushToken = buildReleasedTokenValue();
         this.apnsToken = null;
         this.notificationPermissionGranted = Boolean.FALSE;
@@ -221,11 +219,15 @@ public class PushDevice {
     }
 
     private void touch() {
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = nowUtc();
     }
 
     private String buildReleasedTokenValue() {
         return "released:" + this.deviceId + ":" + UUID.randomUUID();
+    }
+
+    private LocalDateTime nowUtc() {
+        return LocalDateTime.now(Clock.systemUTC());
     }
 
     private void validate(Long userId,
@@ -236,28 +238,28 @@ public class PushDevice {
                           String apnsToken,
                           Boolean notificationPermissionGranted) {
         if (userId == null) {
-            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
+            throw new IllegalArgumentException("User id is required.");
         }
         if (deviceId == null || deviceId.isBlank()) {
-            throw new IllegalArgumentException("디바이스 ID는 필수입니다.");
+            throw new IllegalArgumentException("Device id is required.");
         }
         if (platform == null) {
-            throw new IllegalArgumentException("플랫폼은 필수입니다.");
+            throw new IllegalArgumentException("Push platform is required.");
         }
         if (provider == null) {
-            throw new IllegalArgumentException("푸시 제공자는 필수입니다.");
+            throw new IllegalArgumentException("Push provider is required.");
         }
         if (provider != PushProvider.FCM) {
-            throw new IllegalArgumentException("현재는 FCM 제공자만 지원합니다.");
+            throw new IllegalArgumentException("Only FCM is supported.");
         }
         if (pushToken == null || pushToken.isBlank()) {
-            throw new IllegalArgumentException("푸시 토큰은 필수입니다.");
+            throw new IllegalArgumentException("Push token is required.");
         }
         if (notificationPermissionGranted == null) {
-            throw new IllegalArgumentException("알림 권한 허용 여부는 필수입니다.");
+            throw new IllegalArgumentException("Notification permission flag is required.");
         }
         if (platform == PushPlatform.ANDROID && apnsToken != null && !apnsToken.isBlank()) {
-            throw new IllegalArgumentException("안드로이드에서는 APNS 토큰을 사용할 수 없습니다.");
+            throw new IllegalArgumentException("APNS token is not supported for Android.");
         }
     }
 }

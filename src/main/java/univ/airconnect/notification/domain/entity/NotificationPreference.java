@@ -9,78 +9,59 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 
-/**
- * 사용자별 알림 설정 엔티티다.
- *
- * <p>전체 on/off 뿐 아니라 카테고리별 허용 여부와 방해금지 시간대까지 관리한다.</p>
- */
 @Entity
 @Table(name = "notification_preferences")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class NotificationPreference {
 
-    /** 사용자 ID를 PK로 사용한다. 사용자당 한 행만 존재한다. */
     @Id
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    /** 전체 푸시 허용 여부 */
     @Column(name = "push_enabled", nullable = false)
     private Boolean pushEnabled;
 
-    /** 앱 내 알림 센터 저장/실시간 노출 허용 여부 */
     @Column(name = "in_app_enabled", nullable = false)
     private Boolean inAppEnabled;
 
-    /** 1:1 매칭 요청 알림 허용 여부 */
     @Column(name = "match_request_enabled", nullable = false)
     private Boolean matchRequestEnabled;
 
-    /** 1:1 매칭 결과 알림 허용 여부 */
     @Column(name = "match_result_enabled", nullable = false)
     private Boolean matchResultEnabled;
 
-    /** 그룹 매칭 관련 알림 허용 여부 */
     @Column(name = "group_matching_enabled", nullable = false)
     private Boolean groupMatchingEnabled;
 
-    /** 채팅 메시지 푸시 허용 여부 */
     @Column(name = "chat_message_enabled", nullable = false)
     private Boolean chatMessageEnabled;
 
-    /** 마일스톤/보상 알림 허용 여부 */
     @Column(name = "milestone_enabled", nullable = false)
     private Boolean milestoneEnabled;
 
-    /** 일정/리마인드 알림 허용 여부 */
     @Column(name = "reminder_enabled", nullable = false)
     private Boolean reminderEnabled;
 
-    /** 방해금지 시간 사용 여부 */
     @Column(name = "quiet_hours_enabled", nullable = false)
     private Boolean quietHoursEnabled;
 
-    /** 방해금지 시작 시각 */
     @Column(name = "quiet_hours_start")
     private LocalTime quietHoursStart;
 
-    /** 방해금지 종료 시각 */
     @Column(name = "quiet_hours_end")
     private LocalTime quietHoursEnd;
 
-    /** 사용자의 기준 시간대 */
     @Column(nullable = false, length = 50)
     private String timezone;
 
-    /** 생성 시각 */
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    /** 수정 시각 */
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
@@ -99,7 +80,7 @@ public class NotificationPreference {
                                    LocalTime quietHoursEnd,
                                    String timezone) {
         if (userId == null) {
-            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
+            throw new IllegalArgumentException("User id is required.");
         }
         this.userId = userId;
         this.pushEnabled = valueOrDefault(pushEnabled, true);
@@ -115,23 +96,16 @@ public class NotificationPreference {
         this.quietHoursEnd = quietHoursEnd;
         this.timezone = (timezone == null || timezone.isBlank()) ? "Asia/Seoul" : timezone;
         validateQuietHours();
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
+        this.createdAt = nowUtc();
+        this.updatedAt = nowUtc();
     }
 
-    /**
-     * 기본값으로 켜진 알림 설정을 생성한다.
-     */
     public static NotificationPreference createDefault(Long userId) {
         return NotificationPreference.builder()
                 .userId(userId)
                 .build();
     }
 
-    /**
-     * 부분 업데이트 방식으로 설정을 변경한다.
-     * null 값은 기존 값을 유지한다.
-     */
     public void update(Boolean pushEnabled,
                        Boolean inAppEnabled,
                        Boolean matchRequestEnabled,
@@ -184,13 +158,10 @@ public class NotificationPreference {
         touch();
     }
 
-    /**
-     * 방해금지 시간 설정의 일관성을 검증한다.
-     */
     private void validateQuietHours() {
         if (Boolean.TRUE.equals(this.quietHoursEnabled)) {
             if (this.quietHoursStart == null || this.quietHoursEnd == null) {
-                throw new IllegalArgumentException("방해 금지 시간의 시작과 종료 시각은 모두 필요합니다.");
+                throw new IllegalArgumentException("Quiet hours start and end are required.");
             }
             return;
         }
@@ -198,17 +169,19 @@ public class NotificationPreference {
             return;
         }
         if (this.quietHoursStart == null || this.quietHoursEnd == null) {
-            throw new IllegalArgumentException("방해 금지 시간의 시작과 종료 시각은 함께 설정해야 합니다.");
+            throw new IllegalArgumentException("Quiet hours start and end must be configured together.");
         }
     }
 
-    /** updatedAt 갱신용 공통 메서드 */
     private void touch() {
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = nowUtc();
     }
 
-    /** nullable Boolean 값을 기본값으로 보정한다. */
     private static boolean valueOrDefault(Boolean value, boolean defaultValue) {
         return value != null ? value : defaultValue;
+    }
+
+    private LocalDateTime nowUtc() {
+        return LocalDateTime.now(Clock.systemUTC());
     }
 }

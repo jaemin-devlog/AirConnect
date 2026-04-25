@@ -40,7 +40,8 @@ public class AndroidChatPushCoalescingService {
     public Decision decide(PushDevice pushDevice,
                            NotificationType notificationType,
                            String payloadJson,
-                           LocalDateTime now) {
+                           LocalDateTime now,
+                           LocalDateTime deliveryAnchorTime) {
         if (!isCandidate(pushDevice, notificationType, payloadJson)) {
             return Decision.notCandidate(now, payloadJson);
         }
@@ -57,7 +58,8 @@ public class AndroidChatPushCoalescingService {
         }
 
         LocalDateTime nextAttemptAt = now.plus(COALESCING_WINDOW);
-        Optional<NotificationOutbox> existing = findExistingPendingOutbox(lockedDevice.get().getId(), chatRoomId, now);
+        LocalDateTime lookupBaseTime = resolveLookupBaseTime(now, deliveryAnchorTime);
+        Optional<NotificationOutbox> existing = findExistingPendingOutbox(lockedDevice.get().getId(), chatRoomId, lookupBaseTime);
         if (existing.isPresent()) {
             String mergedPayload = mergePayload(existing.get().getDataJson(), payloadJson, now);
             return Decision.candidate(nextAttemptAt, mergedPayload, existing);
@@ -87,6 +89,13 @@ public class AndroidChatPushCoalescingService {
         return candidates.stream()
                 .filter(candidate -> chatRoomId.equals(extractChatRoomId(candidate.getDataJson()).orElse(null)))
                 .max(Comparator.comparingLong(this::safeId));
+    }
+
+    private LocalDateTime resolveLookupBaseTime(LocalDateTime now, LocalDateTime deliveryAnchorTime) {
+        if (deliveryAnchorTime == null) {
+            return now;
+        }
+        return deliveryAnchorTime.isAfter(now.plus(COALESCING_WINDOW)) ? deliveryAnchorTime : now;
     }
 
     private String initializePayload(String latestPayloadJson, LocalDateTime now) {

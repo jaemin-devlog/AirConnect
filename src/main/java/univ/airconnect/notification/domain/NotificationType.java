@@ -52,4 +52,32 @@ public enum NotificationType {
     public boolean requiresDedupeKey() {
         return dedupeKeyRequired;
     }
+
+    public String resourceType() {
+        return switch (this) {
+            case CHAT_MESSAGE_RECEIVED -> "CHAT_ROOM";
+            case MATCH_REQUEST_RECEIVED, MATCH_REQUEST_ACCEPTED, MATCH_REQUEST_REJECTED -> "MATCH_REQUEST";
+            case GROUP_MATCHED -> "GROUP_MATCH";
+            case TEAM_READY_REQUIRED, TEAM_ALL_READY, TEAM_ROOM_CANCELLED,
+                    TEAM_MEMBER_JOINED, TEAM_MEMBER_LEFT, TEAM_MEMBER_READY_CHANGED -> "TEAM_ROOM";
+            case APPOINTMENT_REMINDER_1H, APPOINTMENT_REMINDER_10M -> "APPOINTMENT";
+            case MILESTONE_REWARDED -> "MILESTONE";
+            case SYSTEM_ANNOUNCEMENT -> "SYSTEM";
+        };
+    }
+
+    public String[] resourceIdCandidateKeys() {
+        return switch (this) {
+            case CHAT_MESSAGE_RECEIVED -> new String[]{"chatRoomId", "roomId", "chatId"};
+            case MATCH_REQUEST_RECEIVED, MATCH_REQUEST_ACCEPTED, MATCH_REQUEST_REJECTED ->
+                    new String[]{"matchRequestId", "requestId", "connectionId"};
+            case GROUP_MATCHED -> new String[]{"finalGroupRoomId", "groupRoomId", "finalChatRoomId"};
+            case TEAM_READY_REQUIRED, TEAM_ALL_READY, TEAM_ROOM_CANCELLED,
+                    TEAM_MEMBER_JOINED, TEAM_MEMBER_LEFT, TEAM_MEMBER_READY_CHANGED ->
+                    new String[]{"teamRoomId", "roomId", "teamId"};
+            case APPOINTMENT_REMINDER_1H, APPOINTMENT_REMINDER_10M -> new String[]{"appointmentId"};
+            case MILESTONE_REWARDED -> new String[]{"milestoneId"};
+            case SYSTEM_ANNOUNCEMENT -> new String[]{"notificationId"};
+        };
+    }
 }

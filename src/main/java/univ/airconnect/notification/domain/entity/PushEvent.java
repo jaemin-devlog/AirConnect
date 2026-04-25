@@ -15,11 +15,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import univ.airconnect.notification.domain.PushEventType;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 
-/**
- * 클라이언트가 보고한 푸시 수신/열람 이벤트를 저장한다.
- */
 @Entity
 @Table(
         name = "push_events",
@@ -66,19 +64,19 @@ public class PushEvent {
                       LocalDateTime occurredAt,
                       String deviceId) {
         if (userId == null) {
-            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
+            throw new IllegalArgumentException("User id is required.");
         }
         if (notificationId == null) {
-            throw new IllegalArgumentException("알림 ID는 필수입니다.");
+            throw new IllegalArgumentException("Notification id is required.");
         }
         if (eventType == null) {
-            throw new IllegalArgumentException("이벤트 유형은 필수입니다.");
+            throw new IllegalArgumentException("Push event type is required.");
         }
         if (occurredAt == null) {
-            throw new IllegalArgumentException("이벤트 발생 시각은 필수입니다.");
+            throw new IllegalArgumentException("OccurredAt is required.");
         }
         if (deviceId == null || deviceId.isBlank()) {
-            throw new IllegalArgumentException("디바이스 ID는 필수입니다.");
+            throw new IllegalArgumentException("Device id is required.");
         }
         this.userId = userId;
         this.notificationId = notificationId;
@@ -86,7 +84,7 @@ public class PushEvent {
         this.eventType = eventType;
         this.occurredAt = occurredAt;
         this.deviceId = deviceId;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = LocalDateTime.now(Clock.systemUTC());
     }
 
     public static PushEvent create(Long userId,
