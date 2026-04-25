@@ -97,6 +97,8 @@ class StompHandlerTest {
 
     @Test
     void unsubscribeChatRoom_unregistersSessionSubscription() {
+        when(chatService.getUserIdBySession("session-3")).thenReturn(1L);
+
         StompHandler handler = new StompHandler(
                 jwtProvider,
                 chatService,
@@ -110,6 +112,51 @@ class StompHandlerTest {
         handler.preSend(message, messageChannel);
 
         verify(chatService).unregisterSessionRoomSubscription("session-3", "sub-3");
+        verify(matchingService).unregisterSessionTeamRoomSubscription("session-3", "sub-3", 1L);
+    }
+
+    @Test
+    void subscribeToMatchingRoom_tracksSessionPresence() {
+        Long userId = 1L;
+        Long teamRoomId = 123L;
+        User user = activeUser();
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(matchingService.canSubscribeTeamRoom(teamRoomId, userId)).thenReturn(true);
+
+        StompHandler handler = new StompHandler(
+                jwtProvider,
+                chatService,
+                matchingService,
+                stompOpsMonitor,
+                userRepository
+        );
+
+        Message<byte[]> message = subscribeMatchingMessage("matching-session", "matching-sub", teamRoomId, userId);
+
+        handler.preSend(message, messageChannel);
+
+        verify(matchingService).registerSessionTeamRoomSubscription("matching-session", "matching-sub", teamRoomId, userId);
+    }
+
+    @Test
+    void disconnect_removesChatAndMatchingSessionPresence() {
+        when(chatService.getUserIdBySession("session-disconnect")).thenReturn(7L);
+
+        StompHandler handler = new StompHandler(
+                jwtProvider,
+                chatService,
+                matchingService,
+                stompOpsMonitor,
+                userRepository
+        );
+
+        Message<byte[]> message = disconnectMessage("session-disconnect");
+
+        handler.preSend(message, messageChannel);
+
+        verify(chatService).removeSessionInfo("session-disconnect");
+        verify(matchingService).removeSessionTeamRoomSubscriptions("session-disconnect", 7L);
     }
 
     @Test
@@ -177,10 +224,29 @@ class StompHandlerTest {
         return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
     }
 
+    private Message<byte[]> subscribeMatchingMessage(String sessionId, String subscriptionId, Long teamRoomId, Long userId) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.setSessionId(sessionId);
+        accessor.setSubscriptionId(subscriptionId);
+        accessor.setDestination("/sub/matching/team-room/" + teamRoomId);
+        accessor.setUser(new UsernamePasswordAuthenticationToken(
+                new CustomUserPrincipal(userId, UserRole.USER),
+                null,
+                List.of()
+        ));
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
     private Message<byte[]> unsubscribeMessage(String sessionId, String subscriptionId) {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.UNSUBSCRIBE);
         accessor.setSessionId(sessionId);
         accessor.setSubscriptionId(subscriptionId);
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
+    private Message<byte[]> disconnectMessage(String sessionId) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.DISCONNECT);
+        accessor.setSessionId(sessionId);
         return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
     }
 

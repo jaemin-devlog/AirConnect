@@ -51,10 +51,47 @@ class AndroidFcmMessageBuilderTest {
         Object androidNotification = ReflectionTestUtils.getField(androidConfig, "notification");
 
         assertThat(notification).isNotNull();
-        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("high");
+        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("normal");
         assertThat(ReflectionTestUtils.getField(androidConfig, "collapseKey")).isEqualTo("chat_room_88");
         assertThat(androidNotification).isNotNull();
         assertThat(ReflectionTestUtils.getField(androidNotification, "channelId")).isEqualTo("airconnect_chat_messages_v1");
         assertThat(ReflectionTestUtils.getField(androidNotification, "tag")).isEqualTo("chat_room_88");
+        assertThat(ReflectionTestUtils.getField(androidNotification, "sound")).isEqualTo("default");
+    }
+
+    @Test
+    void build_teamActivityUsesQuietAndroidNotification() {
+        NotificationOutbox outbox = NotificationOutbox.create(
+                101L,
+                21L,
+                31L,
+                PushProvider.FCM,
+                "token-2",
+                "Team activity",
+                "Someone joined",
+                "{\"notificationType\":\"TEAM_MEMBER_JOINED\",\"teamRoomId\":\"77\"}",
+                LocalDateTime.of(2026, 4, 25, 10, 0)
+        );
+
+        Message message = builder.build(outbox, Map.ofEntries(
+                Map.entry("notificationType", "TEAM_MEMBER_JOINED"),
+                Map.entry("teamRoomId", "77"),
+                Map.entry("schemaVersion", "android-fcm-v1"),
+                Map.entry("notificationId", "101"),
+                Map.entry("type", "SYSTEM"),
+                Map.entry("title", "Team activity"),
+                Map.entry("body", "Someone joined"),
+                Map.entry("deeplink", "/matching/team-rooms/77"),
+                Map.entry("resourceType", "TEAM_ROOM"),
+                Map.entry("resourceId", "77"),
+                Map.entry("enqueuedAt", "2026-04-25T10:00:00")
+        ));
+
+        Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");
+        Object androidNotification = ReflectionTestUtils.getField(androidConfig, "notification");
+
+        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("normal");
+        assertThat(ReflectionTestUtils.getField(androidNotification, "channelId")).isEqualTo("airconnect_team_activity_v1");
+        assertThat(ReflectionTestUtils.getField(androidNotification, "sound")).isNull();
     }
 }

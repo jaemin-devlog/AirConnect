@@ -28,6 +28,7 @@ public class NotificationDeliveryGuard {
     private final NotificationPreferenceService notificationPreferenceService;
     private final AndroidPushPolicyResolver androidPushPolicyResolver;
     private final FcmDataPayloadMapper fcmDataPayloadMapper;
+    private final AndroidPushSendGapService androidPushSendGapService;
     private final ObjectMapper objectMapper;
 
     public GuardResult evaluate(NotificationOutbox outbox) {
@@ -73,8 +74,10 @@ public class NotificationDeliveryGuard {
             return GuardResult.skip(deliveryPolicy.reason(), "Push is disabled by user preference or notification type policy.");
         }
 
+        Map<String, String> data = fcmDataPayloadMapper.toMap(outbox.getDataJson());
+
         if (pushDevice.getPlatform() == PushPlatform.ANDROID) {
-            GuardResult androidExpirationDecision = evaluateAndroidExpiration(outbox, notificationType, now);
+            GuardResult androidExpirationDecision = evaluateAndroidExpiration(notificationType, data, outbox.getCreatedAt(), now);
             if (androidExpirationDecision.decision() != DeliveryDecision.SEND_NOW) {
                 return androidExpirationDecision;
             }
@@ -86,7 +89,7 @@ public class NotificationDeliveryGuard {
                 if (nextAllowedAt == null) {
                     return GuardResult.skip("QUIET_HOURS", "Quiet hours are active and no next allowed time is available.");
                 }
-                GuardResult expirationAfterDefer = evaluateAndroidExpiration(outbox, notificationType, nextAllowedAt);
+                GuardResult expirationAfterDefer = evaluateAndroidExpiration(notificationType, data, outbox.getCreatedAt(), nextAllowedAt);
                 if (expirationAfterDefer.decision() != DeliveryDecision.SEND_NOW) {
                     return GuardResult.skip("EXPIRED_BEFORE_QUIET_HOURS_END", "Outbox expires before quiet hours end.");
                 }
@@ -95,15 +98,31 @@ public class NotificationDeliveryGuard {
             return GuardResult.skip(deliveryPolicy.reason(), "Quiet hours are active for non-Android push.");
         }
 
+        if (pushDevice.getPlatform() == PushPlatform.ANDROID) {
+            Optional<LocalDateTime> gapNextAllowedAt =
+                    androidPushSendGapService.nextAllowedAt(outbox, pushDevice, notificationType, now);
+            if (gapNextAllowedAt.isPresent()) {
+                GuardResult expirationAfterGap = evaluateAndroidExpiration(
+                        notificationType,
+                        data,
+                        outbox.getCreatedAt(),
+                        gapNextAllowedAt.get()
+                );
+                if (expirationAfterGap.decision() != DeliveryDecision.SEND_NOW) {
+                    return expirationAfterGap;
+                }
+                return GuardResult.defer(gapNextAllowedAt.get(), "ANDROID_DEVICE_SEND_GAP", "Android device send gap is active.");
+            }
+        }
+
         return GuardResult.sendNow();
     }
 
-    private GuardResult evaluateAndroidExpiration(NotificationOutbox outbox,
-                                                  NotificationType notificationType,
+    private GuardResult evaluateAndroidExpiration(NotificationType notificationType,
+                                                  Map<String, String> data,
+                                                  LocalDateTime createdAt,
                                                   LocalDateTime referenceTime) {
-        Map<String, String> data = fcmDataPayloadMapper.toMap(outbox.getDataJson());
         AndroidPushPolicy policy = androidPushPolicyResolver.resolve(notificationType, data);
-        LocalDateTime createdAt = outbox.getCreatedAt();
         if (createdAt == null || policy.ttl() == null) {
             return GuardResult.sendNow();
         }

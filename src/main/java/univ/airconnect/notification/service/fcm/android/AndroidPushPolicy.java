@@ -16,6 +16,7 @@ public record AndroidPushPolicy(
         boolean useNotificationPayload,
         AndroidConfig.Priority fcmPriority,
         AndroidNotification.Priority notificationPriority,
+        boolean soundEnabled,
         String collapseKey,
         String notificationTag,
         Duration ttl,
