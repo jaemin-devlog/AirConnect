@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.stereotype.Component;
+import univ.airconnect.global.tx.AfterCommitExecutor;
 import univ.airconnect.groupmatching.dto.response.GMatchingRealtimeEventResponse;
 
 @Slf4j
@@ -14,6 +15,7 @@ public class GMatchingEventPublisher {
     private static final String MATCHING_TEAM_ROOM_SUB_PREFIX = "/sub/matching/team-room/";
 
     private final SimpMessageSendingOperations messagingTemplate;
+    private final AfterCommitExecutor afterCommitExecutor;
 
     public void publishQueueSnapshot(GMatchingService.QueueSnapshot snapshot) {
         publish("QUEUE_UPDATED", snapshot);
@@ -30,6 +32,10 @@ public class GMatchingEventPublisher {
     }
 
     private void publish(String eventType, GMatchingService.QueueSnapshot snapshot) {
+        afterCommitExecutor.execute(() -> publishImmediately(eventType, snapshot));
+    }
+
+    private void publishImmediately(String eventType, GMatchingService.QueueSnapshot snapshot) {
         GMatchingRealtimeEventResponse payload =
                 GMatchingRealtimeEventResponse.fromQueueSnapshot(eventType, snapshot);
         String destination = MATCHING_TEAM_ROOM_SUB_PREFIX + snapshot.teamRoomId();

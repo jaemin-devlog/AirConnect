@@ -8,6 +8,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
+import univ.airconnect.global.tx.AfterCommitExecutor;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -23,6 +24,7 @@ public class GRedisMatchingPushService implements GMatchingPushService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
+    private final AfterCommitExecutor afterCommitExecutor;
 
     @Override
     public void notifyMatched(Collection<Long> userIds, Long finalGroupRoomId, Long finalChatRoomId) {
@@ -30,7 +32,12 @@ public class GRedisMatchingPushService implements GMatchingPushService {
             return;
         }
 
-        for (Long userId : new LinkedHashSet<>(userIds)) {
+        LinkedHashSet<Long> distinctUserIds = new LinkedHashSet<>(userIds);
+        afterCommitExecutor.execute(() -> notifyMatchedImmediately(distinctUserIds, finalGroupRoomId, finalChatRoomId));
+    }
+
+    private void notifyMatchedImmediately(Collection<Long> userIds, Long finalGroupRoomId, Long finalChatRoomId) {
+        for (Long userId : userIds) {
             if (userId == null) {
                 continue;
             }
