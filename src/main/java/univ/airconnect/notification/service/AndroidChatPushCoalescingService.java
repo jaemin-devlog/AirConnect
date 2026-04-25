@@ -25,7 +25,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class AndroidChatPushCoalescingService {
 
-    static final Duration COALESCING_WINDOW = Duration.ofSeconds(3);
+    static final Duration COALESCING_WINDOW = Duration.ofMillis(1000);
 
     private static final String CHAT_ROOM_ID_KEY = "chatRoomId";
     private static final String ROOM_ID_KEY = "roomId";

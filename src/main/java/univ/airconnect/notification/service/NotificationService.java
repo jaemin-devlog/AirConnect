@@ -75,12 +75,6 @@ public class NotificationService {
         List<NotificationOutbox> outboxes = new ArrayList<>();
         int coalescedCount = 0;
         for (PushDevice pushDevice : pushDevices) {
-            if (shouldSkipPushForDevice(pushDevice, command.type())) {
-                log.debug("Push skipped by platform policy: userId={}, type={}, platform={}",
-                        command.userId(), command.type(), pushDevice.getPlatform());
-                continue;
-            }
-
             if (deliveryPolicy.pushDecision() == PushDecision.DEFER
                     && pushDevice.getPlatform() != PushPlatform.ANDROID) {
                 log.debug("Deferred quiet-hours push is queued only for Android in the first patch: userId={}, deviceId={}",
@@ -278,12 +272,6 @@ public class NotificationService {
             return left;
         }
         return left.isAfter(right) ? left : right;
-    }
-
-    private boolean shouldSkipPushForDevice(PushDevice pushDevice, NotificationType notificationType) {
-        return pushDevice != null
-                && pushDevice.getPlatform() == PushPlatform.ANDROID
-                && notificationType == NotificationType.TEAM_MEMBER_READY_CHANGED;
     }
 
     private PushPayloadType mapPushPayloadType(NotificationType notificationType) {

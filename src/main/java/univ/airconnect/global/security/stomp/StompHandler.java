@@ -200,23 +200,6 @@ public class StompHandler implements ChannelInterceptor {
             throw new AccessDeniedException("No permission to subscribe this matching room.");
         }
 
-        try {
-            matchingService.registerSessionTeamRoomSubscription(
-                    accessor.getSessionId(),
-                    accessor.getSubscriptionId(),
-                    teamRoomId,
-                    userId
-            );
-        } catch (RuntimeException ex) {
-            stompOpsMonitor.recordSideEffectFailure("MATCHING_SUBSCRIBE_TRACK", ex);
-            log.warn("STOMP MATCHING SUBSCRIBE SIDE-EFFECT FAIL: sessionId={}, userId={}, teamRoomId={}, type={}, message={}",
-                    accessor.getSessionId(),
-                    userId,
-                    teamRoomId,
-                    ex.getClass().getSimpleName(),
-                    ex.getMessage());
-        }
-
         stompOpsMonitor.recordSubscribeSuccess();
 
         log.info("STOMP SUBSCRIBE MATCHING: sessionId={}, userId={}, teamRoomId={}",
@@ -235,16 +218,12 @@ public class StompHandler implements ChannelInterceptor {
     }
 
     private void handleUnsubscribe(StompHeaderAccessor accessor) {
-        Long userId = extractUserId(accessor);
         chatService.unregisterSessionRoomSubscription(accessor.getSessionId(), accessor.getSubscriptionId());
-        matchingService.unregisterSessionTeamRoomSubscription(accessor.getSessionId(), accessor.getSubscriptionId(), userId);
     }
 
     private void handleDisconnect(StompHeaderAccessor accessor) {
         log.info("STOMP DISCONNECT: sessionId={}", accessor.getSessionId());
-        Long userId = extractUserId(accessor);
         chatService.removeSessionInfo(accessor.getSessionId());
-        matchingService.removeSessionTeamRoomSubscriptions(accessor.getSessionId(), userId);
     }
 
     private String extractToken(StompHeaderAccessor accessor) {

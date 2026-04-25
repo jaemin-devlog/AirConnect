@@ -57,11 +57,8 @@ public class AndroidFcmMessageBuilder {
     private AndroidNotification buildAndroidNotification(AndroidPushPolicy policy) {
         AndroidNotification.Builder notificationBuilder = AndroidNotification.builder()
                 .setChannelId(policy.channelId())
-                .setPriority(policy.notificationPriority());
-
-        if (policy.soundEnabled()) {
-            notificationBuilder.setSound("default");
-        }
+                .setPriority(policy.notificationPriority())
+                .setSound("default");
 
         if (policy.notificationTag() != null && !policy.notificationTag().isBlank()) {
             notificationBuilder.setTag(policy.notificationTag());

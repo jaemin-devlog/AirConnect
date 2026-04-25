@@ -23,7 +23,6 @@ import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.repository.MatchingExposureRepository;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.service.NotificationService;
-import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserMilestoneRepository;
@@ -53,8 +52,6 @@ class MatchingServiceRaceTest {
     private UserMilestoneRepository userMilestoneRepository;
     @Mock
     private UserProfileRepository userProfileRepository;
-    @Mock
-    private TicketLedgerRepository ticketLedgerRepository;
     @Mock
     private ChatService chatService;
     @Mock

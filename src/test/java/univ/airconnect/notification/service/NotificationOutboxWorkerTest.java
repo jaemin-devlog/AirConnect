@@ -30,8 +30,6 @@ class NotificationOutboxWorkerTest {
     private PushDeviceService pushDeviceService;
     @Mock
     private NotificationDeliveryGuard notificationDeliveryGuard;
-    @Mock
-    private AndroidPushSendGapService androidPushSendGapService;
 
     private NotificationOutboxWorker worker;
 
@@ -41,8 +39,7 @@ class NotificationOutboxWorkerTest {
                 notificationOutboxService,
                 pushNotificationSender,
                 pushDeviceService,
-                notificationDeliveryGuard,
-                androidPushSendGapService
+                notificationDeliveryGuard
         );
     }
 

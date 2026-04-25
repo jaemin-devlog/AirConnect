@@ -20,7 +20,6 @@ import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
-import univ.airconnect.global.tx.AfterCommitExecutor;
 import univ.airconnect.groupmatching.domain.GMatchResultStatus;
 import univ.airconnect.groupmatching.domain.GTeamGender;
 import univ.airconnect.groupmatching.domain.GTeamSize;
@@ -60,7 +59,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -88,9 +86,6 @@ public class GMatchingService {
     private static final Duration QUEUE_TOKEN_TTL = Duration.ofHours(12);
     private static final int PROCESS_LOCK_RETRY_COUNT = 20;
     private static final long PROCESS_LOCK_RETRY_DELAY_MS = 50L;
-    private static final String MATCHING_SESSION_SUBSCRIPTION_KEY = "matching:session-subscriptions:";
-    private static final String MATCHING_USER_ROOM_VIEW_SET_KEY = "matching:view:user-room:";
-    private static final String DEFAULT_MATCHING_SUBSCRIPTION_FIELD = "__default__";
     private static final String TEAM_ROOM_CREATED_MESSAGE_SUFFIX =
             "\uB2D8\uC774 \uD300\uBC29\uC744 \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.";
     private static final String TEAM_ROOM_JOINED_MESSAGE_SUFFIX =
@@ -115,7 +110,6 @@ public class GMatchingService {
     private final ObjectMapper objectMapper;
     private final RedisTemplate<String, Object> redisTemplate;
     private final AnalyticsService analyticsService;
-    private final AfterCommitExecutor afterCommitExecutor;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -736,92 +730,6 @@ public class GMatchingService {
         return teamRoom.getTempChatRoomId();
     }
 
-    public void registerSessionTeamRoomSubscription(String sessionId, String subscriptionId, Long teamRoomId, Long userId) {
-        if (sessionId == null || teamRoomId == null || userId == null) {
-            return;
-        }
-
-        String subscriptionField = normalizeMatchingSubscriptionField(subscriptionId);
-        String subscriptionKey = MATCHING_SESSION_SUBSCRIPTION_KEY + sessionId;
-        Object previousRoomIdValue = redisTemplate.opsForHash().get(subscriptionKey, subscriptionField);
-
-        redisTemplate.opsForHash().put(subscriptionKey, subscriptionField, String.valueOf(teamRoomId));
-        addUserTeamRoomView(userId, teamRoomId, sessionId);
-
-        if (previousRoomIdValue != null && !Objects.equals(String.valueOf(previousRoomIdValue), String.valueOf(teamRoomId))) {
-            List<Object> remainingRooms = redisTemplate.opsForHash().values(subscriptionKey);
-            boolean stillViewingPreviousRoom = remainingRooms != null && remainingRooms.stream()
-                    .map(String::valueOf)
-                    .anyMatch(roomId -> Objects.equals(roomId, String.valueOf(previousRoomIdValue)));
-            if (!stillViewingPreviousRoom) {
-                removeUserTeamRoomView(userId, Long.valueOf(String.valueOf(previousRoomIdValue)), sessionId);
-            }
-        }
-    }
-
-    public void unregisterSessionTeamRoomSubscription(String sessionId, String subscriptionId, Long userId) {
-        if (sessionId == null || userId == null) {
-            return;
-        }
-
-        String subscriptionField = normalizeMatchingSubscriptionField(subscriptionId);
-        String subscriptionKey = MATCHING_SESSION_SUBSCRIPTION_KEY + sessionId;
-        Object roomIdValue = redisTemplate.opsForHash().get(subscriptionKey, subscriptionField);
-        if (roomIdValue == null) {
-            return;
-        }
-
-        redisTemplate.opsForHash().delete(subscriptionKey, subscriptionField);
-
-        List<Object> remainingRooms = redisTemplate.opsForHash().values(subscriptionKey);
-        boolean stillViewingRoom = remainingRooms != null && remainingRooms.stream()
-                .map(String::valueOf)
-                .anyMatch(roomId -> Objects.equals(roomId, String.valueOf(roomIdValue)));
-        if (!stillViewingRoom) {
-            removeUserTeamRoomView(userId, Long.valueOf(String.valueOf(roomIdValue)), sessionId);
-        }
-
-        Long remainingSubscriptions = redisTemplate.opsForHash().size(subscriptionKey);
-        if (remainingSubscriptions != null && remainingSubscriptions == 0L) {
-            redisTemplate.delete(subscriptionKey);
-        }
-    }
-
-    public void removeSessionTeamRoomSubscriptions(String sessionId, Long userId) {
-        if (sessionId == null || userId == null) {
-            return;
-        }
-
-        String subscriptionKey = MATCHING_SESSION_SUBSCRIPTION_KEY + sessionId;
-        List<Object> roomIds = redisTemplate.opsForHash().values(subscriptionKey);
-        redisTemplate.delete(subscriptionKey);
-
-        if (roomIds == null || roomIds.isEmpty()) {
-            return;
-        }
-
-        roomIds.stream()
-                .filter(Objects::nonNull)
-                .map(String::valueOf)
-                .distinct()
-                .map(Long::valueOf)
-                .forEach(teamRoomId -> removeUserTeamRoomView(userId, teamRoomId, sessionId));
-    }
-
-    public boolean isUserViewingTeamRoom(Long userId, Long teamRoomId) {
-        if (userId == null || teamRoomId == null) {
-            return false;
-        }
-
-        try {
-            Long sessionCount = redisTemplate.opsForSet().size(teamRoomViewKey(userId, teamRoomId));
-            return sessionCount != null && sessionCount > 0L;
-        } catch (RuntimeException e) {
-            log.warn("팀룸 열람 상태 확인에 실패했습니다. userId={}, teamRoomId={}", userId, teamRoomId, e);
-            return false;
-        }
-    }
-
     private GTemporaryTeamRoom joinTeamRoomInternal(GTemporaryTeamRoom teamRoom, Long userId) {
         User user = findUserOrThrow(userId);
         ensureUserHasNoActiveTeamRoom(userId);
@@ -1266,16 +1174,6 @@ public class GMatchingService {
         if (recipientUserId == null) {
             return;
         }
-        boolean shouldEnqueuePush = enqueuePush;
-        if (shouldEnqueuePush && shouldSuppressViewerPush(type)) {
-            Long teamRoomId = extractTeamRoomId(payloadJson);
-            if (teamRoomId != null && isUserViewingTeamRoom(recipientUserId, teamRoomId)) {
-                shouldEnqueuePush = false;
-                log.debug("Team room viewer detected. OS push suppressed: type={}, recipientUserId={}, teamRoomId={}",
-                        type, recipientUserId, teamRoomId);
-            }
-        }
-        boolean finalShouldEnqueuePush = shouldEnqueuePush;
         try {
             NotificationService.CreateCommand command = new NotificationService.CreateCommand(
                     recipientUserId,
@@ -1289,13 +1187,11 @@ public class GMatchingService {
                     dedupeKey
             );
 
-            afterCommitExecutor.execute(() -> {
-                if (finalShouldEnqueuePush) {
-                    notificationService.createAndEnqueue(command);
-                    return;
-                }
-                notificationService.create(command);
-            });
+            if (enqueuePush) {
+                notificationService.createAndEnqueue(command);
+                return;
+            }
+            notificationService.create(command);
         } catch (Exception e) {
             log.error("과팅 알림 발송에 실패했습니다. type={}, recipientUserId={}", type, recipientUserId, e);
         }
@@ -1307,28 +1203,6 @@ public class GMatchingService {
 
     private String teamRoomDeeplink(Long teamRoomId) {
         return "airconnect://matching/team-rooms/" + teamRoomId;
-    }
-
-    private boolean shouldSuppressViewerPush(NotificationType type) {
-        return type == NotificationType.TEAM_MEMBER_JOINED
-                || type == NotificationType.TEAM_MEMBER_LEFT
-                || type == NotificationType.TEAM_MEMBER_READY_CHANGED;
-    }
-
-    private Long extractTeamRoomId(String payloadJson) {
-        if (payloadJson == null || payloadJson.isBlank()) {
-            return null;
-        }
-        try {
-            var payloadNode = objectMapper.readTree(payloadJson);
-            if (!payloadNode.isObject() || !payloadNode.hasNonNull("teamRoomId")) {
-                return null;
-            }
-            return payloadNode.get("teamRoomId").asLong();
-        } catch (Exception e) {
-            log.warn("Failed to extract teamRoomId from matching payload. message={}", e.getMessage());
-            return null;
-        }
     }
 
     private void validateReadyToFinalize(GTemporaryTeamRoom room, List<GTemporaryTeamMember> members) {
@@ -1564,41 +1438,6 @@ public class GMatchingService {
         if (temporaryTeamRoomRepository.existsActiveRoomByTeamName(teamName, ACTIVE_ROOM_STATUSES)) {
             throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "이미 사용 중인 임시방 이름입니다.");
         }
-    }
-
-    private void addUserTeamRoomView(Long userId, Long teamRoomId, String sessionId) {
-        if (userId == null || teamRoomId == null || sessionId == null) {
-            return;
-        }
-
-        String key = teamRoomViewKey(userId, teamRoomId);
-        redisTemplate.opsForSet().add(key, sessionId);
-        redisTemplate.expire(key, 24, TimeUnit.HOURS);
-    }
-
-    private void removeUserTeamRoomView(Long userId, Long teamRoomId, String sessionId) {
-        if (userId == null || teamRoomId == null || sessionId == null) {
-            return;
-        }
-
-        String key = teamRoomViewKey(userId, teamRoomId);
-        redisTemplate.opsForSet().remove(key, sessionId);
-
-        Long remainingCount = redisTemplate.opsForSet().size(key);
-        if (remainingCount != null && remainingCount == 0L) {
-            redisTemplate.delete(key);
-        }
-    }
-
-    private String teamRoomViewKey(Long userId, Long teamRoomId) {
-        return MATCHING_USER_ROOM_VIEW_SET_KEY + userId + ":" + teamRoomId;
-    }
-
-    private String normalizeMatchingSubscriptionField(String subscriptionId) {
-        if (subscriptionId == null || subscriptionId.isBlank()) {
-            return DEFAULT_MATCHING_SUBSCRIPTION_FIELD;
-        }
-        return subscriptionId;
     }
 
     private List<Long> extractUserIds(Collection<GTemporaryTeamMember> members) {

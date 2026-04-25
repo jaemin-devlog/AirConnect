@@ -31,7 +31,6 @@ import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
-import univ.airconnect.global.tx.AfterCommitExecutor;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.Gender;
@@ -45,7 +44,6 @@ import java.util.Optional;
 import java.util.List;
 import java.time.LocalDateTime;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -122,15 +120,12 @@ class ChatServiceTest {
         service.enterChatRoom(roomId);
         service.mapSessionToRoom(sessionId, roomId);
 
-        when(valueOperations.get("chat:session:" + sessionId)).thenReturn("11");
         when(valueOperations.get("chat:session-room:" + sessionId)).thenReturn(roomId);
-        when(setOperations.size("chat:view:user-room:11:" + roomId)).thenReturn(0L);
         when(setOperations.size("chat:room-sessions:" + roomId)).thenReturn(0L);
 
         service.removeSessionInfo(sessionId);
 
         verify(setOperations).remove("chat:room-sessions:" + roomId, sessionId);
-        verify(setOperations).remove("chat:view:user-room:11:" + roomId, sessionId);
         verify(redisMessageListenerContainer).removeMessageListener(
                 org.mockito.ArgumentMatchers.eq(redisSubscriber),
                 org.mockito.ArgumentMatchers.any(Topic.class)
@@ -146,42 +141,20 @@ class ChatServiceTest {
 
         service.enterChatRoom(roomId);
 
-        when(valueOperations.get("chat:session:" + sessionId)).thenReturn("22");
         when(hashOperations.get("chat:session-subscriptions:" + sessionId, subscriptionId)).thenReturn(roomId);
         when(hashOperations.values("chat:session-subscriptions:" + sessionId)).thenReturn(List.of());
         when(hashOperations.size("chat:session-subscriptions:" + sessionId)).thenReturn(0L);
-        when(setOperations.size("chat:view:user-room:22:" + roomId)).thenReturn(0L);
         when(setOperations.size("chat:room-sessions:" + roomId)).thenReturn(0L);
 
         service.unregisterSessionRoomSubscription(sessionId, subscriptionId);
 
         verify(hashOperations).delete("chat:session-subscriptions:" + sessionId, subscriptionId);
         verify(setOperations).remove("chat:room-sessions:" + roomId, sessionId);
-        verify(setOperations).remove("chat:view:user-room:22:" + roomId, sessionId);
-        verify(redisTemplate).delete("chat:view:user-room:22:" + roomId);
         verify(redisTemplate).delete("chat:session-subscriptions:" + sessionId);
         verify(redisMessageListenerContainer).removeMessageListener(
                 org.mockito.ArgumentMatchers.eq(redisSubscriber),
                 org.mockito.ArgumentMatchers.any(Topic.class)
         );
-    }
-
-    @Test
-    void registerSessionRoomSubscription_tracksViewingPresenceByUserAndRoom() {
-        ChatService service = createService();
-        String sessionId = "s-3";
-        String subscriptionId = "sub-3";
-        String roomId = "789";
-
-        when(valueOperations.get("chat:session:" + sessionId)).thenReturn("55");
-        when(setOperations.size("chat:view:user-room:55:" + roomId)).thenReturn(1L);
-
-        service.registerSessionRoomSubscription(sessionId, subscriptionId, roomId);
-
-        assertThat(service.isUserViewingRoom(55L, 789L)).isTrue();
-        verify(hashOperations).put("chat:session-subscriptions:" + sessionId, subscriptionId, roomId);
-        verify(setOperations).add("chat:view:user-room:55:" + roomId, sessionId);
-        verify(redisTemplate).expire("chat:view:user-room:55:" + roomId, 24, TimeUnit.HOURS);
     }
 
     @Test
@@ -781,7 +754,8 @@ class ChatServiceTest {
         when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(Optional.of(senderMember));
         when(chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId))
                 .thenReturn(List.of(senderMember, readerMember));
-        when(setOperations.size("chat:view:user-room:" + readerId + ":" + roomId)).thenReturn(1L);
+        when(setOperations.members("chat:room-sessions:" + roomId)).thenReturn(Set.of("session-reader"));
+        when(valueOperations.get("chat:session:session-reader")).thenReturn(String.valueOf(readerId));
         when(objectMapper.writeValueAsString(any())).thenReturn("{}");
         when(chatMessageRepository.save(any(ChatMessage.class))).thenAnswer(invocation -> {
             ChatMessage message = invocation.getArgument(0);
@@ -852,8 +826,7 @@ class ChatServiceTest {
                 messagingTemplate,
                 objectMapper,
                 notificationService,
-                userBlockPolicyService,
-                new AfterCommitExecutor()
+                userBlockPolicyService
         );
         ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
         return service;

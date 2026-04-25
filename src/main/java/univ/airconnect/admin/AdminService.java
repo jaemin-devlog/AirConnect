@@ -8,7 +8,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
@@ -40,7 +39,6 @@ import java.util.*;
 public class AdminService {
 
     private static final int MAX_PAGE_SIZE = 100;
-    private static final int NOTICE_BROADCAST_BATCH_SIZE = 500;
 
     private final UserRepository userRepository;
     private final UserReportRepository userReportRepository;
@@ -229,48 +227,33 @@ public class AdminService {
         );
     }
 
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @Transactional
     public AdminDtos.NoticeBroadcastResult broadcastNotice(AdminRequests.NoticeBroadcastRequest request) {
+        List<Long> recipientIds = Boolean.FALSE.equals(request.activeUsersOnly())
+                ? userRepository.findIdsByStatusNot(UserStatus.DELETED)
+                : userRepository.findIdsByStatus(UserStatus.ACTIVE);
+
         String payloadJson = toPayloadJson(Map.of(
                 "kind", "ADMIN_NOTICE",
                 "title", request.title(),
                 "body", request.body()
         ));
 
-        long recipients = 0L;
-        Pageable pageable = PageRequest.of(0, NOTICE_BROADCAST_BATCH_SIZE);
-
-        while (true) {
-            Page<Long> recipientPage = Boolean.FALSE.equals(request.activeUsersOnly())
-                    ? userRepository.findIdsByStatusNot(UserStatus.DELETED, pageable)
-                    : userRepository.findIdsByStatus(UserStatus.ACTIVE, pageable);
-
-            if (recipientPage.isEmpty()) {
-                break;
-            }
-
-            for (Long userId : recipientPage.getContent()) {
-                notificationService.createAndEnqueue(new NotificationService.CreateCommand(
-                        userId,
-                        NotificationType.SYSTEM_ANNOUNCEMENT,
-                        request.title(),
-                        request.body(),
-                        request.deeplink(),
-                        null,
-                        null,
-                        payloadJson,
-                        null
-                ));
-                recipients++;
-            }
-
-            if (!recipientPage.hasNext()) {
-                break;
-            }
-            pageable = recipientPage.nextPageable();
+        for (Long userId : recipientIds) {
+            notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+                    userId,
+                    NotificationType.SYSTEM_ANNOUNCEMENT,
+                    request.title(),
+                    request.body(),
+                    request.deeplink(),
+                    null,
+                    null,
+                    payloadJson,
+                    null
+            ));
         }
 
-        return new AdminDtos.NoticeBroadcastResult((int) recipients, request.title());
+        return new AdminDtos.NoticeBroadcastResult(recipientIds.size(), request.title());
     }
 
     private User getRequiredUser(Long userId) {

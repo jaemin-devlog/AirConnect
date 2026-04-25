@@ -33,7 +33,6 @@ import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
-import univ.airconnect.global.tx.AfterCommitExecutor;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
@@ -65,7 +64,6 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final NotificationService notificationService;
     private final UserBlockPolicyService userBlockPolicyService;
-    private final AfterCommitExecutor afterCommitExecutor;
 
     private final Map<String, ChannelTopic> topics = new ConcurrentHashMap<>();
 
@@ -76,7 +74,6 @@ public class ChatService {
     private static final String SESSION_ROOM_KEY = "chat:session-room:";
     private static final String SESSION_SUBSCRIPTION_KEY = "chat:session-subscriptions:";
     private static final String ROOM_SESSION_SET_KEY = "chat:room-sessions:";
-    private static final String USER_ROOM_VIEW_SET_KEY = "chat:view:user-room:";
 
     /**
      * 채팅방 생성 후 생성자를 자동 참여시킨다.
@@ -343,15 +340,13 @@ public class ChatService {
      * 세션-채팅방 매핑 저장
      */
     public void mapSessionToRoom(String sessionId, String roomId) {
-        Long userId = getUserIdBySession(sessionId);
         Object previousRoomIdValue = redisTemplate.opsForValue().get(SESSION_ROOM_KEY + sessionId);
         if (previousRoomIdValue != null && !Objects.equals(String.valueOf(previousRoomIdValue), roomId)) {
-            cleanupRoomTopicIfUnused(sessionId, previousRoomIdValue, userId);
+            cleanupRoomTopicIfUnused(sessionId, previousRoomIdValue);
         }
 
         redisTemplate.opsForValue().set(SESSION_ROOM_KEY + sessionId, roomId, 24, TimeUnit.HOURS);
         addSessionToRoom(roomId, sessionId);
-        addUserRoomView(userId, roomId, sessionId);
     }
 
     /**
@@ -362,8 +357,6 @@ public class ChatService {
         if (sessionId == null || roomId == null) {
             return;
         }
-
-        Long userId = getUserIdBySession(sessionId);
 
         if (subscriptionId == null || subscriptionId.isBlank()) {
             mapSessionToRoom(sessionId, roomId);
@@ -376,7 +369,6 @@ public class ChatService {
 
         hashOperations.put(subscriptionKey, subscriptionId, roomId);
         addSessionToRoom(roomId, sessionId);
-        addUserRoomView(userId, roomId, sessionId);
 
         if (previousRoomIdValue != null && !Objects.equals(String.valueOf(previousRoomIdValue), roomId)) {
             List<Object> activeRooms = hashOperations.values(subscriptionKey);
@@ -385,7 +377,7 @@ public class ChatService {
                     .anyMatch(previousRoom -> Objects.equals(previousRoom, String.valueOf(previousRoomIdValue)));
 
             if (!stillViewingPreviousRoom) {
-                cleanupRoomTopicIfUnused(sessionId, previousRoomIdValue, userId);
+                cleanupRoomTopicIfUnused(sessionId, previousRoomIdValue);
             }
         }
     }
@@ -394,8 +386,6 @@ public class ChatService {
         if (sessionId == null || subscriptionId == null || subscriptionId.isBlank()) {
             return;
         }
-
-        Long userId = getUserIdBySession(sessionId);
 
         String subscriptionKey = SESSION_SUBSCRIPTION_KEY + sessionId;
         HashOperations<String, Object, Object> hashOperations = redisTemplate.opsForHash();
@@ -413,7 +403,7 @@ public class ChatService {
                 .anyMatch(roomId -> Objects.equals(roomId, String.valueOf(roomIdValue)));
 
         if (!stillViewingRoom) {
-            cleanupRoomTopicIfUnused(sessionId, roomIdValue, userId);
+            cleanupRoomTopicIfUnused(sessionId, roomIdValue);
         }
 
         Long remainingSubscriptions = hashOperations.size(subscriptionKey);
@@ -430,9 +420,30 @@ public class ChatService {
             return false;
         }
 
+        String roomSessionSetKey = ROOM_SESSION_SET_KEY + roomId;
         try {
-            Long sessionCount = redisTemplate.opsForSet().size(userRoomViewSetKey(userId, String.valueOf(roomId)));
-            return sessionCount != null && sessionCount > 0L;
+            Set<Object> sessionIds = redisTemplate.opsForSet().members(roomSessionSetKey);
+            if (sessionIds == null || sessionIds.isEmpty()) {
+                return false;
+            }
+
+            for (Object sessionIdValue : sessionIds) {
+                if (sessionIdValue == null) {
+                    continue;
+                }
+
+                String sessionId = String.valueOf(sessionIdValue);
+                Object mappedUserId = redisTemplate.opsForValue().get(CHAT_SESSION_KEY + sessionId);
+                if (mappedUserId == null) {
+                    redisTemplate.opsForSet().remove(roomSessionSetKey, sessionId);
+                    continue;
+                }
+
+                if (Objects.equals(String.valueOf(userId), String.valueOf(mappedUserId))) {
+                    return true;
+                }
+            }
+            return false;
         } catch (RuntimeException e) {
             log.warn("채팅방 열람 상태 확인에 실패했습니다. userId={}, roomId={}", userId, roomId, e);
             return false;
@@ -454,7 +465,6 @@ public class ChatService {
      * 세션 정보 삭제
      */
     public void removeSessionInfo(String sessionId) {
-        Long userId = getUserIdBySession(sessionId);
         Object roomIdValue = redisTemplate.opsForValue().get(SESSION_ROOM_KEY + sessionId);
         String subscriptionKey = SESSION_SUBSCRIPTION_KEY + sessionId;
         List<Object> subscriptionRoomIds = redisTemplate.opsForHash().values(subscriptionKey);
@@ -473,7 +483,7 @@ public class ChatService {
                     .forEach(roomIdsToCleanup::add);
         }
 
-        roomIdsToCleanup.forEach(roomId -> cleanupRoomTopicIfUnused(sessionId, roomId, userId));
+        roomIdsToCleanup.forEach(roomId -> cleanupRoomTopicIfUnused(sessionId, roomId));
     }
 
     /**
@@ -1066,7 +1076,7 @@ public class ChatService {
                 : null;
     }
 
-    private void publishToRedisNow(Long roomId, ChatMessageResponse response) {
+    private void publishToRedis(Long roomId, ChatMessageResponse response) {
         try {
             String payload = objectMapper.writeValueAsString(response);
             redisTemplate.convertAndSend(roomId.toString(), payload);
@@ -1078,13 +1088,11 @@ public class ChatService {
     }
 
     private void publishToRedisSilently(Long roomId, ChatMessageResponse response) {
-        afterCommitExecutor.execute(() -> {
-            try {
-                publishToRedisNow(roomId, response);
-            } catch (RuntimeException e) {
-                log.error("Redis publish skipped after DB save. roomId={}", roomId, e);
-            }
-        });
+        try {
+            publishToRedis(roomId, response);
+        } catch (RuntimeException e) {
+            log.error("Redis publish skipped after DB save. roomId={}", roomId, e);
+        }
     }
 
     private void publishRoomListUpdates(ChatRoom room, Collection<Long> userIds) {
@@ -1092,22 +1100,10 @@ public class ChatService {
             return;
         }
 
-        Long roomId = room.getId();
-        String lastMessage = room.getLastMessage();
-        LocalDateTime lastMessageAt = room.getLastMessageAt();
-        List<Long> distinctUserIds = userIds.stream()
+        userIds.stream()
                 .filter(Objects::nonNull)
                 .distinct()
-                .toList();
-
-        afterCommitExecutor.execute(() -> distinctUserIds.forEach(userId ->
-                publishRoomListUpdateNow(
-                        roomId,
-                        lastMessage,
-                        lastMessageAt,
-                        userId,
-                        resolveRoomListUnreadCount(userId, roomId)
-                )));
+                .forEach(userId -> publishRoomListUpdate(room, userId, resolveRoomListUnreadCount(userId, room.getId())));
     }
 
     private void publishRoomListUpdate(ChatRoom room, Long userId, int unreadCount) {
@@ -1115,39 +1111,17 @@ public class ChatService {
             return;
         }
 
-        Long roomId = room.getId();
-        String lastMessage = room.getLastMessage();
-        LocalDateTime lastMessageAt = room.getLastMessageAt();
-
-        afterCommitExecutor.execute(() -> publishRoomListUpdateNow(
-                roomId,
-                lastMessage,
-                lastMessageAt,
-                userId,
-                unreadCount
-        ));
-    }
-
-    private void publishRoomListUpdateNow(Long roomId,
-                                          String lastMessage,
-                                          LocalDateTime lastMessageAt,
-                                          Long userId,
-                                          int unreadCount) {
-        if (roomId == null || userId == null) {
-            return;
-        }
-
         try {
             ChatRoomListUpdateResponse payload = ChatRoomListUpdateResponse.of(
                     userId,
-                    roomId,
-                    lastMessage,
-                    lastMessageAt,
+                    room.getId(),
+                    room.getLastMessage(),
+                    room.getLastMessageAt(),
                     unreadCount
             );
             messagingTemplate.convertAndSend("/sub/chat/list/" + userId, payload);
         } catch (RuntimeException e) {
-            log.error("Room list update publish failed. roomId={}, userId={}", roomId, userId, e);
+            log.error("Room list update publish failed. roomId={}, userId={}", room.getId(), userId, e);
         }
     }
 
@@ -1164,7 +1138,7 @@ public class ChatService {
                 .orElse(0);
     }
 
-    private void cleanupRoomTopicIfUnused(String sessionId, Object roomIdValue, Long userId) {
+    private void cleanupRoomTopicIfUnused(String sessionId, Object roomIdValue) {
         if (roomIdValue == null) {
             return;
         }
@@ -1172,7 +1146,6 @@ public class ChatService {
         String roomId = String.valueOf(roomIdValue);
         String roomSessionSetKey = ROOM_SESSION_SET_KEY + roomId;
         redisTemplate.opsForSet().remove(roomSessionSetKey, sessionId);
-        removeUserRoomView(userId, roomId, sessionId);
 
         Long sessionCount = redisTemplate.opsForSet().size(roomSessionSetKey);
         if (sessionCount != null && sessionCount == 0L) {
@@ -1185,48 +1158,7 @@ public class ChatService {
         redisTemplate.opsForSet().add(ROOM_SESSION_SET_KEY + roomId, sessionId);
     }
 
-    private void addUserRoomView(Long userId, String roomId, String sessionId) {
-        if (userId == null || roomId == null || sessionId == null) {
-            return;
-        }
-
-        String key = userRoomViewSetKey(userId, roomId);
-        redisTemplate.opsForSet().add(key, sessionId);
-        redisTemplate.expire(key, 24, TimeUnit.HOURS);
-    }
-
-    private void removeUserRoomView(Long userId, String roomId, String sessionId) {
-        if (userId == null || roomId == null || sessionId == null) {
-            return;
-        }
-
-        String key = userRoomViewSetKey(userId, roomId);
-        redisTemplate.opsForSet().remove(key, sessionId);
-
-        Long remainingCount = redisTemplate.opsForSet().size(key);
-        if (remainingCount != null && remainingCount == 0L) {
-            redisTemplate.delete(key);
-        }
-    }
-
-    private String userRoomViewSetKey(Long userId, String roomId) {
-        return USER_ROOM_VIEW_SET_KEY + userId + ":" + roomId;
-    }
-
     private void publishChatMessageNotifications(Long roomId, User sender, ChatMessage chatMessage) {
-        if (!isPushEligibleMessage(chatMessage.getType())) {
-            return;
-        }
-
-        String senderImageUrl = extractProfileImage(sender);
-        afterCommitExecutor.execute(() ->
-                publishChatMessageNotificationsAfterCommit(roomId, sender, chatMessage, senderImageUrl));
-    }
-
-    private void publishChatMessageNotificationsAfterCommit(Long roomId,
-                                                            User sender,
-                                                            ChatMessage chatMessage,
-                                                            String senderImageUrl) {
         if (!isPushEligibleMessage(chatMessage.getType())) {
             return;
         }
@@ -1269,7 +1201,7 @@ public class ChatService {
                         preview,
                         deeplink,
                         sender.getId(),
-                        senderImageUrl,
+                        extractProfileImage(sender),
                         payload.toString(),
                         "chat-message:" + chatMessage.getId() + ":received"
                 ));

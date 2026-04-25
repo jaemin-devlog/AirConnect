@@ -8,7 +8,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
-import univ.airconnect.global.tx.AfterCommitExecutor;
 
 import java.util.List;
 
@@ -30,7 +29,7 @@ class GRedisMatchingPushServiceTest {
     @Test
     void notifyMatched_publishesDispatchEventPerDevice() throws Exception {
         GRedisMatchingPushService service =
-                new GRedisMatchingPushService(refreshTokenRepository, redisTemplate, objectMapper, new AfterCommitExecutor());
+                new GRedisMatchingPushService(refreshTokenRepository, redisTemplate, objectMapper);
 
         when(refreshTokenRepository.findByUserId(10L))
                 .thenReturn(List.of(

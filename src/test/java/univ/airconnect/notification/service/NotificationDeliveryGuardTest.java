@@ -21,9 +21,6 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,8 +31,6 @@ class NotificationDeliveryGuardTest {
 
     @Mock
     private NotificationPreferenceService notificationPreferenceService;
-    @Mock
-    private AndroidPushSendGapService androidPushSendGapService;
 
     private NotificationDeliveryGuard guard;
 
@@ -46,11 +41,8 @@ class NotificationDeliveryGuardTest {
                 notificationPreferenceService,
                 new AndroidPushPolicyResolver(),
                 new FcmDataPayloadMapper(new ObjectMapper(), new FcmDataPayloadValidator()),
-                androidPushSendGapService,
                 new ObjectMapper()
         );
-        lenient().when(androidPushSendGapService.nextAllowedAt(any(), any(), any(), any()))
-                .thenReturn(Optional.empty());
     }
 
     @Test
@@ -107,42 +99,6 @@ class NotificationDeliveryGuardTest {
 
         assertThat(result.decision()).isEqualTo(DeliveryDecision.SKIP);
         assertThat(result.reason()).isEqualTo("OUTBOX_EXPIRED");
-    }
-
-    @Test
-    void evaluate_defersAndroidOutboxWhenDeviceGapIsActive() {
-        LocalDateTime nowUtc = LocalDateTime.now(Clock.systemUTC());
-        NotificationOutbox outbox = NotificationOutbox.create(
-                102L,
-                3L,
-                17L,
-                PushProvider.FCM,
-                "token-3",
-                "Chat",
-                "Burst message",
-                "{\"notificationType\":\"CHAT_MESSAGE_RECEIVED\",\"chatRoomId\":\"123\"}",
-                nowUtc.minusSeconds(3)
-        );
-        ReflectionTestUtils.setField(outbox, "id", 1002L);
-
-        PushDevice pushDevice = androidDevice(3L, "token-3");
-        LocalDateTime nextAllowedAt = nowUtc.plusSeconds(7);
-
-        when(pushDeviceRepository.findById(17L)).thenReturn(Optional.of(pushDevice));
-        when(notificationPreferenceService.getDeliveryPolicy(3L, univ.airconnect.notification.domain.NotificationType.CHAT_MESSAGE_RECEIVED))
-                .thenReturn(NotificationPreferenceService.DeliveryPolicy.sendNow(true));
-        when(androidPushSendGapService.nextAllowedAt(
-                eq(outbox),
-                eq(pushDevice),
-                eq(univ.airconnect.notification.domain.NotificationType.CHAT_MESSAGE_RECEIVED),
-                any()))
-                .thenReturn(Optional.of(nextAllowedAt));
-
-        GuardResult result = guard.evaluate(outbox);
-
-        assertThat(result.decision()).isEqualTo(DeliveryDecision.DEFER);
-        assertThat(result.reason()).isEqualTo("ANDROID_DEVICE_SEND_GAP");
-        assertThat(result.nextAttemptAt()).isEqualTo(nextAllowedAt);
     }
 
     private PushDevice androidDevice(Long userId, String token) {

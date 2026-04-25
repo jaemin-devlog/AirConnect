@@ -28,7 +28,7 @@ public class AndroidPushPolicyResolver {
         }
 
         return switch (notificationType) {
-            case CHAT_MESSAGE_RECEIVED -> normal(
+            case CHAT_MESSAGE_RECEIVED -> high(
                     CHAT_CHANNEL_ID,
                     collapse("chat_room_", firstNonBlank(data, "chatRoomId", "roomId", "chatId", "resourceId")),
                     tag("chat_room_", firstNonBlank(data, "chatRoomId", "roomId", "chatId", "resourceId")),
@@ -46,7 +46,7 @@ public class AndroidPushPolicyResolver {
                     tag("match_request_", firstNonBlank(data, "matchRequestId", "requestId", "resourceId")),
                     Duration.ofHours(2)
             );
-            case TEAM_MEMBER_JOINED, TEAM_MEMBER_LEFT, TEAM_MEMBER_READY_CHANGED -> quietNormal(
+            case TEAM_MEMBER_JOINED, TEAM_MEMBER_LEFT, TEAM_MEMBER_READY_CHANGED -> normal(
                     TEAM_ACTIVITY_CHANNEL_ID,
                     collapse("team_room_", firstNonBlank(data, "teamRoomId", "roomId", "teamId", "resourceId")),
                     tag("team_room_", firstNonBlank(data, "teamRoomId", "roomId", "teamId", "resourceId")),
@@ -91,7 +91,6 @@ public class AndroidPushPolicyResolver {
                 true,
                 AndroidConfig.Priority.HIGH,
                 AndroidNotification.Priority.HIGH,
-                true,
                 collapseKey,
                 notificationTag,
                 ttl,
@@ -105,21 +104,6 @@ public class AndroidPushPolicyResolver {
                 true,
                 AndroidConfig.Priority.NORMAL,
                 AndroidNotification.Priority.DEFAULT,
-                true,
-                collapseKey,
-                notificationTag,
-                ttl,
-                AndroidPushPolicy.SCHEMA_VERSION
-        );
-    }
-
-    private AndroidPushPolicy quietNormal(String channelId, String collapseKey, String notificationTag, Duration ttl) {
-        return new AndroidPushPolicy(
-                channelId,
-                true,
-                AndroidConfig.Priority.NORMAL,
-                AndroidNotification.Priority.DEFAULT,
-                false,
                 collapseKey,
                 notificationTag,
                 ttl,

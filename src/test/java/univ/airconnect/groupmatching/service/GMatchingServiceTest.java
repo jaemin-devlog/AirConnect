@@ -12,10 +12,8 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.SetOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.SocialProvider;
@@ -24,7 +22,6 @@ import univ.airconnect.chat.domain.entity.ChatRoom;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
-import univ.airconnect.global.tx.AfterCommitExecutor;
 import univ.airconnect.groupmatching.domain.GGenderFilter;
 import univ.airconnect.groupmatching.domain.GTeamGender;
 import univ.airconnect.groupmatching.domain.GTeamSize;
@@ -38,7 +35,6 @@ import univ.airconnect.groupmatching.repository.GMatchResultRepository;
 import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
-import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.OnboardingStatus;
@@ -96,15 +92,9 @@ class GMatchingServiceTest {
     @Mock
     private ListOperations<String, Object> listOperations;
     @Mock
-    private HashOperations<String, Object, Object> hashOperations;
-    @Mock
-    private SetOperations<String, Object> setOperations;
-    @Mock
     private AnalyticsService analyticsService;
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
-    @Spy
-    private AfterCommitExecutor afterCommitExecutor = new AfterCommitExecutor();
 
     @InjectMocks
     private GMatchingService matchingService;
@@ -117,8 +107,6 @@ class GMatchingServiceTest {
                 "http://localhost:8080/api/v1/users/profile-images"
         );
         lenient().when(redisTemplate.opsForList()).thenReturn(listOperations);
-        lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
-        lenient().when(redisTemplate.opsForSet()).thenReturn(setOperations);
         lenient().when(chatRoomMemberRepository.findByChatRoomIdAndUserId(anyLong(), anyLong())).thenReturn(Optional.empty());
     }
 
@@ -477,44 +465,6 @@ class GMatchingServiceTest {
 
         assertThat(result.getVisibility()).isEqualTo(GTeamVisibility.PRIVATE);
         assertThat(result.getInviteCode()).isNotBlank();
-    }
-
-    @Test
-    @DisplayName("team room subscription tracks viewing presence by user and room")
-    void registerSessionTeamRoomSubscription_tracksViewingPresenceByUserAndRoom() {
-        when(hashOperations.get("matching:session-subscriptions:matching-session", "matching-sub"))
-                .thenReturn(null);
-        when(setOperations.size("matching:view:user-room:55:789")).thenReturn(1L);
-
-        matchingService.registerSessionTeamRoomSubscription("matching-session", "matching-sub", 789L, 55L);
-
-        assertThat(matchingService.isUserViewingTeamRoom(55L, 789L)).isTrue();
-        verify(hashOperations).put("matching:session-subscriptions:matching-session", "matching-sub", "789");
-        verify(setOperations).add("matching:view:user-room:55:789", "matching-session");
-        verify(redisTemplate).expire("matching:view:user-room:55:789", 24, java.util.concurrent.TimeUnit.HOURS);
-    }
-
-    @Test
-    @DisplayName("viewer in same team room gets in-app notification only for low-value team activity")
-    void sendGroupNotification_suppressesPushWhenRecipientIsViewingTeamRoom() {
-        when(setOperations.size("matching:view:user-room:42:910")).thenReturn(1L);
-
-        ReflectionTestUtils.invokeMethod(
-                matchingService,
-                "sendGroupNotification",
-                42L,
-                NotificationType.TEAM_MEMBER_JOINED,
-                "title",
-                "body",
-                "airconnect://matching/team-rooms/910",
-                77L,
-                "{\"teamRoomId\":910,\"joinedUserId\":77}",
-                null,
-                true
-        );
-
-        verify(notificationService).create(any());
-        verify(notificationService, never()).createAndEnqueue(any());
     }
 
     private void stubCompleteMatchCommon(

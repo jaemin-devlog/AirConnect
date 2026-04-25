@@ -22,7 +22,6 @@ import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
-import univ.airconnect.global.tx.AfterCommitExecutor;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.entity.User;
@@ -93,8 +92,7 @@ class ChatServiceReadTrackingTest {
                 messagingTemplate,
                 objectMapper,
                 notificationService,
-                userBlockPolicyService,
-                new AfterCommitExecutor()
+                userBlockPolicyService
         );
         chatService = spy(rawService);
 

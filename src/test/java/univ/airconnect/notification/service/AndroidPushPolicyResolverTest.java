@@ -17,7 +17,7 @@ class AndroidPushPolicyResolverTest {
     private final AndroidPushPolicyResolver resolver = new AndroidPushPolicyResolver();
 
     @Test
-    void resolve_chatMessageUsesChatChannelAndNormalPriority() {
+    void resolve_chatMessageUsesChatChannelAndHighPriority() {
         AndroidPushPolicy policy = resolver.resolve(
                 NotificationType.CHAT_MESSAGE_RECEIVED,
                 Map.of("chatRoomId", "123")
@@ -25,9 +25,8 @@ class AndroidPushPolicyResolverTest {
 
         assertThat(policy.channelId()).isEqualTo("airconnect_chat_messages_v1");
         assertThat(policy.useNotificationPayload()).isTrue();
-        assertThat(policy.fcmPriority()).isEqualTo(AndroidConfig.Priority.NORMAL);
-        assertThat(policy.notificationPriority()).isEqualTo(AndroidNotification.Priority.DEFAULT);
-        assertThat(policy.soundEnabled()).isTrue();
+        assertThat(policy.fcmPriority()).isEqualTo(AndroidConfig.Priority.HIGH);
+        assertThat(policy.notificationPriority()).isEqualTo(AndroidNotification.Priority.HIGH);
         assertThat(policy.collapseKey()).isEqualTo("chat_room_123");
         assertThat(policy.notificationTag()).isEqualTo("chat_room_123");
         assertThat(policy.ttl()).isEqualTo(Duration.ofMinutes(5));
@@ -44,7 +43,6 @@ class AndroidPushPolicyResolverTest {
         assertThat(policy.channelId()).isEqualTo("airconnect_team_activity_v1");
         assertThat(policy.fcmPriority()).isEqualTo(AndroidConfig.Priority.NORMAL);
         assertThat(policy.notificationPriority()).isEqualTo(AndroidNotification.Priority.DEFAULT);
-        assertThat(policy.soundEnabled()).isFalse();
         assertThat(policy.collapseKey()).isEqualTo("team_room_77");
     }
 }

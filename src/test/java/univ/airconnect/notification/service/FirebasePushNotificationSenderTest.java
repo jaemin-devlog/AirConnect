@@ -71,14 +71,13 @@ class FirebasePushNotificationSenderTest {
 
         Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");
         assertThat(androidConfig).isNotNull();
-        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("normal");
+        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("high");
         assertThat(ReflectionTestUtils.getField(androidConfig, "collapseKey")).isEqualTo("chat_room_88");
 
         Object androidNotification = ReflectionTestUtils.getField(androidConfig, "notification");
         assertThat(androidNotification).isNotNull();
         assertThat(ReflectionTestUtils.getField(androidNotification, "channelId")).isEqualTo("airconnect_chat_messages_v1");
         assertThat(ReflectionTestUtils.getField(androidNotification, "tag")).isEqualTo("chat_room_88");
-        assertThat(ReflectionTestUtils.getField(androidNotification, "sound")).isEqualTo("default");
 
         Map<String, String> data = readData(message);
         assertThat(data)

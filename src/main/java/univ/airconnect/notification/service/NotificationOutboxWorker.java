@@ -37,7 +37,6 @@ public class NotificationOutboxWorker {
     private final PushNotificationSender pushNotificationSender;
     private final PushDeviceService pushDeviceService;
     private final NotificationDeliveryGuard notificationDeliveryGuard;
-    private final AndroidPushSendGapService androidPushSendGapService;
 
     @Scheduled(fixedDelayString = "${notification.outbox.worker.delay-ms:1000}")
     public void drain() {
@@ -67,7 +66,6 @@ public class NotificationOutboxWorker {
             PushNotificationSender.PushSendResult result = pushNotificationSender.send(outbox);
             if (result.success()) {
                 notificationOutboxService.markSent(outbox.getId(), result.providerMessageId());
-                androidPushSendGapService.recordSent(outbox, LocalDateTime.now(Clock.systemUTC()));
                 return;
             }
 
