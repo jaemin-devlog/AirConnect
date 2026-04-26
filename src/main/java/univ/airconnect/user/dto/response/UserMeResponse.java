@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Getter;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.user.domain.OnboardingStatus;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 
 @Getter
@@ -40,6 +41,9 @@ public class UserMeResponse {
     
     @JsonProperty("status")
     private UserStatus status;
+
+    @JsonProperty("role")
+    private UserRole role;
     
     @JsonProperty("onboardingStatus")
     private OnboardingStatus onboardingStatus;

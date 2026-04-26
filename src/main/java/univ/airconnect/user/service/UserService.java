@@ -187,6 +187,7 @@ public class UserService {
                 .studentNum(user.getStudentNum())
                 .age(profile != null ? profile.getAge() : null)
                 .status(user.getStatus())
+                .role(user.getRole())
                 .onboardingStatus(user.getOnboardingStatus())
                 .profileExists(profile != null)
                 .profileImageUploaded(profileImageUploaded)

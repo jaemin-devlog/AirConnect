@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import univ.airconnect.global.response.ApiResponse;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.service.UserService;
 
@@ -29,6 +30,7 @@ class UserMeAliasControllerTest {
         UserMeAliasController controller = new UserMeAliasController(userService);
         UserMeResponse body = UserMeResponse.builder()
                 .userId(1L)
+                .role(UserRole.ADMIN)
                 .tickets(7)
                 .appAccountToken("token-1")
                 .iosAppAccountToken("token-1")
@@ -43,6 +45,7 @@ class UserMeAliasControllerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().isSuccess()).isTrue();
         assertThat(response.getBody().getData()).isNotNull();
+        assertThat(response.getBody().getData().getRole()).isEqualTo(UserRole.ADMIN);
         assertThat(response.getBody().getData().getAppAccountToken()).isEqualTo("token-1");
         verify(userService).getMe(1L);
     }
