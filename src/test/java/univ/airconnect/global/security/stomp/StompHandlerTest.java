@@ -16,6 +16,7 @@ import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
 import univ.airconnect.groupmatching.service.GMatchingService;
 import univ.airconnect.user.domain.UserRole;
+import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -174,3 +175,18 @@ class StompHandlerTest {
                 List.of()
         ));
         return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
+    private Message<byte[]> unsubscribeMessage(String sessionId, String subscriptionId) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.UNSUBSCRIBE);
+        accessor.setSessionId(sessionId);
+        accessor.setSubscriptionId(subscriptionId);
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
+    private User activeUser() {
+        User user = mock(User.class);
+        when(user.getStatus()).thenReturn(UserStatus.ACTIVE);
+        return user;
+    }
+}

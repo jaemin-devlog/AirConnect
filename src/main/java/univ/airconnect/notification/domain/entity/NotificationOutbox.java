@@ -252,6 +252,29 @@ public class NotificationOutbox {
     /**
      * 생성 시 필수 값 검증을 수행한다.
      */
+    /**
+     * 아직 전송되지 않은 대기 outbox를 최신 알림 기준으로 갱신한다.
+     */
+    public void coalesceToLatest(Long notificationId,
+                                 String targetToken,
+                                 String title,
+                                 String body,
+                                 String dataJson,
+                                 LocalDateTime nextAttemptAt) {
+        validate(notificationId, this.userId, this.pushDeviceId, this.provider, targetToken, title, body, dataJson, nextAttemptAt);
+        if (this.status != NotificationDeliveryStatus.PENDING) {
+            throw new IllegalStateException("대기 중인 outbox만 coalescing 할 수 있습니다.");
+        }
+        this.notificationId = notificationId;
+        this.targetToken = targetToken;
+        this.title = title;
+        this.body = body;
+        this.dataJson = dataJson;
+        this.nextAttemptAt = nextAttemptAt;
+        this.claimedAt = null;
+        touch();
+    }
+
     private void validate(Long notificationId,
                           Long userId,
                           Long pushDeviceId,

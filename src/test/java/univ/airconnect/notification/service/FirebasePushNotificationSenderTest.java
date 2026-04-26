@@ -40,7 +40,12 @@ class FirebasePushNotificationSenderTest {
 
         sender.send(outbox);
 
-        Object androidNotification = captureAndroidNotification();
+        Message message = captureMessage();
+        Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");
+        assertThat(androidConfig).isNotNull();
+        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("normal");
+        assertThat(ReflectionTestUtils.getField(androidConfig, "collapseKey")).isEqualTo("chat-room-88");
+        Object androidNotification = ReflectionTestUtils.getField(androidConfig, "notification");
         assertThat(ReflectionTestUtils.getField(androidNotification, "sound")).isEqualTo("default");
         assertThat(ReflectionTestUtils.getField(androidNotification, "channelId")).isEqualTo("airconnect_chat_push");
         assertThat(ReflectionTestUtils.getField(androidNotification, "tag")).isEqualTo("chat-88");
@@ -61,20 +66,45 @@ class FirebasePushNotificationSenderTest {
 
         sender.send(outbox);
 
-        Object androidNotification = captureAndroidNotification();
+        Message message = captureMessage();
+        Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");
+        assertThat(androidConfig).isNotNull();
+        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("high");
+        Object androidNotification = ReflectionTestUtils.getField(androidConfig, "notification");
         assertThat(ReflectionTestUtils.getField(androidNotification, "sound")).isEqualTo("default");
         assertThat(ReflectionTestUtils.getField(androidNotification, "channelId")).isNull();
         assertThat(ReflectionTestUtils.getField(androidNotification, "tag")).isNull();
         assertThat(ReflectionTestUtils.getField(androidNotification, "priority")).isNull();
     }
 
-    private Object captureAndroidNotification() throws Exception {
+    @Test
+    void send_reducesAndroidTeamActivityPriority() throws Exception {
+        when(firebaseMessaging.send(any(Message.class))).thenReturn("provider-message-id");
+        FirebasePushNotificationSender sender = new FirebasePushNotificationSender(firebaseMessaging, new ObjectMapper());
+        NotificationOutbox outbox = outbox("""
+                {
+                  "notificationType": "TEAM_MEMBER_JOINED",
+                  "type": "SYSTEM",
+                  "teamRoomId": "55"
+                }
+                """);
+
+        sender.send(outbox);
+
+        Message message = captureMessage();
+        Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");
+        assertThat(androidConfig).isNotNull();
+        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("normal");
+        assertThat(ReflectionTestUtils.getField(androidConfig, "collapseKey")).isEqualTo("team-activity-55");
+        Object androidNotification = ReflectionTestUtils.getField(androidConfig, "notification");
+        assertThat(ReflectionTestUtils.getField(androidNotification, "sound")).isNull();
+        assertThat(ReflectionTestUtils.getField(androidNotification, "priority")).isEqualTo("PRIORITY_LOW");
+    }
+
+    private Message captureMessage() throws Exception {
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(firebaseMessaging).send(messageCaptor.capture());
-        Object androidConfig = ReflectionTestUtils.getField(messageCaptor.getValue(), "androidConfig");
-        assertThat(androidConfig).isNotNull();
-        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("high");
-        return ReflectionTestUtils.getField(androidConfig, "notification");
+        return messageCaptor.getValue();
     }
 
     private NotificationOutbox outbox(String dataJson) {
