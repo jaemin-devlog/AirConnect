@@ -29,12 +29,14 @@ public interface TicketLedgerRepository extends JpaRepository<TicketLedger, Long
     @Query("""
         SELECT COALESCE(SUM(CASE WHEN tl.changeAmount > 0 THEN tl.changeAmount ELSE 0 END), 0)
         FROM TicketLedger tl
+        WHERE tl.refType <> univ.airconnect.iap.domain.LedgerRefType.ADMIN_ADJUSTMENT
     """)
     long sumGrantedTickets();
 
     @Query("""
         SELECT COALESCE(SUM(CASE WHEN tl.changeAmount < 0 THEN -tl.changeAmount ELSE 0 END), 0)
         FROM TicketLedger tl
+        WHERE tl.refType <> univ.airconnect.iap.domain.LedgerRefType.ADMIN_ADJUSTMENT
     """)
     long sumConsumedTickets();
 }
