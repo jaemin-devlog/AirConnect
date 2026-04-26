@@ -18,8 +18,10 @@ import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.PushProvider;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.PushDeviceRepository;
+import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.MilitaryStatus;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
@@ -27,6 +29,7 @@ import univ.airconnect.user.dto.request.ChangePasswordRequest;
 import univ.airconnect.user.dto.request.UpdateNicknameRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
 import univ.airconnect.user.dto.response.UpdateNicknameResponse;
+import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
@@ -292,6 +295,30 @@ class UserServiceTest {
         assertThatThrownBy(() -> service.updateNickname(userId, request))
                 .isInstanceOfSatisfying(UserException.class, ex ->
                         assertThat(ex.getErrorCode()).isEqualTo(UserErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    void getMe_includesUserRoleAndAppAccountToken() {
+        UserService service = createService();
+        Long userId = 12L;
+
+        User user = User.createEmailUser("admin@airconnect.test", "encoded-password");
+        user.completeSignUp("admin", "adminNick", 20230012, "dept");
+        user.changeRole(UserRole.ADMIN);
+        ReflectionTestUtils.setField(user, "id", userId);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.empty());
+        when(userMilestoneRepository.existsByUserIdAndMilestoneType(userId, MilestoneType.PROFILE_IMAGE_UPLOADED))
+                .thenReturn(false);
+        when(userMilestoneRepository.existsByUserIdAndMilestoneType(userId, MilestoneType.EMAIL_VERIFIED))
+                .thenReturn(false);
+
+        UserMeResponse response = service.getMe(userId);
+
+        assertThat(response.getRole()).isEqualTo(UserRole.ADMIN);
+        assertThat(response.getAppAccountToken()).isEqualTo(user.getIosAppAccountToken());
+        assertThat(response.getIosAppAccountToken()).isEqualTo(user.getIosAppAccountToken());
     }
 
     @Test
