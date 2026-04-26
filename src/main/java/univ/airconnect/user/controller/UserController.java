@@ -1,17 +1,25 @@
 package univ.airconnect.user.controller;
 
-import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
-import univ.airconnect.user.dto.request.DeleteAccountRequest;
 import univ.airconnect.user.dto.request.ChangePasswordRequest;
+import univ.airconnect.user.dto.request.DeleteAccountRequest;
 import univ.airconnect.user.dto.request.SchoolConsentUpsertRequest;
 import univ.airconnect.user.dto.request.SignUpRequest;
 import univ.airconnect.user.dto.request.UpdateNicknameRequest;
@@ -25,7 +33,6 @@ import univ.airconnect.user.dto.response.UserProfileResponse;
 import univ.airconnect.user.service.UserProfileImageService;
 import univ.airconnect.user.service.UserSchoolConsentService;
 import univ.airconnect.user.service.UserService;
-
 
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 
@@ -45,10 +52,10 @@ public class UserController {
             @RequestBody SignUpRequest request,
             HttpServletRequest httpRequest
     ) {
-        log.info("📝 회원가입 요청: userId={}", userId);
+        log.info("User sign-up requested: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
         SignUpResponse response = userService.signUp(userId, request);
-        log.info("✅ 회원가입 완료: userId={}", userId);
+        log.info("User sign-up completed: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
@@ -57,10 +64,8 @@ public class UserController {
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
-        log.info("👤 사용자 정보 조회 요청: userId={}", userId);
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         UserMeResponse response = userService.getMe(userId);
-        log.info("✅ 사용자 정보 조회 완료: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
@@ -70,20 +75,19 @@ public class UserController {
             @RequestBody UpdateNicknameRequest request,
             HttpServletRequest httpRequest
     ) {
-        log.info("✏️ 닉네임 변경 요청: userId={}", userId);
+        log.info("Nickname update requested: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
         UpdateNicknameResponse response = userService.updateNickname(userId, request);
-        log.info("✅ 닉네임 변경 완료: userId={}", userId);
+        log.info("Nickname update completed: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
-
 
     @GetMapping("/profile")
     public ResponseEntity<ApiResponse<UserProfileResponse>> getProfile(
             @CurrentUserId Long userId,
             HttpServletRequest request
     ) {
-        log.info("📖 프로필 조회 요청: userId={}", userId);
+        log.info("User profile requested: userId={}", userId);
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         UserProfileResponse response = userService.getProfile(userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
@@ -95,10 +99,10 @@ public class UserController {
             @RequestBody UpdateProfileRequest request,
             HttpServletRequest httpRequest
     ) {
-        log.info("🔄 프로필 업데이트 요청: userId={}", userId);
+        log.info("User profile update requested: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
         UserProfileResponse response = userService.updateProfile(userId, request);
-        log.info("✅ 프로필 업데이트 완료: userId={}", userId);
+        log.info("User profile update completed: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
@@ -108,10 +112,10 @@ public class UserController {
             @RequestParam("file") MultipartFile file,
             HttpServletRequest httpRequest
     ) {
-        log.info("🖼️ 프로필 이미지 업로드 요청: userId={}", userId);
+        log.info("Profile image upload requested: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
         String imageUrl = userProfileImageService.saveProfileImage(userId, file);
-        log.info("✅ 프로필 이미지 업로드 완료: userId={}", userId);
+        log.info("Profile image upload completed: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(new ProfileImageUploadResponse(imageUrl), traceId));
     }
 
@@ -121,10 +125,10 @@ public class UserController {
             @RequestBody(required = false) DeleteAccountRequest request,
             HttpServletRequest httpRequest
     ) {
-        log.info("🗑️ 회원 탈퇴 요청: userId={}", userId);
+        log.info("Account deletion requested: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
         userService.deleteAccount(userId, request, traceId);
-        log.info("🚪 회원 탈퇴 완료: userId={}", userId);
+        log.info("Account deletion completed: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }
 
@@ -134,10 +138,10 @@ public class UserController {
             @RequestBody ChangePasswordRequest request,
             HttpServletRequest httpRequest
     ) {
-        log.info("🔐 비밀번호 변경 요청: userId={}", userId);
+        log.info("Password change requested: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
         userService.changePassword(userId, request);
-        log.info("✅ 비밀번호 변경 완료: userId={}", userId);
+        log.info("Password change completed: userId={}", userId);
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }
 

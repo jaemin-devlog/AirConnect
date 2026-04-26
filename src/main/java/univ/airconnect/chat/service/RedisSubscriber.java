@@ -20,13 +20,8 @@ public class RedisSubscriber implements MessageListener {
     private final RedisTemplate<String, Object> redisTemplate;
     private final SimpMessageSendingOperations messagingTemplate;
 
-    /**
-     * Redis publish 메시지를 받아 websocket 구독자에게 전달한다.
-     */
     @Override
-
     public void onMessage(Message message, byte[] pattern) {
-        log.info("Redis에서 메시지 수신 성공! 채널: {}", new String(message.getChannel()));
         try {
             String publishMessage = (String) redisTemplate.getStringSerializer().deserialize(message.getBody());
 
@@ -36,10 +31,7 @@ public class RedisSubscriber implements MessageListener {
             }
 
             ChatMessageResponse roomMessage = objectMapper.readValue(publishMessage, ChatMessageResponse.class);
-
             messagingTemplate.convertAndSend("/sub/chat/room/" + roomMessage.getRoomId(), roomMessage);
-
-            log.info("Redis Subscribe: roomId={}, senderId={}", roomMessage.getRoomId(), roomMessage.getSenderId());
         } catch (Exception e) {
             log.error("Redis subscribe handling failed", e);
         }

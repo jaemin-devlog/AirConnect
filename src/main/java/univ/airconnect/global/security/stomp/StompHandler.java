@@ -91,7 +91,7 @@ public class StompHandler implements ChannelInterceptor {
         String token = extractToken(accessor);
         String tokenSubject = extractSubjectForLog(token);
 
-        log.info("STOMP CONNECT INBOUND: sessionId={}, subject={}, headerKey={}",
+        log.debug("STOMP CONNECT INBOUND: sessionId={}, subject={}, headerKey={}",
                 accessor.getSessionId(), tokenSubject, resolveAuthHeaderKey(accessor));
 
         try {
@@ -118,7 +118,7 @@ public class StompHandler implements ChannelInterceptor {
 
             stompOpsMonitor.recordConnectSuccess();
 
-            log.info("STOMP CONNECT SUCCESS: sessionId={}, subject={}, userId={}",
+            log.debug("STOMP CONNECT SUCCESS: sessionId={}, subject={}, userId={}",
                     accessor.getSessionId(), tokenSubject, userId);
         } catch (Exception e) {
             stompOpsMonitor.recordConnectFailure(e);
@@ -188,7 +188,7 @@ public class StompHandler implements ChannelInterceptor {
 
         stompOpsMonitor.recordSubscribeSuccess();
 
-        log.info("STOMP SUBSCRIBE CHAT: sessionId={}, userId={}, roomId={}",
+        log.debug("STOMP SUBSCRIBE CHAT: sessionId={}, userId={}, roomId={}",
                 accessor.getSessionId(), userId, roomId);
     }
 
@@ -202,7 +202,7 @@ public class StompHandler implements ChannelInterceptor {
 
         stompOpsMonitor.recordSubscribeSuccess();
 
-        log.info("STOMP SUBSCRIBE MATCHING: sessionId={}, userId={}, teamRoomId={}",
+        log.debug("STOMP SUBSCRIBE MATCHING: sessionId={}, userId={}, teamRoomId={}",
                 accessor.getSessionId(), userId, teamRoomId);
     }
 
@@ -222,7 +222,7 @@ public class StompHandler implements ChannelInterceptor {
     }
 
     private void handleDisconnect(StompHeaderAccessor accessor) {
-        log.info("STOMP DISCONNECT: sessionId={}", accessor.getSessionId());
+        log.debug("STOMP DISCONNECT: sessionId={}", accessor.getSessionId());
         chatService.removeSessionInfo(accessor.getSessionId());
     }
 
