@@ -235,8 +235,32 @@ public final class AdminDtos {
     }
 
     public record NoticeBroadcastResult(
+            Long noticeId,
             int recipients,
             String title
+    ) {
+    }
+
+    public record NoticeSummary(
+            Long noticeId,
+            String title,
+            String deeplink,
+            boolean activeUsersOnly,
+            int recipientCount,
+            Long createdByUserId,
+            LocalDateTime createdAt
+    ) {
+    }
+
+    public record NoticeDetail(
+            Long noticeId,
+            String title,
+            String body,
+            String deeplink,
+            boolean activeUsersOnly,
+            int recipientCount,
+            Long createdByUserId,
+            LocalDateTime createdAt
     ) {
     }
 }

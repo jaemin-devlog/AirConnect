@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import univ.airconnect.global.response.ApiResponse;
+import univ.airconnect.global.security.resolver.CurrentUserId;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.moderation.domain.ReportStatus;
 import univ.airconnect.user.domain.UserStatus;
@@ -119,12 +120,32 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok(adminService.getStatisticsOverview(), traceId));
     }
 
+    @GetMapping("/notices")
+    public ResponseEntity<ApiResponse<AdminDtos.PageResponse<AdminDtos.NoticeSummary>>> getNotices(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getNotices(page, size), traceId));
+    }
+
+    @GetMapping("/notices/{noticeId}")
+    public ResponseEntity<ApiResponse<AdminDtos.NoticeDetail>> getNoticeDetail(
+            @PathVariable Long noticeId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getNoticeDetail(noticeId), traceId));
+    }
+
     @PostMapping("/notices/broadcast")
     public ResponseEntity<ApiResponse<AdminDtos.NoticeBroadcastResult>> broadcastNotice(
+            @CurrentUserId Long adminUserId,
             @Valid @RequestBody AdminRequests.NoticeBroadcastRequest body,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(adminService.broadcastNotice(body), traceId));
+        return ResponseEntity.ok(ApiResponse.ok(adminService.broadcastNotice(adminUserId, body), traceId));
     }
 }

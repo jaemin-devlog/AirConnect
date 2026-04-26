@@ -40,6 +40,7 @@ public class AdminService {
 
     private static final int MAX_PAGE_SIZE = 100;
 
+    private final AdminNoticeRepository adminNoticeRepository;
     private final UserRepository userRepository;
     private final UserReportRepository userReportRepository;
     private final MatchingConnectionRepository matchingConnectionRepository;
@@ -59,6 +60,36 @@ public class AdminService {
         Page<User> result = userRepository.searchForAdmin(status, normalizeKeyword(keyword), pageable);
         Page<AdminDtos.UserSummary> mapped = result.map(this::toUserSummary);
         return AdminDtos.PageResponse.from(mapped);
+    }
+
+    public AdminDtos.PageResponse<AdminDtos.NoticeSummary> getNotices(Integer page, Integer size) {
+        Pageable pageable = PageRequest.of(safePage(page), safeSize(size));
+        Page<AdminDtos.NoticeSummary> mapped = adminNoticeRepository.findAllByOrderByCreatedAtDescIdDesc(pageable)
+                .map(notice -> new AdminDtos.NoticeSummary(
+                        notice.getId(),
+                        notice.getTitle(),
+                        notice.getDeeplink(),
+                        notice.isActiveUsersOnly(),
+                        notice.getRecipientCount(),
+                        notice.getCreatedByUserId(),
+                        notice.getCreatedAt()
+                ));
+        return AdminDtos.PageResponse.from(mapped);
+    }
+
+    public AdminDtos.NoticeDetail getNoticeDetail(Long noticeId) {
+        AdminNotice notice = adminNoticeRepository.findById(noticeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "공지를 찾을 수 없습니다."));
+        return new AdminDtos.NoticeDetail(
+                notice.getId(),
+                notice.getTitle(),
+                notice.getBody(),
+                notice.getDeeplink(),
+                notice.isActiveUsersOnly(),
+                notice.getRecipientCount(),
+                notice.getCreatedByUserId(),
+                notice.getCreatedAt()
+        );
     }
 
     public AdminDtos.UserDetail getUserDetail(Long userId) {
@@ -228,8 +259,9 @@ public class AdminService {
     }
 
     @Transactional
-    public AdminDtos.NoticeBroadcastResult broadcastNotice(AdminRequests.NoticeBroadcastRequest request) {
-        List<Long> recipientIds = Boolean.FALSE.equals(request.activeUsersOnly())
+    public AdminDtos.NoticeBroadcastResult broadcastNotice(Long adminUserId, AdminRequests.NoticeBroadcastRequest request) {
+        boolean activeUsersOnly = !Boolean.FALSE.equals(request.activeUsersOnly());
+        List<Long> recipientIds = !activeUsersOnly
                 ? userRepository.findIdsByStatusNot(UserStatus.DELETED)
                 : userRepository.findIdsByStatus(UserStatus.ACTIVE);
 
@@ -253,7 +285,18 @@ public class AdminService {
             ));
         }
 
-        return new AdminDtos.NoticeBroadcastResult(recipientIds.size(), request.title());
+        AdminNotice savedNotice = adminNoticeRepository.save(
+                AdminNotice.create(
+                        adminUserId,
+                        request.title(),
+                        request.body(),
+                        request.deeplink(),
+                        activeUsersOnly,
+                        recipientIds.size()
+                )
+        );
+
+        return new AdminDtos.NoticeBroadcastResult(savedNotice.getId(), recipientIds.size(), request.title());
     }
 
     private User getRequiredUser(Long userId) {
