@@ -21,6 +21,7 @@ import univ.airconnect.iap.exception.IapErrorCode;
 import univ.airconnect.iap.exception.IapException;
 import univ.airconnect.iap.repository.IapOrderRepository;
 
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,13 +33,16 @@ public class IapProcessingService {
     private final StoreVerifierResolver storeVerifierResolver;
     private final IapOrderRepository iapOrderRepository;
     private final TicketGrantService ticketGrantService;
+    private final IapRefundService iapRefundService;
 
     public IapProcessingService(StoreVerifierResolver storeVerifierResolver,
                                 IapOrderRepository iapOrderRepository,
-                                TicketGrantService ticketGrantService) {
+                                TicketGrantService ticketGrantService,
+                                IapRefundService iapRefundService) {
         this.storeVerifierResolver = storeVerifierResolver;
         this.iapOrderRepository = iapOrderRepository;
         this.ticketGrantService = ticketGrantService;
+        this.iapRefundService = iapRefundService;
     }
 
     @Transactional
@@ -91,6 +95,7 @@ public class IapProcessingService {
                 .successCount(successCount)
                 .failureCount(items.size() - successCount)
                 .results(items)
+                .processedAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .build();
     }
 
@@ -128,6 +133,7 @@ public class IapProcessingService {
                 .successCount(successCount)
                 .failureCount(items.size() - successCount)
                 .results(items)
+                .processedAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .build();
     }
 
@@ -151,8 +157,8 @@ public class IapProcessingService {
 
         if (order.getStatus() == IapOrderStatus.GRANTED) {
             if (result.isTransactionRevoked()) {
-                order.markRevoked();
-                log.warn("IAP process transaction revoked after grant. userId={}, store={}, orderId={}, key={}",
+                iapRefundService.refundGrantedOrder(order, "verify:" + result.getStore());
+                log.warn("IAP process transaction refunded after prior grant. userId={}, store={}, orderId={}, key={}",
                         userId, result.getStore(), order.getId(), order.idempotencyKey());
                 return toRejected(order, result);
             }

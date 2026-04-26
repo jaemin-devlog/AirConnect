@@ -56,6 +56,9 @@ public class UserMeResponse {
     @JsonProperty("tickets")
     private Integer tickets;
 
+    @JsonProperty("appAccountToken")
+    private String appAccountToken;
+
     @JsonProperty("iosAppAccountToken")
     private String iosAppAccountToken;
     

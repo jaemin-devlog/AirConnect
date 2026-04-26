@@ -192,6 +192,7 @@ public class UserService {
                 .profileImageUploaded(profileImageUploaded)
                 .emailVerified(emailVerified)
                 .tickets(user.getTickets())
+                .appAccountToken(iosAppAccountToken)
                 .iosAppAccountToken(iosAppAccountToken)
                 .profile(profile)
                 .build();

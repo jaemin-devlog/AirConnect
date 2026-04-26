@@ -171,6 +171,12 @@ public class IapOrder {
         this.updatedAt = this.processedAt;
     }
 
+    public void markRefunded() {
+        this.status = IapOrderStatus.REFUNDED;
+        this.processedAt = LocalDateTime.now();
+        this.updatedAt = this.processedAt;
+    }
+
     public String idempotencyKey() {
         if (store == IapStore.APPLE) {
             return transactionId;

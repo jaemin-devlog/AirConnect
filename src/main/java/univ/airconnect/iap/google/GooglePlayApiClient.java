@@ -39,7 +39,7 @@ public class GooglePlayApiClient {
                     packageName, productId, purchaseToken != null);
             String accessToken = accessToken();
             String url = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/"
-                    + packageName + "/purchases/products/" + productId + "/tokens/" + purchaseToken;
+                    + packageName + "/purchases/productsv2/tokens/" + purchaseToken;
 
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(accessToken);
@@ -74,4 +74,3 @@ public class GooglePlayApiClient {
         }
     }
 }
-
