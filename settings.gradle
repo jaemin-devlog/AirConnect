@@ -1,1 +1,23 @@
+import org.gradle.api.initialization.resolve.RepositoriesMode
+
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            url = uri("https://repo1.maven.org/maven2")
+        }
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+    repositories {
+        maven {
+            url = uri("https://repo1.maven.org/maven2")
+        }
+        mavenCentral()
+    }
+}
+
 rootProject.name = 'AirConnect'
