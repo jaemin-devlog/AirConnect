@@ -1,5 +1,6 @@
 package univ.airconnect.global.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,6 +15,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import univ.airconnect.analytics.web.UserActivityFilter;
 import univ.airconnect.global.security.jwt.JwtAuthenticationFilter;
+import univ.airconnect.maintenance.service.MaintenanceService;
+import univ.airconnect.maintenance.web.MaintenanceModeFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -24,7 +27,15 @@ public class SecurityConfig {
     private final UserActivityFilter userActivityFilter;
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public MaintenanceModeFilter maintenanceModeFilter(
+            MaintenanceService maintenanceService,
+            ObjectMapper objectMapper
+    ) {
+        return new MaintenanceModeFilter(maintenanceService, objectMapper);
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http, MaintenanceModeFilter maintenanceModeFilter) throws Exception {
 
         http
                 .csrf(csrf -> csrf.disable())
@@ -42,6 +53,7 @@ public class SecurityConfig {
                         // 이메일 인증
                         .requestMatchers("/api/v1/verification/**").permitAll()
 
+                        .requestMatchers("/api/v1/maintenance").permitAll()
                         .requestMatchers("/api/v1/statistics/**").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
 
@@ -66,6 +78,7 @@ public class SecurityConfig {
 
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(maintenanceModeFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(userActivityFilter, JwtAuthenticationFilter.class);
 

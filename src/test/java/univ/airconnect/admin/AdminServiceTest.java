@@ -45,6 +45,8 @@ import static org.mockito.Mockito.when;
 class AdminServiceTest {
 
     @Mock
+    private AdminNoticeRepository adminNoticeRepository;
+    @Mock
     private UserRepository userRepository;
     @Mock
     private UserReportRepository userReportRepository;
@@ -68,6 +70,7 @@ class AdminServiceTest {
     @BeforeEach
     void setUp() {
         adminService = new AdminService(
+                adminNoticeRepository,
                 userRepository,
                 userReportRepository,
                 matchingConnectionRepository,
@@ -120,13 +123,48 @@ class AdminServiceTest {
     @Test
     void broadcastNotice_sendsSystemAnnouncementToActiveUsers() {
         when(userRepository.findIdsByStatus(UserStatus.ACTIVE)).thenReturn(List.of(10L, 20L));
+        when(adminNoticeRepository.save(any())).thenAnswer(invocation -> {
+            AdminNotice notice = invocation.getArgument(0);
+            ReflectionTestUtils.setField(notice, "id", 77L);
+            return notice;
+        });
 
         AdminDtos.NoticeBroadcastResult response = adminService.broadcastNotice(
+                999L,
                 new AdminRequests.NoticeBroadcastRequest("공지", "점검 예정", "airconnect://notice", true)
         );
 
         verify(notificationService, times(2)).createAndEnqueue(any());
+        assertThat(response.noticeId()).isEqualTo(77L);
         assertThat(response.recipients()).isEqualTo(2);
+    }
+
+    @Test
+    void getNotices_returnsPagedSummaries() {
+        AdminNotice notice = AdminNotice.create(999L, "공지", "본문", "airconnect://notice", true, 12);
+        ReflectionTestUtils.setField(notice, "id", 7L);
+
+        when(adminNoticeRepository.findAllByOrderByCreatedAtDescIdDesc(any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(notice)));
+
+        AdminDtos.PageResponse<AdminDtos.NoticeSummary> response = adminService.getNotices(0, 20);
+
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).noticeId()).isEqualTo(7L);
+        assertThat(response.items().get(0).recipientCount()).isEqualTo(12);
+    }
+
+    @Test
+    void getNoticeDetail_returnsSavedNotice() {
+        AdminNotice notice = AdminNotice.create(999L, "공지", "본문", "airconnect://notice", true, 12);
+        ReflectionTestUtils.setField(notice, "id", 8L);
+        when(adminNoticeRepository.findById(8L)).thenReturn(Optional.of(notice));
+
+        AdminDtos.NoticeDetail detail = adminService.getNoticeDetail(8L);
+
+        assertThat(detail.noticeId()).isEqualTo(8L);
+        assertThat(detail.body()).isEqualTo("본문");
+        assertThat(detail.recipientCount()).isEqualTo(12);
     }
 
     @Test
