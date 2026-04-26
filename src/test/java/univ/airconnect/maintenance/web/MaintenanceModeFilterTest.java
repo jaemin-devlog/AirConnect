@@ -105,4 +105,25 @@ class MaintenanceModeFilterTest {
         verify(maintenanceService).isEnabled();
         verify(maintenanceService, never()).getStatus();
     }
+
+    @Test
+    void passesThroughStatisticsApiForAuthenticatedAdminWhenMaintenanceEnabled() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/statistics/main");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        new CustomUserPrincipal(1000L, UserRole.ADMIN),
+                        null,
+                        new CustomUserPrincipal(1000L, UserRole.ADMIN).getAuthorities()
+                )
+        );
+        when(maintenanceService.isEnabled()).thenReturn(true);
+
+        maintenanceModeFilter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(maintenanceService).isEnabled();
+        verify(maintenanceService, never()).getStatus();
+    }
 }

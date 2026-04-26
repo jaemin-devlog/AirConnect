@@ -13,23 +13,29 @@ import univ.airconnect.iap.exception.IapException;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
+import java.io.InputStream;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.cert.CertPath;
+import java.security.cert.CertStore;
 import java.security.cert.CertPathValidator;
 import java.security.cert.CertificateFactory;
+import java.security.cert.CollectionCertStoreParameters;
 import java.security.cert.PKIXParameters;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 @Slf4j
@@ -49,10 +55,22 @@ public class AppleSignedTransactionVerifier {
      */
     private static final String APPLE_WWDR_INTERMEDIATE_OID = "1.2.840.113635.100.6.2.1";
     private static final String APPLE_WWDR_G6_INTERMEDIATE_OID = "1.2.840.113635.100.6.2.14";
+    private static final List<String> BUNDLED_APPLE_CA_RESOURCES = List.of(
+            "apple-pki/AppleIncRootCertificate.cer",
+            "apple-pki/AppleRootCA-G2.cer",
+            "apple-pki/AppleRootCA-G3.cer",
+            "apple-pki/AppleWWDRCAG2.cer",
+            "apple-pki/AppleWWDRCAG3.cer",
+            "apple-pki/AppleWWDRCAG4.cer",
+            "apple-pki/AppleWWDRCAG5.cer",
+            "apple-pki/AppleWWDRCAG6.cer"
+    );
+    private static final int MAX_CHAIN_LENGTH = 8;
 
     private final ObjectMapper objectMapper;
 
     private volatile Set<TrustAnchor> cachedTrustAnchors;
+    private volatile List<X509Certificate> cachedBundledCertificates;
 
     public JsonNode verifyAndExtractPayload(String signedTransactionInfo) {
         try {
@@ -63,7 +81,7 @@ public class AppleSignedTransactionVerifier {
             JsonNode header = decodeHeader(signedTransactionInfo);
             validateHeader(header);
 
-            List<X509Certificate> certificateChain = parseCertificateChain(header);
+            List<X509Certificate> certificateChain = buildValidationChain(parseCertificateChain(header));
             validateCertificateChain(certificateChain);
 
             X509Certificate leafCertificate = certificateChain.get(0);
@@ -149,8 +167,36 @@ public class AppleSignedTransactionVerifier {
         PKIXParameters parameters = new PKIXParameters(loadTrustAnchors());
         parameters.setRevocationEnabled(false);
         parameters.setDate(now);
+        parameters.addCertStore(CertStore.getInstance(
+                "Collection",
+                new CollectionCertStoreParameters(loadBundledCertificates())
+        ));
 
         CertPathValidator.getInstance("PKIX").validate(certPath, parameters);
+    }
+
+    private List<X509Certificate> buildValidationChain(List<X509Certificate> providedChain) {
+        List<X509Certificate> chain = new ArrayList<>(providedChain);
+        Map<String, X509Certificate> bundledBySubject = new HashMap<>();
+        for (X509Certificate certificate : loadBundledCertificates()) {
+            bundledBySubject.put(certificate.getSubjectX500Principal().getName(), certificate);
+        }
+
+        while (!chain.isEmpty() && chain.size() < MAX_CHAIN_LENGTH) {
+            X509Certificate lastCertificate = chain.get(chain.size() - 1);
+            if (isSelfSigned(lastCertificate)) {
+                break;
+            }
+
+            String issuerName = lastCertificate.getIssuerX500Principal().getName();
+            X509Certificate issuerCertificate = bundledBySubject.get(issuerName);
+            if (issuerCertificate == null || containsCertificate(chain, issuerCertificate)) {
+                break;
+            }
+            chain.add(issuerCertificate);
+        }
+
+        return chain;
     }
 
     private void validateChainLinkages(List<X509Certificate> chain) {
@@ -201,6 +247,10 @@ public class AppleSignedTransactionVerifier {
         return certificate.getSubjectX500Principal().equals(certificate.getIssuerX500Principal());
     }
 
+    private boolean containsCertificate(Collection<X509Certificate> certificates, X509Certificate target) {
+        return certificates.stream().anyMatch(cert -> cert.equals(target));
+    }
+
     private Set<TrustAnchor> loadTrustAnchors() {
         Set<TrustAnchor> local = cachedTrustAnchors;
         if (local != null) {
@@ -226,6 +276,12 @@ public class AppleSignedTransactionVerifier {
                     }
                 }
 
+                for (X509Certificate certificate : loadBundledCertificates()) {
+                    if (isSelfSigned(certificate)) {
+                        trustAnchors.add(new TrustAnchor(certificate, null));
+                    }
+                }
+
                 if (trustAnchors.isEmpty()) {
                     throw new IllegalStateException("신뢰 가능한 루트 인증서를 찾지 못했습니다.");
                 }
@@ -234,6 +290,38 @@ public class AppleSignedTransactionVerifier {
                 return trustAnchors;
             } catch (Exception e) {
                 throw new IapException(IapErrorCode.IAP_APPLE_VERIFY_FAILED, "Apple 인증서 신뢰 체인 로딩 실패");
+            }
+        }
+    }
+
+    private List<X509Certificate> loadBundledCertificates() {
+        List<X509Certificate> local = cachedBundledCertificates;
+        if (local != null) {
+            return local;
+        }
+
+        synchronized (this) {
+            if (cachedBundledCertificates != null) {
+                return cachedBundledCertificates;
+            }
+
+            try {
+                CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
+                List<X509Certificate> certificates = new ArrayList<>();
+
+                for (String resourcePath : BUNDLED_APPLE_CA_RESOURCES) {
+                    try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream(resourcePath)) {
+                        if (inputStream == null) {
+                            throw new IllegalStateException("Apple 인증서 리소스를 찾을 수 없습니다: " + resourcePath);
+                        }
+                        certificates.add((X509Certificate) certificateFactory.generateCertificate(inputStream));
+                    }
+                }
+
+                cachedBundledCertificates = List.copyOf(certificates);
+                return cachedBundledCertificates;
+            } catch (Exception e) {
+                throw new IapException(IapErrorCode.IAP_APPLE_VERIFY_FAILED, "Apple 내장 인증서 로딩 실패");
             }
         }
     }
