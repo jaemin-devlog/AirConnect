@@ -102,6 +102,22 @@ public class TicketLedger {
                 .build();
     }
 
+    public static TicketLedger refundForIap(Long userId,
+                                            int amount,
+                                            int beforeAmount,
+                                            int afterAmount,
+                                            String refId) {
+        return TicketLedger.builder()
+                .userId(userId)
+                .changeAmount(-Math.abs(amount))
+                .beforeAmount(beforeAmount)
+                .afterAmount(afterAmount)
+                .reason("IAP_REFUND")
+                .refType(LedgerRefType.IAP_REFUND)
+                .refId(refId)
+                .build();
+    }
+
     public static TicketLedger consumeForMatchingRecommendation(Long userId,
                                                                 int amount,
                                                                 int beforeAmount,

@@ -7,6 +7,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.global.response.ApiResponse;
@@ -51,7 +53,7 @@ public class MaintenanceModeFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        if (!maintenanceService.isEnabled()) {
+        if (!maintenanceService.isEnabled() || isAdminAuthenticated()) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -80,6 +82,15 @@ public class MaintenanceModeFilter extends OncePerRequestFilter {
         response.setCharacterEncoding("UTF-8");
         response.setHeader(TRACE_ID_HEADER, traceId);
         objectMapper.writeValue(response.getWriter(), ApiResponse.fail(errorBody, traceId));
+    }
+
+    private boolean isAdminAuthenticated() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()));
     }
 
     private String resolveTraceId(HttpServletRequest request) {

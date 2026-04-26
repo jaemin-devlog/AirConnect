@@ -52,14 +52,17 @@ public class GooglePurchaseVerifier implements StorePurchaseVerifier {
         }
 
         JsonNode node = googlePlayApiClient.verifyProductPurchase(packageName, req.getProductId(), req.getPurchaseToken());
-        int purchaseState = node.path("purchaseState").asInt(-1);
+        String purchaseState = node.path("purchaseStateContext").path("purchaseState").asText("PURCHASE_STATE_UNSPECIFIED");
         log.info("Google verifier API response parsed. userId={}, purchaseState={}", userId, purchaseState);
-        if (purchaseState != 0) {
+        if (!"PURCHASED".equalsIgnoreCase(purchaseState)) {
             log.warn("Google verifier invalid purchase state. userId={}, purchaseState={}", userId, purchaseState);
             throw new IapException(IapErrorCode.IAP_INVALID_TRANSACTION, "구매 상태가 유효하지 않습니다.");
         }
 
-        String productId = node.path("productId").asText(null);
+        JsonNode firstItem = node.path("productLineItem").isArray() && !node.path("productLineItem").isEmpty()
+                ? node.path("productLineItem").get(0)
+                : null;
+        String productId = firstItem == null ? req.getProductId() : firstItem.path("productId").asText(req.getProductId());
         String orderId = node.path("orderId").asText(req.getOrderId());
         String payloadRaw = node.toString();
 
@@ -79,5 +82,4 @@ public class GooglePurchaseVerifier implements StorePurchaseVerifier {
         return result;
     }
 }
-
 

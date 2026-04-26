@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import univ.airconnect.global.response.ApiResponse;
@@ -22,6 +23,8 @@ import univ.airconnect.iap.dto.request.IosTransactionsSyncRequest;
 import univ.airconnect.iap.dto.response.IapOrderResponse;
 import univ.airconnect.iap.dto.response.IapSyncResponse;
 import univ.airconnect.iap.dto.response.IapVerifyResponse;
+import univ.airconnect.iap.exception.IapErrorCode;
+import univ.airconnect.iap.exception.IapException;
 import univ.airconnect.iap.infrastructure.PayloadSecurityUtil;
 
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
@@ -47,13 +50,15 @@ public class IapController {
     @PostMapping("/ios/transactions/verify")
     public ResponseEntity<ApiResponse<IapVerifyResponse>> verifyIos(
             @CurrentUserId Long userId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody IosTransactionVerifyRequest request,
             HttpServletRequest httpRequest
     ) {
+        IosTransactionVerifyRequest normalizedRequest = normalizeIosVerifyRequest(request, idempotencyKey);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
         log.info("IAP iOS verify request received. traceId={}, userId={}, transactionId={}, appAccountToken={}",
-                traceId, userId, request.getTransactionId(), payloadSecurityUtil.mask(request.getAppAccountToken()));
-        IapVerifyResponse response = iapProcessingService.verifyIos(userId, request);
+                traceId, userId, normalizedRequest.getTransactionId(), payloadSecurityUtil.mask(normalizedRequest.getAppAccountToken()));
+        IapVerifyResponse response = iapProcessingService.verifyIos(userId, normalizedRequest);
         log.info("IAP iOS verify completed. traceId={}, userId={}, transactionId={}, grantStatus={}",
                 traceId, userId, response.getTransactionId(), response.getGrantStatus());
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
@@ -133,5 +138,20 @@ public class IapController {
                 traceId, userId, response.getId(), response.getStatus());
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
-}
 
+    private IosTransactionVerifyRequest normalizeIosVerifyRequest(IosTransactionVerifyRequest request, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return request;
+        }
+        if (request.getTransactionId() != null
+                && !request.getTransactionId().isBlank()
+                && !idempotencyKey.equals(request.getTransactionId())) {
+            throw new IapException(IapErrorCode.IAP_INVALID_TRANSACTION, "Idempotency-Key 와 transactionId 가 일치하지 않습니다.");
+        }
+        return new IosTransactionVerifyRequest(
+                request.getSignedTransactionInfo(),
+                idempotencyKey,
+                request.getAppAccountToken()
+        );
+    }
+}

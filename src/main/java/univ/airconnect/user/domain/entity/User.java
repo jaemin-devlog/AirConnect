@@ -244,6 +244,13 @@ public class User {
         this.tickets += amount;
     }
 
+    public void deductTicketsAllowNegative(int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("차감 수량은 0 이상이어야 합니다.");
+        }
+        this.tickets -= amount;
+    }
+
     public void adjustTickets(int delta) {
         if (delta >= 0) {
             addTickets(delta);

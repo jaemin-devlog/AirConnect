@@ -41,6 +41,8 @@ class IapProcessingServiceTest {
     private IapOrderRepository iapOrderRepository;
     @Mock
     private TicketGrantService ticketGrantService;
+    @Mock
+    private IapRefundService iapRefundService;
 
     @InjectMocks
     private IapProcessingService iapProcessingService;
@@ -113,6 +115,40 @@ class IapProcessingServiceTest {
         assertThat(response.getGrantStatus()).isEqualTo(GrantStatus.ALREADY_GRANTED);
         assertThat(response.getGrantedTickets()).isEqualTo(5);
         assertThat(response.getAfterTickets()).isEqualTo(25);
+    }
+
+    @Test
+    void verifyIos_refundsAlreadyGrantedOrder_whenRevocationArrivesLater() {
+        Long userId = 1L;
+        IosTransactionVerifyRequest request = new IosTransactionVerifyRequest();
+        ReflectionTestUtils.setField(request, "signedTransactionInfo", "jws");
+
+        StoreVerificationResult verificationResult = StoreVerificationResult.builder()
+                .store(IapStore.APPLE)
+                .productId("AirConnect_PremiumEconomy_10")
+                .transactionId("tx-refund")
+                .environment(IapEnvironment.SANDBOX)
+                .verificationHash("hash")
+                .rawPayloadMasked("mask")
+                .valid(false)
+                .transactionRevoked(true)
+                .build();
+
+        IapOrder existing = IapOrder.createPending(userId, IapStore.APPLE, "AirConnect_PremiumEconomy_10",
+                "tx-refund", null, null, null, null, IapEnvironment.SANDBOX, "hash", "mask");
+        ReflectionTestUtils.setField(existing, "id", 88L);
+        existing.markVerified();
+        existing.markGranted(12, 7, 19);
+
+        when(storeVerifierResolver.resolve(IapStore.APPLE)).thenReturn(storePurchaseVerifier);
+        when(storePurchaseVerifier.verify(eq(userId), any())).thenReturn(verificationResult);
+        when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-refund")).thenReturn(Optional.of(existing));
+        when(iapOrderRepository.findByIdForUpdate(88L)).thenReturn(Optional.of(existing));
+
+        IapVerifyResponse response = iapProcessingService.verifyIos(userId, request);
+
+        assertThat(response.getGrantStatus()).isEqualTo(GrantStatus.REJECTED);
+        verify(iapRefundService).refundGrantedOrder(existing, "verify:APPLE");
     }
 
     @Test

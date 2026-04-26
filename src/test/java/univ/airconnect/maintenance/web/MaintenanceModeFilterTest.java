@@ -2,10 +2,13 @@ package univ.airconnect.maintenance.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import univ.airconnect.maintenance.dto.response.MaintenanceStatusResponse;
 import univ.airconnect.maintenance.service.MaintenanceService;
 
@@ -18,6 +21,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import univ.airconnect.global.security.principal.CustomUserPrincipal;
+import univ.airconnect.user.domain.UserRole;
 
 class MaintenanceModeFilterTest {
 
@@ -25,6 +30,11 @@ class MaintenanceModeFilterTest {
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final MaintenanceModeFilter maintenanceModeFilter =
             new MaintenanceModeFilter(maintenanceService, objectMapper);
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     void blocksGeneralApiRequestsWhenMaintenanceEnabled() throws ServletException, IOException {
@@ -73,5 +83,26 @@ class MaintenanceModeFilterTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         verify(maintenanceService).isEnabled();
+    }
+
+    @Test
+    void passesThroughForAuthenticatedAdminEvenWhenMaintenanceEnabled() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/notices");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        new CustomUserPrincipal(999L, UserRole.ADMIN),
+                        null,
+                        new CustomUserPrincipal(999L, UserRole.ADMIN).getAuthorities()
+                )
+        );
+        when(maintenanceService.isEnabled()).thenReturn(true);
+
+        maintenanceModeFilter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(maintenanceService).isEnabled();
+        verify(maintenanceService, never()).getStatus();
     }
 }
