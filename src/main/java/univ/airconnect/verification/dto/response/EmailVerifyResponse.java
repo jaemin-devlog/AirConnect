@@ -2,6 +2,7 @@ package univ.airconnect.verification.dto.response;
 
 import lombok.Builder;
 import lombok.Getter;
+import univ.airconnect.verification.domain.VerificationNextAction;
 
 import java.time.OffsetDateTime;
 
@@ -12,5 +13,5 @@ public class EmailVerifyResponse {
     private String verifiedEmail;
     private String verificationToken;
     private OffsetDateTime expiresAt;
+    private VerificationNextAction nextAction;
 }
-

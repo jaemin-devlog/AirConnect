@@ -4,6 +4,11 @@ plugins {
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
+def sensitivePackagingExcludes = [
+        'application-local.yml',
+        'key/**'
+]
+
 group = 'univ'
 version = '0.0.1-SNAPSHOT'
 description = 'AirConnect'
@@ -88,6 +93,14 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+tasks.named('bootJar') {
+    excludes.addAll(sensitivePackagingExcludes)
+}
+
+tasks.named('jar') {
+    excludes.addAll(sensitivePackagingExcludes)
 }
 
 tasks.withType(JavaCompile).configureEach {

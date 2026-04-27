@@ -370,21 +370,11 @@ public class GlobalExceptionHandler {
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.NOT_FOUND;
-        String userAgent = headerOrDash(request, "User-Agent");
-        String origin = headerOrDash(request, "Origin");
-        String referer = headerOrDash(request, "Referer");
-        String forwardedFor = headerOrDash(request, "X-Forwarded-For");
-
-        log.warn("NoResourceFoundException [{}] - {} {} (ua='{}', origin='{}', referer='{}', xff='{}')",
-                traceId, request.getMethod(), request.getRequestURI(), userAgent, origin, referer, forwardedFor);
+        log.warn("NoResourceFoundException [{}] - {} {}", traceId, request.getMethod(), request.getRequestURI());
 
         Map<String, Object> details = new HashMap<>();
         details.put("method", request.getMethod());
         details.put("path", request.getRequestURI());
-        details.put("userAgent", userAgent);
-        details.put("origin", origin);
-        details.put("referer", referer);
-        details.put("xForwardedFor", forwardedFor);
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
@@ -404,23 +394,13 @@ public class GlobalExceptionHandler {
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.METHOD_NOT_ALLOWED;
-        String userAgent = headerOrDash(request, "User-Agent");
-        String origin = headerOrDash(request, "Origin");
-        String referer = headerOrDash(request, "Referer");
-        String forwardedFor = headerOrDash(request, "X-Forwarded-For");
-
-        log.warn("HttpRequestMethodNotSupportedException [{}] - {} {} (allowed={}, ua='{}', origin='{}', referer='{}', xff='{}')",
-                traceId, request.getMethod(), request.getRequestURI(), e.getSupportedMethods(),
-                userAgent, origin, referer, forwardedFor);
+        log.warn("HttpRequestMethodNotSupportedException [{}] - {} {} (allowed={})",
+                traceId, request.getMethod(), request.getRequestURI(), e.getSupportedMethods());
 
         Map<String, Object> details = new HashMap<>();
         details.put("method", request.getMethod());
         details.put("path", request.getRequestURI());
         details.put("supportedMethods", e.getSupportedMethods());
-        details.put("userAgent", userAgent);
-        details.put("origin", origin);
-        details.put("referer", referer);
-        details.put("xForwardedFor", forwardedFor);
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),

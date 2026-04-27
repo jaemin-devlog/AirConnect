@@ -13,14 +13,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.response.ErrorBody;
+import univ.airconnect.global.web.TraceIdSupport;
 import univ.airconnect.maintenance.dto.response.MaintenanceStatusResponse;
 import univ.airconnect.maintenance.service.MaintenanceService;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
-
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_HEADER;
 
@@ -100,13 +99,8 @@ public class MaintenanceModeFilter extends OncePerRequestFilter {
         }
 
         String header = request.getHeader(TRACE_ID_HEADER);
-        if (header != null && !header.isBlank()) {
-            request.setAttribute(TRACE_ID_ATTRIBUTE, header);
-            return header;
-        }
-
-        String generated = UUID.randomUUID().toString();
-        request.setAttribute(TRACE_ID_ATTRIBUTE, generated);
-        return generated;
+        String resolved = TraceIdSupport.resolveOrGenerate(header);
+        request.setAttribute(TRACE_ID_ATTRIBUTE, resolved);
+        return resolved;
     }
 }

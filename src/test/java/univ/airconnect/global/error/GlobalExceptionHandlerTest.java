@@ -44,7 +44,8 @@ class GlobalExceptionHandlerTest {
                 .isInstanceOf(Map.class)
                 .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.map(String.class, Object.class))
                 .containsEntry("method", HttpMethod.GET.name())
-                .containsEntry("path", path);
+                .containsEntry("path", path)
+                .doesNotContainKeys("userAgent", "origin", "referer", "xForwardedFor");
     }
 
     @Test
@@ -73,7 +74,8 @@ class GlobalExceptionHandlerTest {
                 .isInstanceOf(Map.class)
                 .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.map(String.class, Object.class))
                 .containsEntry("method", HttpMethod.POST.name())
-                .containsEntry("path", path);
+                .containsEntry("path", path)
+                .doesNotContainKeys("userAgent", "origin", "referer", "xForwardedFor");
     }
 
     @Test
