@@ -16,6 +16,7 @@ public enum VerificationErrorCode {
     VERIFIED_EMAIL_TOKEN_EXPIRED(HttpStatus.BAD_REQUEST, "VERIFY_VERIFIED_EMAIL_TOKEN_EXPIRED", "인증 완료 토큰이 만료되었거나 유효하지 않습니다."),
     VERIFIED_EMAIL_MISMATCH(HttpStatus.BAD_REQUEST, "VERIFY_VERIFIED_EMAIL_MISMATCH", "인증된 이메일과 요청 정보가 일치하지 않습니다."),
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "VERIFY_TOO_MANY_REQUESTS", "인증 요청이 너무 잦습니다. 잠시 후 다시 시도해주세요."),
+    TOO_MANY_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "VERIFY_TOO_MANY_ATTEMPTS", "인증 시도가 너무 많습니다. 잠시 후 다시 시도해주세요."),
     MAIL_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "VERIFY_MAIL_SEND_FAILED", "메일 발송에 실패했습니다.");
 
     private final HttpStatus httpStatus;

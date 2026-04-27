@@ -23,12 +23,15 @@ import univ.airconnect.auth.security.TokenHashService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
+import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
+import univ.airconnect.verification.domain.entity.VerifiedSchoolEmail;
+import univ.airconnect.verification.repository.VerifiedSchoolEmailRepository;
 import univ.airconnect.verification.service.VerificationService;
 
 import java.util.Map;
@@ -48,10 +51,16 @@ public class AuthService {
     private final UserService userService;
     private final AnalyticsService analyticsService;
     private final VerificationService verificationService;
+    private final VerifiedSchoolEmailRepository verifiedSchoolEmailRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AttemptThrottleService attemptThrottleService;
 
     private static final int PASSWORD_MIN_LENGTH = 8;
     private static final int PASSWORD_MAX_LENGTH = 72;
+    private static final String EMAIL_LOGIN_ATTEMPT_SCOPE = "email_login";
+    private static final int EMAIL_LOGIN_MAX_ATTEMPTS = 5;
+    private static final long EMAIL_LOGIN_COUNTER_TTL_SECONDS = 15 * 60L;
+    private static final long EMAIL_LOGIN_LOCK_TTL_SECONDS = 15 * 60L;
 
     @Transactional
     public LoginResponse socialLogin(SocialLoginRequest request) {
@@ -83,10 +92,12 @@ public class AuthService {
 
         String verifiedEmail = verificationService.resolveVerifiedEmail(request.getVerificationToken());
         String normalizedEmail = normalizeEmail(verifiedEmail);
+        VerifiedSchoolEmail reservation = verifiedSchoolEmailRepository.findByEmailIgnoreCase(normalizedEmail).orElse(null);
 
         if (userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail).isPresent()
                 || userRepository.existsByEmailIgnoreCase(normalizedEmail)
-                || userRepository.existsByVerifiedSchoolEmailIgnoreCase(normalizedEmail)) {
+                || userRepository.existsByVerifiedSchoolEmailIgnoreCase(normalizedEmail)
+                || (reservation != null && reservation.getLinkedUserId() != null)) {
             throw new AuthException(AuthErrorCode.EMAIL_ALREADY_REGISTERED);
         }
 
@@ -99,6 +110,7 @@ public class AuthService {
             throw new AuthException(AuthErrorCode.EMAIL_ALREADY_REGISTERED);
         }
 
+        verificationService.claimVerifiedEmailForUser(normalizedEmail, created.getId());
         verificationService.consumeVerifiedEmail(request.getVerificationToken());
         created.markActive();
 
@@ -108,6 +120,11 @@ public class AuthService {
 
     @Transactional
     public LoginResponse emailLogin(EmailLoginRequest request) {
+        return emailLogin(request, "unknown");
+    }
+
+    @Transactional
+    public LoginResponse emailLogin(EmailLoginRequest request, String clientIp) {
         log.info("Email login payload received: hasEmail={}, hasPassword={}, hasDeviceId={}",
                 request != null && request.getEmail() != null && !request.getEmail().isBlank(),
                 request != null && request.getPassword() != null && !request.getPassword().isBlank(),
@@ -116,17 +133,19 @@ public class AuthService {
         validateEmailLoginRequest(request);
 
         String normalizedEmail = normalizeEmail(request.getEmail());
+        ensureEmailLoginNotLocked(normalizedEmail, clientIp);
 
         User user = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.EMAIL_LOGIN_FAILED));
+                .orElseThrow(() -> failEmailLogin(normalizedEmail, clientIp));
 
         validateUserStatus(user);
 
         String savedPasswordHash = user.getPasswordHash();
         if (savedPasswordHash == null || !passwordEncoder.matches(request.getPassword(), savedPasswordHash)) {
-            throw new AuthException(AuthErrorCode.EMAIL_LOGIN_FAILED);
+            throw failEmailLogin(normalizedEmail, clientIp);
         }
 
+        clearEmailLoginFailures(normalizedEmail, clientIp);
         user.markActive();
 
         log.info("Email login completed: userId={}, emailMasked={}",
@@ -283,6 +302,28 @@ public class AuthService {
 
     private boolean isRestrictedStatus(UserStatus status) {
         return status == UserStatus.DELETED || status == UserStatus.SUSPENDED || status == UserStatus.RESTRICTED;
+    }
+
+    private void ensureEmailLoginNotLocked(String normalizedEmail, String clientIp) {
+        if (attemptThrottleService.isLocked(EMAIL_LOGIN_ATTEMPT_SCOPE, normalizedEmail, clientIp)) {
+            throw new AuthException(AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED);
+        }
+    }
+
+    private AuthException failEmailLogin(String normalizedEmail, String clientIp) {
+        boolean locked = attemptThrottleService.recordFailure(
+                EMAIL_LOGIN_ATTEMPT_SCOPE,
+                normalizedEmail,
+                clientIp,
+                EMAIL_LOGIN_MAX_ATTEMPTS,
+                EMAIL_LOGIN_COUNTER_TTL_SECONDS,
+                EMAIL_LOGIN_LOCK_TTL_SECONDS
+        );
+        return new AuthException(locked ? AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED : AuthErrorCode.EMAIL_LOGIN_FAILED);
+    }
+
+    private void clearEmailLoginFailures(String normalizedEmail, String clientIp) {
+        attemptThrottleService.clear(EMAIL_LOGIN_ATTEMPT_SCOPE, normalizedEmail, clientIp);
     }
 
     private LoginResponse issueLoginResponse(User user, String deviceId, String providerName) {

@@ -8,3 +8,8 @@ build/
 out/
 *.log
 .env
+src/main/resources/application-local.yml
+src/main/resources/key/
+src/main/resources/*.p8
+secrets/
+config/firebase-service-account.json

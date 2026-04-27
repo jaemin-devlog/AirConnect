@@ -6,6 +6,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.entity.UserMilestone;
 import univ.airconnect.user.exception.UserErrorCode;
@@ -14,9 +15,12 @@ import univ.airconnect.user.infrastructure.MilestoneRewardProperties;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.verification.domain.VerificationNextAction;
+import univ.airconnect.verification.domain.entity.VerifiedSchoolEmail;
 import univ.airconnect.verification.domain.VerificationPurpose;
 import univ.airconnect.verification.exception.VerificationErrorCode;
 import univ.airconnect.verification.exception.VerificationException;
+import univ.airconnect.verification.repository.VerifiedSchoolEmailRepository;
 
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
@@ -34,7 +38,9 @@ public class VerificationService {
     private final StringRedisTemplate redisTemplate;
     private final UserRepository userRepository;
     private final UserMilestoneRepository userMilestoneRepository;
+    private final VerifiedSchoolEmailRepository verifiedSchoolEmailRepository;
     private final MilestoneRewardProperties milestoneRewardProperties;
+    private final AttemptThrottleService attemptThrottleService;
 
     private static final String VERIFICATION_PREFIX = "email_verification:";
     private static final String COOLDOWN_PREFIX = "email_verification_cooldown:";
@@ -45,14 +51,29 @@ public class VerificationService {
     private static final long VERIFIED_TOKEN_EXPIRATION_MINUTES = 20;
     private static final String SCHOOL_DOMAIN = "office.hanseo.ac.kr";
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final String VERIFY_ATTEMPT_SCOPE = "school_email_verify";
+    private static final String SEND_EMAIL_IP_ATTEMPT_SCOPE = "school_email_send";
+    private static final String SEND_IP_ATTEMPT_SCOPE = "school_email_send_ip";
+    private static final int VERIFY_MAX_ATTEMPTS = 5;
+    private static final long VERIFY_COUNTER_TTL_SECONDS = CODE_EXPIRATION_MINUTES * 60;
+    private static final long VERIFY_LOCK_TTL_SECONDS = 15 * 60L;
+    private static final int SEND_EMAIL_IP_MAX_ATTEMPTS = 5;
+    private static final int SEND_IP_MAX_ATTEMPTS = 20;
+    private static final long SEND_COUNTER_TTL_SECONDS = 15 * 60L;
+    private static final long SEND_LOCK_TTL_SECONDS = 15 * 60L;
 
     public void sendCode(String email, VerificationPurpose purpose) {
+        sendCode(email, purpose, "unknown");
+    }
+
+    public void sendCode(String email, VerificationPurpose purpose, String clientIp) {
         String normalizedEmail = normalizeEmail(email);
         validateEmailDomain(normalizedEmail);
-        VerificationPurpose resolvedPurpose = resolvePurpose(normalizedEmail, purpose);
-        assertSignUpEmailAvailability(normalizedEmail, resolvedPurpose);
+        resolvePurpose(purpose);
+        ensureSendNotLocked(normalizedEmail, clientIp);
         clearActiveVerifiedSession(normalizedEmail);
         checkResendCooldown(normalizedEmail);
+        recordSendAttempt(normalizedEmail, clientIp);
 
         String code = generateCode();
         saveCode(normalizedEmail, code);
@@ -73,24 +94,45 @@ public class VerificationService {
 
     @Transactional
     public VerifiedEmailSession verifyCode(Long userId, String email, String code, VerificationPurpose purpose) {
+        return verifyCode(userId, email, code, purpose, "unknown");
+    }
+
+    @Transactional
+    public VerifiedEmailSession verifyCode(
+            Long userId,
+            String email,
+            String code,
+            VerificationPurpose purpose,
+            String clientIp
+    ) {
         String normalizedEmail = normalizeEmail(email);
         validateEmailDomain(normalizedEmail);
-        VerificationPurpose resolvedPurpose = resolvePurpose(normalizedEmail, purpose);
-        assertSignUpEmailAvailability(normalizedEmail, resolvedPurpose);
+        VerificationPurpose resolvedPurpose = resolvePurpose(purpose);
+        ensureVerifyNotLocked(normalizedEmail, clientIp);
 
         String savedCode = redisTemplate.opsForValue().get(VERIFICATION_PREFIX + normalizedEmail);
         if (savedCode == null) {
-            throw new VerificationException(VerificationErrorCode.CODE_EXPIRED);
+            throw recordVerifyFailure(normalizedEmail, clientIp, VerificationErrorCode.CODE_EXPIRED);
         }
         if (!savedCode.equals(code.trim())) {
-            throw new VerificationException(VerificationErrorCode.CODE_MISMATCH);
+            throw recordVerifyFailure(normalizedEmail, clientIp, VerificationErrorCode.CODE_MISMATCH);
         }
-
+        clearVerifyFailures(normalizedEmail, clientIp);
         clearVerificationData(normalizedEmail);
         clearActiveVerifiedSession(normalizedEmail);
+
+        if (resolvedPurpose == VerificationPurpose.SIGN_UP && !isSignUpEmailAvailable(normalizedEmail)) {
+            log.info("Email verification succeeded for existing account. email={}", maskEmail(normalizedEmail));
+            return buildActionOnlySession(normalizedEmail, VerificationNextAction.LOGIN_REQUIRED);
+        }
+
+        reserveVerifiedEmail(userId, normalizedEmail);
         linkVerifiedEmailToUser(userId, normalizedEmail);
         grantMilestoneIfNotAlreadyGranted(userId, normalizedEmail);
-        VerifiedEmailSession verifiedSession = issueVerifiedSession(normalizedEmail);
+        VerifiedEmailSession verifiedSession = issueVerifiedSession(
+                normalizedEmail,
+                resolveNextAction(resolvedPurpose)
+        );
 
         log.info("Email verification succeeded. userId={}, email={}, tokenMasked={}",
                 userId, maskEmail(normalizedEmail), maskToken(verifiedSession.verificationToken()));
@@ -180,7 +222,7 @@ public class VerificationService {
         redisTemplate.delete(COOLDOWN_PREFIX + email);
     }
 
-    private VerifiedEmailSession issueVerifiedSession(String email) {
+    private VerifiedEmailSession issueVerifiedSession(String email, VerificationNextAction nextAction) {
         String token = UUID.randomUUID().toString();
         redisTemplate.opsForValue().set(
                 VERIFIED_TOKEN_PREFIX + token,
@@ -197,7 +239,8 @@ public class VerificationService {
         return new VerifiedEmailSession(
                 email,
                 token,
-                OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(VERIFIED_TOKEN_EXPIRATION_MINUTES)
+                OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(VERIFIED_TOKEN_EXPIRATION_MINUTES),
+                nextAction
         );
     }
 
@@ -211,27 +254,88 @@ public class VerificationService {
         redisTemplate.delete(VERIFIED_TOKEN_PREFIX + activeToken);
     }
 
-    private void assertSignUpEmailAvailability(String normalizedEmail, VerificationPurpose purpose) {
-        if (purpose != VerificationPurpose.SIGN_UP) {
-            return;
-        }
+    private boolean isSignUpEmailAvailable(String normalizedEmail) {
         boolean existsEmailAccount = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
                 .isPresent();
         boolean linkedToAnyUser = userRepository.existsByEmailIgnoreCase(normalizedEmail)
-                || userRepository.existsByVerifiedSchoolEmailIgnoreCase(normalizedEmail);
-        if (existsEmailAccount || linkedToAnyUser) {
-            throw new VerificationException(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
-        }
+                || userRepository.existsByVerifiedSchoolEmailIgnoreCase(normalizedEmail)
+                || verifiedSchoolEmailRepository.existsByEmailIgnoreCase(normalizedEmail);
+        return !existsEmailAccount && !linkedToAnyUser;
     }
 
-    private VerificationPurpose resolvePurpose(String normalizedEmail, VerificationPurpose purpose) {
+    private VerificationPurpose resolvePurpose(VerificationPurpose purpose) {
         if (purpose != null) {
             return purpose;
         }
+        return VerificationPurpose.SIGN_UP;
+    }
 
-        boolean existsEmailAccount = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
-                .isPresent();
-        return existsEmailAccount ? VerificationPurpose.LOGIN : VerificationPurpose.SIGN_UP;
+    private VerificationNextAction resolveNextAction(VerificationPurpose purpose) {
+        return switch (purpose) {
+            case LOGIN -> VerificationNextAction.LOGIN;
+            case PASSWORD_CHANGE -> VerificationNextAction.PASSWORD_CHANGE;
+            case SIGN_UP -> VerificationNextAction.SIGN_UP;
+        };
+    }
+
+    private VerifiedEmailSession buildActionOnlySession(String email, VerificationNextAction nextAction) {
+        return new VerifiedEmailSession(email, null, null, nextAction);
+    }
+
+    private void ensureVerifyNotLocked(String normalizedEmail, String clientIp) {
+        if (attemptThrottleService.isLocked(VERIFY_ATTEMPT_SCOPE, normalizedEmail, clientIp)) {
+            throw new VerificationException(VerificationErrorCode.TOO_MANY_ATTEMPTS);
+        }
+    }
+
+    private void ensureSendNotLocked(String normalizedEmail, String clientIp) {
+        if (attemptThrottleService.isLocked(SEND_EMAIL_IP_ATTEMPT_SCOPE, normalizedEmail, clientIp)
+                || attemptThrottleService.isLocked(SEND_IP_ATTEMPT_SCOPE, clientIp, "global")) {
+            throw new VerificationException(VerificationErrorCode.TOO_MANY_REQUESTS);
+        }
+    }
+
+    private void recordSendAttempt(String normalizedEmail, String clientIp) {
+        boolean emailIpLocked = attemptThrottleService.recordFailure(
+                SEND_EMAIL_IP_ATTEMPT_SCOPE,
+                normalizedEmail,
+                clientIp,
+                SEND_EMAIL_IP_MAX_ATTEMPTS,
+                SEND_COUNTER_TTL_SECONDS,
+                SEND_LOCK_TTL_SECONDS
+        );
+        boolean ipLocked = attemptThrottleService.recordFailure(
+                SEND_IP_ATTEMPT_SCOPE,
+                clientIp,
+                "global",
+                SEND_IP_MAX_ATTEMPTS,
+                SEND_COUNTER_TTL_SECONDS,
+                SEND_LOCK_TTL_SECONDS
+        );
+
+        if (emailIpLocked || ipLocked) {
+            throw new VerificationException(VerificationErrorCode.TOO_MANY_REQUESTS);
+        }
+    }
+
+    private VerificationException recordVerifyFailure(
+            String normalizedEmail,
+            String clientIp,
+            VerificationErrorCode fallbackErrorCode
+    ) {
+        boolean locked = attemptThrottleService.recordFailure(
+                VERIFY_ATTEMPT_SCOPE,
+                normalizedEmail,
+                clientIp,
+                VERIFY_MAX_ATTEMPTS,
+                VERIFY_COUNTER_TTL_SECONDS,
+                VERIFY_LOCK_TTL_SECONDS
+        );
+        return new VerificationException(locked ? VerificationErrorCode.TOO_MANY_ATTEMPTS : fallbackErrorCode);
+    }
+
+    private void clearVerifyFailures(String normalizedEmail, String clientIp) {
+        attemptThrottleService.clear(VERIFY_ATTEMPT_SCOPE, normalizedEmail, clientIp);
     }
 
     private String normalizeVerificationToken(String verificationToken) {
@@ -287,6 +391,34 @@ public class VerificationService {
 
         userRepository.findById(userId)
                 .ifPresent(user -> user.updateVerifiedSchoolEmail(verifiedEmail));
+    }
+
+    @Transactional
+    public void claimVerifiedEmailForUser(String verifiedEmail, Long userId) {
+        if (userId == null || verifiedEmail == null || verifiedEmail.isBlank()) {
+            return;
+        }
+        String normalizedEmail = normalizeEmail(verifiedEmail);
+        reserveVerifiedEmail(userId, normalizedEmail);
+        linkVerifiedEmailToUser(userId, normalizedEmail);
+    }
+
+    private void reserveVerifiedEmail(Long userId, String verifiedEmail) {
+        VerifiedSchoolEmail reservation = verifiedSchoolEmailRepository.findByEmailIgnoreCase(verifiedEmail)
+                .orElseGet(() -> VerifiedSchoolEmail.reserve(verifiedEmail, userId));
+
+        if (reservation.getId() == null) {
+            verifiedSchoolEmailRepository.save(reservation);
+            return;
+        }
+
+        if (userId != null) {
+            Long linkedUserId = reservation.getLinkedUserId();
+            if (linkedUserId != null && !linkedUserId.equals(userId)) {
+                throw new VerificationException(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
+            }
+            reservation.linkToUser(userId);
+        }
     }
 
     private String maskEmail(String email) {

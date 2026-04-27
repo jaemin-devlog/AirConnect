@@ -8,14 +8,18 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.global.security.AttemptThrottleService;
+import univ.airconnect.verification.domain.VerificationNextAction;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.infrastructure.MilestoneRewardProperties;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.verification.domain.VerificationPurpose;
+import univ.airconnect.verification.domain.entity.VerifiedSchoolEmail;
 import univ.airconnect.verification.exception.VerificationErrorCode;
 import univ.airconnect.verification.exception.VerificationException;
+import univ.airconnect.verification.repository.VerifiedSchoolEmailRepository;
 
 import java.util.Optional;
 
@@ -40,7 +44,11 @@ class VerificationServiceTest {
     @Mock
     private UserMilestoneRepository userMilestoneRepository;
     @Mock
+    private VerifiedSchoolEmailRepository verifiedSchoolEmailRepository;
+    @Mock
     private ValueOperations<String, String> valueOperations;
+    @Mock
+    private AttemptThrottleService attemptThrottleService;
 
     @Test
     void verifyCode_doesNotGrantTicket_whenEmailRewardIsZero() {
@@ -53,7 +61,9 @@ class VerificationServiceTest {
                 redisTemplate,
                 userRepository,
                 userMilestoneRepository,
-                rewardProperties
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
         );
 
         Long userId = 1L;
@@ -69,6 +79,7 @@ class VerificationServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.EMAIL_VERIFIED))
                 .thenReturn(false);
+        when(verifiedSchoolEmailRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.empty());
 
         int before = user.getTickets();
 
@@ -76,6 +87,7 @@ class VerificationServiceTest {
 
         assertThat(session.verificationToken()).isNotBlank();
         assertThat(session.email()).isEqualTo(email);
+        assertThat(session.nextAction()).isEqualTo(VerificationNextAction.SIGN_UP);
         assertThat(user.getTickets()).isEqualTo(before);
         verify(userMilestoneRepository).save(any());
         verify(redisTemplate).delete(eq("email_verification:" + email));
@@ -90,7 +102,9 @@ class VerificationServiceTest {
                 redisTemplate,
                 userRepository,
                 userMilestoneRepository,
-                rewardProperties
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
         );
 
         String email = "student@office.hanseo.ac.kr";
@@ -98,9 +112,6 @@ class VerificationServiceTest {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(redisTemplate.hasKey("email_verification_cooldown:" + email)).thenReturn(false);
         when(valueOperations.get("email_verified_active:" + email)).thenReturn("active-token");
-        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.empty());
-        when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(false);
-        when(userRepository.existsByVerifiedSchoolEmailIgnoreCase(email)).thenReturn(false);
 
         service.sendCode(email, VerificationPurpose.SIGN_UP);
 
@@ -110,54 +121,74 @@ class VerificationServiceTest {
     }
 
     @Test
-    void sendCode_signupPurpose_failsWhenEmailAlreadyRegistered() {
+    void sendCode_signupPurpose_sendsMailEvenWhenEmailAlreadyRegistered() {
         MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
         VerificationService service = new VerificationService(
                 mailService,
                 redisTemplate,
                 userRepository,
                 userMilestoneRepository,
-                rewardProperties
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
         );
 
         String email = "student@office.hanseo.ac.kr";
         User existing = User.createEmailUser(email, "encoded-password");
         ReflectionTestUtils.setField(existing, "id", 101L);
 
-        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.of(existing));
-        when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(true);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.hasKey("email_verification_cooldown:" + email)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.sendCode(email, VerificationPurpose.SIGN_UP))
-                .isInstanceOf(VerificationException.class)
-                .extracting(ex -> ((VerificationException) ex).getErrorCode())
-                .isEqualTo(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
+        service.sendCode(email, VerificationPurpose.SIGN_UP);
 
-        verify(mailService, never()).sendVerificationCode(any(), any());
+        verify(mailService).sendVerificationCode(eq(email), anyString());
     }
 
     @Test
-    void sendCode_signupPurpose_failsWhenEmailAlreadyLinkedToSocialAccount() {
+    void sendCode_signupPurpose_sendsMailEvenWhenEmailAlreadyLinkedToSocialAccount() {
         MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
         VerificationService service = new VerificationService(
                 mailService,
                 redisTemplate,
                 userRepository,
                 userMilestoneRepository,
-                rewardProperties
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
         );
 
         String email = "student@office.hanseo.ac.kr";
 
-        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.empty());
-        when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(false);
-        when(userRepository.existsByVerifiedSchoolEmailIgnoreCase(email)).thenReturn(true);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.hasKey("email_verification_cooldown:" + email)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.sendCode(email, VerificationPurpose.SIGN_UP))
-                .isInstanceOf(VerificationException.class)
-                .extracting(ex -> ((VerificationException) ex).getErrorCode())
-                .isEqualTo(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
+        service.sendCode(email, VerificationPurpose.SIGN_UP);
 
-        verify(mailService, never()).sendVerificationCode(any(), any());
+        verify(mailService).sendVerificationCode(eq(email), anyString());
+    }
+
+    @Test
+    void sendCode_signupPurpose_sendsMailEvenWhenVerifiedSchoolEmailAlreadyReserved() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
+        );
+
+        String email = "student@office.hanseo.ac.kr";
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.hasKey("email_verification_cooldown:" + email)).thenReturn(false);
+
+        service.sendCode(email, VerificationPurpose.SIGN_UP);
+
+        verify(mailService).sendVerificationCode(eq(email), anyString());
     }
 
     @Test
@@ -170,7 +201,9 @@ class VerificationServiceTest {
                 redisTemplate,
                 userRepository,
                 userMilestoneRepository,
-                rewardProperties
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
         );
 
         Long userId = 10L;
@@ -185,10 +218,146 @@ class VerificationServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.EMAIL_VERIFIED))
                 .thenReturn(false);
+        when(verifiedSchoolEmailRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.empty());
 
         service.verifyCode(userId, email, code, VerificationPurpose.SIGN_UP);
 
         assertThat(user.getEmail()).isEqualTo("relay@privaterelay.appleid.com");
         assertThat(user.getPrimaryEmail()).isEqualTo(email);
+    }
+
+    @Test
+    void verifyCode_withoutAuthenticatedUser_persistsVerifiedSchoolEmailReservation() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        rewardProperties.setEmailVerifiedTickets(0);
+
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
+        );
+
+        String email = "student@office.hanseo.ac.kr";
+        String code = "123456";
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn(null);
+        when(valueOperations.get("email_verification:" + email)).thenReturn(code);
+        when(verifiedSchoolEmailRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.empty());
+
+        service.verifyCode(null, email, code, VerificationPurpose.SIGN_UP);
+
+        verify(verifiedSchoolEmailRepository).save(any(VerifiedSchoolEmail.class));
+    }
+
+    @Test
+    void verifyCode_returnsLoginRequiredWhenEmailAlreadyRegisteredAfterSuccessfulCodeMatch() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
+        );
+
+        String email = "student@office.hanseo.ac.kr";
+        String code = "123456";
+        User existing = User.createEmailUser(email, "encoded-password");
+        ReflectionTestUtils.setField(existing, "id", 101L);
+
+        when(attemptThrottleService.isLocked("school_email_verify", email, "203.0.113.9")).thenReturn(false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("email_verification:" + email)).thenReturn(code);
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.of(existing));
+        when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(true);
+
+        VerifiedEmailSession session = service.verifyCode(null, email, code, VerificationPurpose.SIGN_UP, "203.0.113.9");
+
+        assertThat(session.email()).isEqualTo(email);
+        assertThat(session.verificationToken()).isNull();
+        assertThat(session.expiresAt()).isNull();
+        assertThat(session.nextAction()).isEqualTo(VerificationNextAction.LOGIN_REQUIRED);
+        verify(verifiedSchoolEmailRepository, never()).save(any());
+    }
+
+    @Test
+    void verifyCode_failsWhenAttemptLockIsActive() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
+        );
+
+        String email = "student@office.hanseo.ac.kr";
+
+        when(attemptThrottleService.isLocked("school_email_verify", email, "203.0.113.9")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.verifyCode(null, email, "123456", VerificationPurpose.SIGN_UP, "203.0.113.9"))
+                .isInstanceOf(VerificationException.class)
+                .extracting(ex -> ((VerificationException) ex).getErrorCode())
+                .isEqualTo(VerificationErrorCode.TOO_MANY_ATTEMPTS);
+    }
+
+    @Test
+    void sendCode_failsWhenEmailAndIpSendLimitIsActive() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
+        );
+
+        String email = "student@office.hanseo.ac.kr";
+
+        when(attemptThrottleService.isLocked("school_email_send", email, "203.0.113.9")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.sendCode(email, VerificationPurpose.SIGN_UP, "203.0.113.9"))
+                .isInstanceOf(VerificationException.class)
+                .extracting(ex -> ((VerificationException) ex).getErrorCode())
+                .isEqualTo(VerificationErrorCode.TOO_MANY_REQUESTS);
+
+        verify(mailService, never()).sendVerificationCode(any(), any());
+    }
+
+    @Test
+    void sendCode_failsWhenIpWideSendLimitIsActive() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
+        );
+
+        String email = "student@office.hanseo.ac.kr";
+
+        when(attemptThrottleService.isLocked("school_email_send", email, "203.0.113.9")).thenReturn(false);
+        when(attemptThrottleService.isLocked("school_email_send_ip", "203.0.113.9", "global")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.sendCode(email, VerificationPurpose.SIGN_UP, "203.0.113.9"))
+                .isInstanceOf(VerificationException.class)
+                .extracting(ex -> ((VerificationException) ex).getErrorCode())
+                .isEqualTo(VerificationErrorCode.TOO_MANY_REQUESTS);
+
+        verify(mailService, never()).sendVerificationCode(any(), any());
     }
 }

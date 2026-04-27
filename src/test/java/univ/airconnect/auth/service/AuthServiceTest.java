@@ -24,12 +24,15 @@ import univ.airconnect.auth.security.TokenHashService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
+import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
+import univ.airconnect.verification.domain.entity.VerifiedSchoolEmail;
+import univ.airconnect.verification.repository.VerifiedSchoolEmailRepository;
 import univ.airconnect.verification.service.VerificationService;
 
 import java.util.Optional;
@@ -67,7 +70,11 @@ class AuthServiceTest {
     @Mock
     private VerificationService verificationService;
     @Mock
+    private VerifiedSchoolEmailRepository verifiedSchoolEmailRepository;
+    @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private AttemptThrottleService attemptThrottleService;
 
     @InjectMocks
     private AuthService authService;
@@ -210,6 +217,7 @@ class AuthServiceTest {
         EmailSignUpRequest request = new EmailSignUpRequest("verify-token", "Passw0rd!@", "device-1");
 
         when(verificationService.resolveVerifiedEmail("verify-token")).thenReturn("student@office.hanseo.ac.kr");
+        when(verifiedSchoolEmailRepository.findByEmailIgnoreCase("student@office.hanseo.ac.kr")).thenReturn(Optional.empty());
         when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "student@office.hanseo.ac.kr"))
                 .thenReturn(Optional.empty());
         when(userRepository.existsByEmailIgnoreCase("student@office.hanseo.ac.kr")).thenReturn(false);
@@ -227,6 +235,7 @@ class AuthServiceTest {
         User user = User.createEmailUser("user@office.hanseo.ac.kr", "encoded-password");
         ReflectionTestUtils.setField(user, "id", 77L);
 
+        when(attemptThrottleService.isLocked("email_login", "user@office.hanseo.ac.kr", "unknown")).thenReturn(false);
         when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "user@office.hanseo.ac.kr"))
                 .thenReturn(Optional.of(user));
         when(passwordEncoder.matches("Passw0rd!@", "encoded-password")).thenReturn(true);
@@ -238,6 +247,7 @@ class AuthServiceTest {
         LoginResponse response = authService.emailLogin(request);
 
         assertThat(response.getAccessToken()).isEqualTo("access-token");
+        verify(attemptThrottleService).clear("email_login", "user@office.hanseo.ac.kr", "unknown");
         verify(verificationService, never()).resolveVerifiedEmail(any());
         verify(verificationService, never()).consumeVerifiedEmail(any());
     }
@@ -248,14 +258,29 @@ class AuthServiceTest {
         User user = User.createEmailUser("user@office.hanseo.ac.kr", "encoded-password");
         ReflectionTestUtils.setField(user, "id", 77L);
 
+        when(attemptThrottleService.isLocked("email_login", "user@office.hanseo.ac.kr", "unknown")).thenReturn(false);
         when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "user@office.hanseo.ac.kr"))
                 .thenReturn(Optional.of(user));
         when(passwordEncoder.matches("wrong-password", "encoded-password")).thenReturn(false);
+        when(attemptThrottleService.recordFailure("email_login", "user@office.hanseo.ac.kr", "unknown", 5, 900L, 900L))
+                .thenReturn(false);
 
         assertThatThrownBy(() -> authService.emailLogin(request))
                 .isInstanceOf(AuthException.class)
                 .extracting(ex -> ((AuthException) ex).getErrorCode())
                 .isEqualTo(AuthErrorCode.EMAIL_LOGIN_FAILED);
+    }
+
+    @Test
+    void emailLogin_failsWhenTooManyAttempts() {
+        EmailLoginRequest request = new EmailLoginRequest("user@office.hanseo.ac.kr", "wrong-password", "device-1");
+
+        when(attemptThrottleService.isLocked("email_login", "user@office.hanseo.ac.kr", "203.0.113.9")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.emailLogin(request, "203.0.113.9"))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED);
     }
 
     @Test
@@ -266,6 +291,55 @@ class AuthServiceTest {
                 .isInstanceOf(AuthException.class)
                 .extracting(ex -> ((AuthException) ex).getErrorCode())
                 .isEqualTo(AuthErrorCode.INVALID_LOGIN_REQUEST);
+    }
+
+    @Test
+    void emailSignUp_allowsUnlinkedVerifiedSchoolEmailReservationAndClaimsIt() {
+        EmailSignUpRequest request = new EmailSignUpRequest("verify-token", "Passw0rd!@", "device-1");
+        VerifiedSchoolEmail reservation = VerifiedSchoolEmail.reserve("student@office.hanseo.ac.kr", null);
+
+        when(verificationService.resolveVerifiedEmail("verify-token")).thenReturn("student@office.hanseo.ac.kr");
+        when(verifiedSchoolEmailRepository.findByEmailIgnoreCase("student@office.hanseo.ac.kr"))
+                .thenReturn(Optional.of(reservation));
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "student@office.hanseo.ac.kr"))
+                .thenReturn(Optional.empty());
+        when(userRepository.existsByEmailIgnoreCase("student@office.hanseo.ac.kr")).thenReturn(false);
+        when(userRepository.existsByVerifiedSchoolEmailIgnoreCase("student@office.hanseo.ac.kr")).thenReturn(false);
+        when(passwordEncoder.encode("Passw0rd!@")).thenReturn("encoded-password");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 88L);
+            return saved;
+        });
+        when(jwtProvider.createAccessToken(88L)).thenReturn("access-token");
+        when(jwtProvider.createRefreshToken(88L, "device-1")).thenReturn("refresh-token");
+        when(tokenHashService.hash("refresh-token")).thenReturn("refresh-hash");
+        when(userService.getMe(88L)).thenReturn(UserMeResponse.builder().userId(88L).build());
+
+        LoginResponse response = authService.emailSignUp(request);
+
+        assertThat(response.getAccessToken()).isEqualTo("access-token");
+        verify(verificationService).claimVerifiedEmailForUser("student@office.hanseo.ac.kr", 88L);
+        verify(verificationService).consumeVerifiedEmail("verify-token");
+    }
+
+    @Test
+    void emailSignUp_failsWhenVerifiedSchoolEmailReservationAlreadyLinkedToAnotherUser() {
+        EmailSignUpRequest request = new EmailSignUpRequest("verify-token", "Passw0rd!@", "device-1");
+        VerifiedSchoolEmail reservation = VerifiedSchoolEmail.reserve("student@office.hanseo.ac.kr", 5L);
+
+        when(verificationService.resolveVerifiedEmail("verify-token")).thenReturn("student@office.hanseo.ac.kr");
+        when(verifiedSchoolEmailRepository.findByEmailIgnoreCase("student@office.hanseo.ac.kr"))
+                .thenReturn(Optional.of(reservation));
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "student@office.hanseo.ac.kr"))
+                .thenReturn(Optional.empty());
+        when(userRepository.existsByEmailIgnoreCase("student@office.hanseo.ac.kr")).thenReturn(false);
+        when(userRepository.existsByVerifiedSchoolEmailIgnoreCase("student@office.hanseo.ac.kr")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.emailSignUp(request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.EMAIL_ALREADY_REGISTERED);
     }
 
     private User createUser(Long userId) {

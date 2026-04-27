@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
+import univ.airconnect.global.web.ClientIpResolver;
 import univ.airconnect.verification.dto.request.EmailVerificationRequest;
 import univ.airconnect.verification.dto.request.EmailVerifyRequest;
 import univ.airconnect.verification.dto.response.EmailVerifyResponse;
@@ -32,7 +33,11 @@ public class VerificationController {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
 
         log.info("Email verification code send requested. email={}", maskEmail(request.getEmail()));
-        verificationService.sendCode(request.getEmail(), request.getPurpose());
+        verificationService.sendCode(
+                request.getEmail(),
+                request.getPurpose(),
+                ClientIpResolver.resolve(httpRequest)
+        );
         log.info("Email verification code send completed. email={}", maskEmail(request.getEmail()));
 
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
@@ -51,12 +56,14 @@ public class VerificationController {
                 userId,
                 request.getEmail(),
                 request.getCode(),
-                request.getPurpose()
+                request.getPurpose(),
+                ClientIpResolver.resolve(httpRequest)
         );
         EmailVerifyResponse response = EmailVerifyResponse.builder()
                 .verifiedEmail(verified.email())
                 .verificationToken(verified.verificationToken())
                 .expiresAt(verified.expiresAt())
+                .nextAction(verified.nextAction())
                 .build();
         log.info("Email verification completed. userId={}, email={}", userId, maskEmail(request.getEmail()));
 
