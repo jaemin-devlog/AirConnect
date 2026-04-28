@@ -1,7 +1,7 @@
 # 🛫 AirConnect
 
 <div align="center">
-    <img width="360" alt="AirConnect 로고" src="src/main/resources/static/image-Photoroom.png">
+    <img width="360" alt="AirConnect 로고" src="src/main/resources/static/image-photoroom.png">
 </div>
 
 `AirConnect`는 **대학생들이 학과, 프로필, 관심 정보를 기반으로 친구찾기와 그룹매칭을 탐색하고, 매칭 이후 실시간 채팅으로 자연스럽게 연결되는 캠퍼스 매칭 서비스**입니다.
@@ -589,3 +589,7 @@ gitGraph
 - **hotfix**: 운영 중 발생한 긴급 버그 수정을 위한 브랜치입니다.
 
 <br>
+
+> ### AirConnect의 기록
+> #### [친구찾기 명세](docs/%EC%86%8C%EA%B0%9C%ED%8C%85%20%EC%B5%9C%EC%A2%85.md) | [그룹매칭 명세](docs/%EA%B3%BC%ED%8C%85%20%EC%B5%9C%EC%A2%85.md) | [채팅 명세](docs/채팅%20최종.md) | [알림 API](docs/notification-api.md) | [통계 API](docs/statistics-api.md) <br>
+> #### [Android 알림 계약](docs/android-notification-contract.md) | [Android 백엔드 연동](docs/Android%20백엔드%20연동.md) | [개별 보고서](docs/2026-04-21%20AirConnect%20개별보고서.md) | [주간 작업 보고서](docs/2026-04-28%20AirConnect%20주간%20작업%20보고서.md)
