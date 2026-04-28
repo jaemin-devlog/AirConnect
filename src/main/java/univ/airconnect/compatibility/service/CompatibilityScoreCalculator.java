@@ -19,6 +19,10 @@ import univ.airconnect.compatibility.domain.MbtiCompatibilityTier;
 @Component
 public class CompatibilityScoreCalculator {
 
+    private static final int RAW_SCORE_MIN = 25;
+    private static final int RAW_SCORE_MAX = 100;
+    private static final int DISPLAY_SCORE_MIN = 50;
+    private static final int DISPLAY_SCORE_MAX = 100;
     private static final int AGE_MAX = 15;
     private static final int DEPARTMENT_MAX = 12;
     private static final int STUDENT_NUMBER_MAX = 10;
@@ -42,9 +46,10 @@ public class CompatibilityScoreCalculator {
                 scoreResidence(me.residence(), target.residence())
         );
 
-        int totalScore = details.stream()
+        int rawScore = details.stream()
                 .mapToInt(CompatibilityScoreDetail::getScore)
                 .sum();
+        int totalScore = toDisplayScore(rawScore);
 
         return CompatibilityResult.builder()
                 .myUserId(me.userId())
@@ -303,16 +308,22 @@ public class CompatibilityScoreCalculator {
     }
 
     private CompatibilityGrade toGrade(int score) {
-        if (score >= 85) {
+        if (score >= 90) {
             return CompatibilityGrade.AMAZING;
         }
-        if (score >= 70) {
+        if (score >= 80) {
             return CompatibilityGrade.GOOD;
         }
-        if (score >= 50) {
+        if (score >= 67) {
             return CompatibilityGrade.NORMAL;
         }
         return CompatibilityGrade.LOW;
+    }
+
+    private int toDisplayScore(int rawScore) {
+        int boundedRawScore = Math.max(RAW_SCORE_MIN, Math.min(rawScore, RAW_SCORE_MAX));
+        double normalized = (double) (boundedRawScore - RAW_SCORE_MIN) / (RAW_SCORE_MAX - RAW_SCORE_MIN);
+        return (int) Math.round(DISPLAY_SCORE_MIN + normalized * (DISPLAY_SCORE_MAX - DISPLAY_SCORE_MIN));
     }
 
     private String departmentGroup(String department) {

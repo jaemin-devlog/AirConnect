@@ -47,7 +47,7 @@ class CompatibilityScoreCalculatorTest {
     }
 
     @Test
-    void calculate_usesBadMbtiTierAndLowGrade_whenManySignalsDiffer() {
+    void calculate_appliesMinimumScoreFloor_whenManySignalsDiffer() {
         CompatibilityProfile me = profile(
                 1L,
                 20,
@@ -75,7 +75,8 @@ class CompatibilityScoreCalculatorTest {
 
         assertThat(result.getMbtiTier()).isEqualTo(MbtiCompatibilityTier.BAD);
         assertThat(result.getGrade()).isEqualTo(CompatibilityGrade.LOW);
-        assertThat(result.getScore()).isLessThan(50);
+        assertThat(result.getScore()).isGreaterThanOrEqualTo(50);
+        assertThat(result.getScore()).isLessThan(60);
     }
 
     @Test
