@@ -10,6 +10,7 @@ import univ.airconnect.notification.domain.entity.NotificationOutbox;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 public interface NotificationOutboxRepository extends JpaRepository<NotificationOutbox, Long> {
 
     List<NotificationOutbox> findByIdInOrderByIdAsc(Collection<Long> ids);
@@ -49,4 +50,18 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
             """, nativeQuery = true)
     int recoverTimedOutProcessing(@Param("threshold") LocalDateTime threshold,
                                   @Param("recoveredAt") LocalDateTime recoveredAt);
+
+    @Query(value = """
+            SELECT *
+            FROM notification_outbox no
+            WHERE no.push_device_id = :pushDeviceId
+              AND no.status = 'PENDING'
+              AND JSON_UNQUOTE(JSON_EXTRACT(no.data_json, '$.notificationType')) = 'CHAT_MESSAGE_RECEIVED'
+              AND JSON_UNQUOTE(JSON_EXTRACT(no.data_json, '$.chatRoomId')) = :chatRoomId
+            ORDER BY no.id DESC
+            LIMIT 1
+            FOR UPDATE
+            """, nativeQuery = true)
+    Optional<NotificationOutbox> findPendingChatOutboxForUpdate(@Param("pushDeviceId") Long pushDeviceId,
+                                                                @Param("chatRoomId") String chatRoomId);
 }

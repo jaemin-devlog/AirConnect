@@ -14,8 +14,9 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
-import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.groupmatching.service.GMatchingService;
+import univ.airconnect.user.domain.UserRole;
+import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -185,7 +186,7 @@ class StompHandlerTest {
 
     private User activeUser() {
         User user = mock(User.class);
-        when(user.getStatus()).thenReturn(null);
+        when(user.getStatus()).thenReturn(UserStatus.ACTIVE);
         return user;
     }
 }

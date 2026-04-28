@@ -36,9 +36,15 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
 
     private static final String NOTIFICATION_TYPE_KEY = "notificationType";
     private static final String CHAT_MESSAGE_RECEIVED_TYPE = "CHAT_MESSAGE_RECEIVED";
+    private static final String TEAM_MEMBER_JOINED_TYPE = "TEAM_MEMBER_JOINED";
+    private static final String TEAM_MEMBER_LEFT_TYPE = "TEAM_MEMBER_LEFT";
+    private static final String TEAM_MEMBER_READY_CHANGED_TYPE = "TEAM_MEMBER_READY_CHANGED";
+    private static final String TEAM_ROOM_ID_KEY = "teamRoomId";
     private static final String CHAT_ROOM_ID_KEY = "chatRoomId";
     private static final String CHAT_PUSH_CHANNEL_ID = "airconnect_chat_push";
     private static final String CHAT_PUSH_TAG_PREFIX = "chat-";
+    private static final String CHAT_COLLAPSE_KEY_PREFIX = "chat-room-";
+    private static final String TEAM_ACTIVITY_COLLAPSE_KEY_PREFIX = "team-activity-";
 
     private static final Set<String> INVALID_TOKEN_ERROR_CODES = Set.of(
             "UNREGISTERED",
@@ -111,8 +117,9 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
     }
 
     private AndroidConfig buildAndroidConfig(Map<String, String> data) {
-        AndroidNotification.Builder notificationBuilder = AndroidNotification.builder()
-                .setSound("default");
+        String notificationType = data.get(NOTIFICATION_TYPE_KEY);
+        AndroidNotification.Builder notificationBuilder = AndroidNotification.builder();
+        AndroidConfig.Builder androidConfigBuilder = AndroidConfig.builder();
 
         if (isChatMessageReceived(data)) {
             notificationBuilder
@@ -122,17 +129,38 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
             String chatRoomId = data.get(CHAT_ROOM_ID_KEY);
             if (chatRoomId != null && !chatRoomId.isBlank()) {
                 notificationBuilder.setTag(CHAT_PUSH_TAG_PREFIX + chatRoomId.trim());
+                androidConfigBuilder.setCollapseKey(CHAT_COLLAPSE_KEY_PREFIX + chatRoomId.trim());
             }
+
+            notificationBuilder.setSound("default");
+            androidConfigBuilder.setPriority(AndroidConfig.Priority.NORMAL);
+        } else if (isLowValueTeamActivity(notificationType)) {
+            notificationBuilder.setPriority(AndroidNotification.Priority.LOW);
+
+            String teamRoomId = data.get(TEAM_ROOM_ID_KEY);
+            if (teamRoomId != null && !teamRoomId.isBlank()) {
+                androidConfigBuilder.setCollapseKey(TEAM_ACTIVITY_COLLAPSE_KEY_PREFIX + teamRoomId.trim());
+            }
+
+            androidConfigBuilder.setPriority(AndroidConfig.Priority.NORMAL);
+        } else {
+            notificationBuilder.setSound("default");
+            androidConfigBuilder.setPriority(AndroidConfig.Priority.HIGH);
         }
 
-        return AndroidConfig.builder()
-                .setPriority(AndroidConfig.Priority.HIGH)
+        return androidConfigBuilder
                 .setNotification(notificationBuilder.build())
                 .build();
     }
 
     private boolean isChatMessageReceived(Map<String, String> data) {
         return CHAT_MESSAGE_RECEIVED_TYPE.equals(data.get(NOTIFICATION_TYPE_KEY));
+    }
+
+    private boolean isLowValueTeamActivity(String notificationType) {
+        return TEAM_MEMBER_JOINED_TYPE.equals(notificationType)
+                || TEAM_MEMBER_LEFT_TYPE.equals(notificationType)
+                || TEAM_MEMBER_READY_CHANGED_TYPE.equals(notificationType);
     }
 
     /**

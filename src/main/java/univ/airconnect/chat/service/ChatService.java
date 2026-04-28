@@ -295,7 +295,7 @@ public class ChatService {
         topics.computeIfAbsent(roomId, key -> {
             ChannelTopic topic = new ChannelTopic(key);
             redisMessageListener.addMessageListener(redisSubscriber, topic);
-            log.info("Redis Topic Registered: roomId={}", key);
+            log.debug("Redis Topic Registered: roomId={}", key);
             return topic;
         });
     }
@@ -1080,7 +1080,6 @@ public class ChatService {
         try {
             String payload = objectMapper.writeValueAsString(response);
             redisTemplate.convertAndSend(roomId.toString(), payload);
-            log.info("Message Published: roomId={}", roomId);
         } catch (JsonProcessingException e) {
             log.error("Redis publish serialization failed. roomId={}", roomId, e);
             throw new RuntimeException("채팅 메시지 직렬화에 실패했습니다.");
@@ -1218,7 +1217,7 @@ public class ChatService {
             return;
         }
         redisMessageListener.removeMessageListener(redisSubscriber, topic);
-        log.info("Redis Topic Unregistered: roomId={}", roomId);
+        log.debug("Redis Topic Unregistered: roomId={}", roomId);
     }
 
     /**
