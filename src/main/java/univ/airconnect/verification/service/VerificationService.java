@@ -121,7 +121,7 @@ public class VerificationService {
         clearVerificationData(normalizedEmail);
         clearActiveVerifiedSession(normalizedEmail);
 
-        if (resolvedPurpose == VerificationPurpose.SIGN_UP && !isSignUpEmailAvailable(normalizedEmail)) {
+        if (userId == null && resolvedPurpose == VerificationPurpose.SIGN_UP && !isSignUpEmailAvailable(normalizedEmail)) {
             log.info("Email verification succeeded for existing account. email={}", maskEmail(normalizedEmail));
             return buildActionOnlySession(normalizedEmail, VerificationNextAction.LOGIN_REQUIRED);
         }

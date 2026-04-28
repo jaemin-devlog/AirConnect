@@ -392,9 +392,7 @@ public class MatchingService {
         boolean profileImageUploaded = userMilestoneRepository.existsByUserIdAndMilestoneType(
                 otherUserId, MilestoneType.PROFILE_IMAGE_UPLOADED
         );
-        boolean emailVerified = userMilestoneRepository.existsByUserIdAndMilestoneType(
-                otherUserId, MilestoneType.EMAIL_VERIFIED
-        );
+        boolean emailVerified = otherUser.hasVerifiedSchoolEmail();
 
         return MatchingRequestResponse.builder()
                 .connectionId(conn.getId())
@@ -530,9 +528,7 @@ public class MatchingService {
         boolean profileImageUploaded = userMilestoneRepository.existsByUserIdAndMilestoneType(
                 user.getId(), MilestoneType.PROFILE_IMAGE_UPLOADED
         );
-        boolean emailVerified = userMilestoneRepository.existsByUserIdAndMilestoneType(
-                user.getId(), MilestoneType.EMAIL_VERIFIED
-        );
+        boolean emailVerified = user.hasVerifiedSchoolEmail();
 
         return MatchingCandidateResponse.builder()
                 .userId(user.getId())

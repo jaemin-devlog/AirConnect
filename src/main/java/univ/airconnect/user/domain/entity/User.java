@@ -305,8 +305,12 @@ public class User {
         this.verifiedSchoolEmail = verifiedSchoolEmail;
     }
 
+    public boolean hasVerifiedSchoolEmail() {
+        return this.verifiedSchoolEmail != null && !this.verifiedSchoolEmail.isBlank();
+    }
+
     public String getPrimaryEmail() {
-        if (this.verifiedSchoolEmail != null && !this.verifiedSchoolEmail.isBlank()) {
+        if (hasVerifiedSchoolEmail()) {
             return this.verifiedSchoolEmail;
         }
         return this.email;

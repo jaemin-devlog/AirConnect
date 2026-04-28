@@ -6,7 +6,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
@@ -25,7 +24,6 @@ import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
-import univ.airconnect.user.dto.request.ChangePasswordRequest;
 import univ.airconnect.user.dto.request.UpdateNicknameRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
 import univ.airconnect.user.dto.response.UpdateNicknameResponse;
@@ -36,7 +34,6 @@ import univ.airconnect.user.exception.UserException;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
-import univ.airconnect.verification.service.VerificationService;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -44,8 +41,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -70,10 +65,6 @@ class UserServiceTest {
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private AppleAccountRevocationService appleAccountRevocationService;
-    @Mock
-    private VerificationService verificationService;
-    @Mock
-    private PasswordEncoder passwordEncoder;
 
     @Test
     void deleteAccount_marksUserDeleted_andRevokesSessions() {
@@ -171,41 +162,6 @@ class UserServiceTest {
         assertThat(appleUser.getStatus()).isEqualTo(UserStatus.DELETED);
         assertThat(appleUser.getDeletedAt()).isNotNull();
         verify(appleAccountRevocationService).revokeOnAccountDeletion(appleUser, null, null);
-    }
-
-    @Test
-    void changePassword_onlyAllowsEmailProvider() {
-        UserService service = createService();
-        Long userId = 99L;
-        User appleUser = User.create(SocialProvider.APPLE, "apple-99", "apple99@test.dev");
-        ReflectionTestUtils.setField(appleUser, "id", userId);
-
-        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(appleUser));
-
-        ChangePasswordRequest request = new ChangePasswordRequest();
-        ReflectionTestUtils.setField(request, "verificationToken", "verified-token");
-        ReflectionTestUtils.setField(request, "newPassword", "Passw0rd123");
-
-        assertThatThrownBy(() -> service.changePassword(userId, request))
-                .isInstanceOf(UserException.class);
-    }
-
-    @Test
-    void changePassword_requiresSpecialCharacter() {
-        UserService service = createService();
-        Long userId = 101L;
-        User emailUser = User.createEmailUser("user@office.hanseo.ac.kr", "encoded-password");
-        ReflectionTestUtils.setField(emailUser, "id", userId);
-
-        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(emailUser));
-
-        ChangePasswordRequest request = new ChangePasswordRequest();
-        ReflectionTestUtils.setField(request, "verificationToken", "verified-token");
-        ReflectionTestUtils.setField(request, "newPassword", "Passw0rd123");
-
-        assertThatThrownBy(() -> service.changePassword(userId, request))
-                .isInstanceOf(UserException.class);
-        verify(verificationService, never()).resolveVerifiedEmail(anyString());
     }
 
     @Test
@@ -311,8 +267,6 @@ class UserServiceTest {
         when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.empty());
         when(userMilestoneRepository.existsByUserIdAndMilestoneType(userId, MilestoneType.PROFILE_IMAGE_UPLOADED))
                 .thenReturn(false);
-        when(userMilestoneRepository.existsByUserIdAndMilestoneType(userId, MilestoneType.EMAIL_VERIFIED))
-                .thenReturn(false);
 
         UserMeResponse response = service.getMe(userId);
 
@@ -340,9 +294,7 @@ class UserServiceTest {
                 chatService,
                 pushDeviceRepository,
                 redisTemplate,
-                appleAccountRevocationService,
-                verificationService,
-                passwordEncoder
+                appleAccountRevocationService
         );
         ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
         ReflectionTestUtils.setField(service, "profileImageDir", "/tmp/airconnect-test-profile-images");

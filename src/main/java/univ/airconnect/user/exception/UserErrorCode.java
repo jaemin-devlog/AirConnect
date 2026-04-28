@@ -7,6 +7,7 @@ public enum UserErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다."),
     USER_DELETED(HttpStatus.FORBIDDEN, "USER_DELETED", "탈퇴한 사용자입니다."),
     USER_SUSPENDED(HttpStatus.FORBIDDEN, "USER_SUSPENDED", "이용이 정지된 사용자입니다."),
+    SCHOOL_EMAIL_VERIFICATION_REQUIRED(HttpStatus.FORBIDDEN, "SCHOOL_EMAIL_VERIFICATION_REQUIRED", "학교 이메일 인증이 필요합니다."),
     REQUIRED_CONSENT_NOT_ACCEPTED(HttpStatus.BAD_REQUEST, "REQUIRED_CONSENT_NOT_ACCEPTED", "필수 동의 항목에 모두 동의해야 합니다."),
     PASSWORD_CHANGE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "PASSWORD_CHANGE_NOT_ALLOWED", "비밀번호 변경은 이메일 계정에서만 가능합니다."),
     PASSWORD_REQUIRED(HttpStatus.BAD_REQUEST, "PASSWORD_REQUIRED", "비밀번호는 필수입니다."),
