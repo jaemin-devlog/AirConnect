@@ -255,7 +255,7 @@ class VerificationServiceTest {
     }
 
     @Test
-    void verifyCode_returnsLoginRequiredWhenEmailAlreadyRegisteredAfterSuccessfulCodeMatch() {
+    void verifyCode_failsWhenEmailAlreadyLinkedToAnotherAccountForAuthenticatedUser() {
         MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
         VerificationService service = new VerificationService(
                 mailService,
@@ -269,22 +269,21 @@ class VerificationServiceTest {
 
         String email = "student@office.hanseo.ac.kr";
         String code = "123456";
-        User existing = User.createEmailUser(email, "encoded-password");
-        ReflectionTestUtils.setField(existing, "id", 101L);
+        Long userId = 202L;
+        User user = User.create(SocialProvider.KAKAO, "kakao-social-202", null);
+        ReflectionTestUtils.setField(user, "id", userId);
+        VerifiedSchoolEmail reservation = VerifiedSchoolEmail.reserve(email, 101L);
+        ReflectionTestUtils.setField(reservation, "id", 77L);
 
         when(attemptThrottleService.isLocked("school_email_verify", email, "203.0.113.9")).thenReturn(false);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("email_verification:" + email)).thenReturn(code);
-        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, email)).thenReturn(Optional.of(existing));
-        when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(true);
+        when(verifiedSchoolEmailRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.of(reservation));
 
-        VerifiedEmailSession session = service.verifyCode(null, email, code, VerificationPurpose.SIGN_UP, "203.0.113.9");
-
-        assertThat(session.email()).isEqualTo(email);
-        assertThat(session.verificationToken()).isNull();
-        assertThat(session.expiresAt()).isNull();
-        assertThat(session.nextAction()).isEqualTo(VerificationNextAction.LOGIN_REQUIRED);
-        verify(verifiedSchoolEmailRepository, never()).save(any());
+        assertThatThrownBy(() -> service.verifyCode(userId, email, code, VerificationPurpose.SIGN_UP, "203.0.113.9"))
+                .isInstanceOf(VerificationException.class)
+                .extracting(ex -> ((VerificationException) ex).getErrorCode())
+                .isEqualTo(VerificationErrorCode.ALREADY_REGISTERED_EMAIL);
     }
 
     @Test

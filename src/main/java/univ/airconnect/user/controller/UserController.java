@@ -132,19 +132,6 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }
 
-    @PatchMapping("/me/password")
-    public ResponseEntity<ApiResponse<Void>> changePassword(
-            @CurrentUserId Long userId,
-            @RequestBody ChangePasswordRequest request,
-            HttpServletRequest httpRequest
-    ) {
-        log.info("Password change requested: userId={}", userId);
-        String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
-        userService.changePassword(userId, request);
-        log.info("Password change completed: userId={}", userId);
-        return ResponseEntity.ok(ApiResponse.ok(null, traceId));
-    }
-
     @GetMapping("/school-consent")
     public ResponseEntity<ApiResponse<SchoolConsentResponse>> getSchoolConsent(
             @CurrentUserId Long userId,

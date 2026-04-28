@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import univ.airconnect.analytics.web.UserActivityFilter;
+import univ.airconnect.global.security.VerifiedSchoolEmailFilter;
 import univ.airconnect.global.security.jwt.JwtAuthenticationFilter;
 import univ.airconnect.maintenance.service.MaintenanceService;
 import univ.airconnect.maintenance.web.MaintenanceModeFilter;
@@ -24,6 +25,7 @@ import univ.airconnect.maintenance.web.MaintenanceModeFilter;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final VerifiedSchoolEmailFilter verifiedSchoolEmailFilter;
     private final UserActivityFilter userActivityFilter;
 
     @Bean
@@ -49,9 +51,6 @@ public class SecurityConfig {
 
                         // 인증 관련
                         .requestMatchers("/api/v1/auth/**").permitAll()
-
-                        // 이메일 인증
-                        .requestMatchers("/api/v1/verification/**").permitAll()
 
                         .requestMatchers("/api/v1/maintenance").permitAll()
                         .requestMatchers("/api/v1/statistics/**").permitAll()
@@ -81,7 +80,8 @@ public class SecurityConfig {
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(maintenanceModeFilter, JwtAuthenticationFilter.class)
-                .addFilterAfter(userActivityFilter, JwtAuthenticationFilter.class);
+                .addFilterAfter(verifiedSchoolEmailFilter, MaintenanceModeFilter.class)
+                .addFilterAfter(userActivityFilter, VerifiedSchoolEmailFilter.class);
 
         return http.build();
     }

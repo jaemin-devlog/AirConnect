@@ -2,16 +2,12 @@ package univ.airconnect.auth.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
-import univ.airconnect.auth.dto.request.EmailLoginRequest;
-import univ.airconnect.auth.dto.request.EmailSignUpRequest;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
 import univ.airconnect.auth.dto.response.LoginResponse;
@@ -23,16 +19,12 @@ import univ.airconnect.auth.security.TokenHashService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
-import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
-import univ.airconnect.verification.domain.entity.VerifiedSchoolEmail;
-import univ.airconnect.verification.repository.VerifiedSchoolEmailRepository;
-import univ.airconnect.verification.service.VerificationService;
 
 import java.util.Map;
 
@@ -50,17 +42,6 @@ public class AuthService {
     private final TokenHashService tokenHashService;
     private final UserService userService;
     private final AnalyticsService analyticsService;
-    private final VerificationService verificationService;
-    private final VerifiedSchoolEmailRepository verifiedSchoolEmailRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final AttemptThrottleService attemptThrottleService;
-
-    private static final int PASSWORD_MIN_LENGTH = 8;
-    private static final int PASSWORD_MAX_LENGTH = 72;
-    private static final String EMAIL_LOGIN_ATTEMPT_SCOPE = "email_login";
-    private static final int EMAIL_LOGIN_MAX_ATTEMPTS = 5;
-    private static final long EMAIL_LOGIN_COUNTER_TTL_SECONDS = 15 * 60L;
-    private static final long EMAIL_LOGIN_LOCK_TTL_SECONDS = 15 * 60L;
 
     @Transactional
     public LoginResponse socialLogin(SocialLoginRequest request) {
@@ -84,73 +65,6 @@ public class AuthService {
 
         log.info("Social login completed: userId={}", user.getId());
         return issueLoginResponse(user, request.getDeviceId(), request.getProvider().name());
-    }
-
-    @Transactional
-    public LoginResponse emailSignUp(EmailSignUpRequest request) {
-        validateEmailSignUpRequest(request);
-
-        String verifiedEmail = verificationService.resolveVerifiedEmail(request.getVerificationToken());
-        String normalizedEmail = normalizeEmail(verifiedEmail);
-        VerifiedSchoolEmail reservation = verifiedSchoolEmailRepository.findByEmailIgnoreCase(normalizedEmail).orElse(null);
-
-        if (userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail).isPresent()
-                || userRepository.existsByEmailIgnoreCase(normalizedEmail)
-                || userRepository.existsByVerifiedSchoolEmailIgnoreCase(normalizedEmail)
-                || (reservation != null && reservation.getLinkedUserId() != null)) {
-            throw new AuthException(AuthErrorCode.EMAIL_ALREADY_REGISTERED);
-        }
-
-        User created;
-        try {
-            created = userRepository.save(
-                    User.createEmailUser(normalizedEmail, passwordEncoder.encode(request.getPassword()))
-            );
-        } catch (DataIntegrityViolationException ex) {
-            throw new AuthException(AuthErrorCode.EMAIL_ALREADY_REGISTERED);
-        }
-
-        verificationService.claimVerifiedEmailForUser(normalizedEmail, created.getId());
-        verificationService.consumeVerifiedEmail(request.getVerificationToken());
-        created.markActive();
-
-        log.info("Email sign-up completed: userId={}, emailMasked={}", created.getId(), maskEmail(normalizedEmail));
-        return issueLoginResponse(created, request.getDeviceId(), SocialProvider.EMAIL.name());
-    }
-
-    @Transactional
-    public LoginResponse emailLogin(EmailLoginRequest request) {
-        return emailLogin(request, "unknown");
-    }
-
-    @Transactional
-    public LoginResponse emailLogin(EmailLoginRequest request, String clientIp) {
-        log.info("Email login payload received: hasEmail={}, hasPassword={}, hasDeviceId={}",
-                request != null && request.getEmail() != null && !request.getEmail().isBlank(),
-                request != null && request.getPassword() != null && !request.getPassword().isBlank(),
-                request != null && request.getDeviceId() != null && !request.getDeviceId().isBlank());
-
-        validateEmailLoginRequest(request);
-
-        String normalizedEmail = normalizeEmail(request.getEmail());
-        ensureEmailLoginNotLocked(normalizedEmail, clientIp);
-
-        User user = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
-                .orElseThrow(() -> failEmailLogin(normalizedEmail, clientIp));
-
-        validateUserStatus(user);
-
-        String savedPasswordHash = user.getPasswordHash();
-        if (savedPasswordHash == null || !passwordEncoder.matches(request.getPassword(), savedPasswordHash)) {
-            throw failEmailLogin(normalizedEmail, clientIp);
-        }
-
-        clearEmailLoginFailures(normalizedEmail, clientIp);
-        user.markActive();
-
-        log.info("Email login completed: userId={}, emailMasked={}",
-                user.getId(), maskEmail(normalizedEmail));
-        return issueLoginResponse(user, request.getDeviceId(), SocialProvider.EMAIL.name());
     }
 
     @Transactional
@@ -234,42 +148,11 @@ public class AuthService {
         if (request.getProvider() == null) {
             throw new AuthException(AuthErrorCode.SOCIAL_PROVIDER_REQUIRED);
         }
-        if (request.getProvider() == SocialProvider.KAKAO) {
-            throw new AuthException(AuthErrorCode.KAKAO_LOGIN_DISABLED);
-        }
         if (request.getProvider() == SocialProvider.EMAIL) {
             throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
         }
         if (request.getSocialToken() == null || request.getSocialToken().isBlank()) {
             throw new AuthException(AuthErrorCode.SOCIAL_TOKEN_REQUIRED);
-        }
-        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
-            throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
-        }
-    }
-
-    private void validateEmailSignUpRequest(EmailSignUpRequest request) {
-        if (request == null) {
-            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
-        }
-        if (request.getVerificationToken() == null || request.getVerificationToken().isBlank()) {
-            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
-        }
-        validatePasswordFormat(request.getPassword());
-        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
-            throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
-        }
-    }
-
-    private void validateEmailLoginRequest(EmailLoginRequest request) {
-        if (request == null) {
-            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
-        }
-        if (request.getEmail() == null || request.getEmail().isBlank()) {
-            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
-        }
-        if (request.getPassword() == null || request.getPassword().isBlank()) {
-            throw new AuthException(AuthErrorCode.EMAIL_PASSWORD_REQUIRED);
         }
         if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
             throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
@@ -304,28 +187,6 @@ public class AuthService {
         return status == UserStatus.DELETED || status == UserStatus.SUSPENDED || status == UserStatus.RESTRICTED;
     }
 
-    private void ensureEmailLoginNotLocked(String normalizedEmail, String clientIp) {
-        if (attemptThrottleService.isLocked(EMAIL_LOGIN_ATTEMPT_SCOPE, normalizedEmail, clientIp)) {
-            throw new AuthException(AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED);
-        }
-    }
-
-    private AuthException failEmailLogin(String normalizedEmail, String clientIp) {
-        boolean locked = attemptThrottleService.recordFailure(
-                EMAIL_LOGIN_ATTEMPT_SCOPE,
-                normalizedEmail,
-                clientIp,
-                EMAIL_LOGIN_MAX_ATTEMPTS,
-                EMAIL_LOGIN_COUNTER_TTL_SECONDS,
-                EMAIL_LOGIN_LOCK_TTL_SECONDS
-        );
-        return new AuthException(locked ? AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED : AuthErrorCode.EMAIL_LOGIN_FAILED);
-    }
-
-    private void clearEmailLoginFailures(String normalizedEmail, String clientIp) {
-        attemptThrottleService.clear(EMAIL_LOGIN_ATTEMPT_SCOPE, normalizedEmail, clientIp);
-    }
-
     private LoginResponse issueLoginResponse(User user, String deviceId, String providerName) {
         String accessToken = jwtProvider.createAccessToken(user.getId());
         String refreshToken = jwtProvider.createRefreshToken(user.getId(), deviceId);
@@ -350,22 +211,6 @@ public class AuthService {
                 .refreshToken(refreshToken)
                 .user(userInfo)
                 .build();
-    }
-
-    private void validatePasswordFormat(String password) {
-        if (password == null || password.isBlank()) {
-            throw new AuthException(AuthErrorCode.EMAIL_PASSWORD_REQUIRED);
-        }
-        if (password.length() < PASSWORD_MIN_LENGTH || password.length() > PASSWORD_MAX_LENGTH) {
-            throw new AuthException(AuthErrorCode.INVALID_PASSWORD_FORMAT);
-        }
-        boolean hasLetter = password.chars().anyMatch(Character::isLetter);
-        boolean hasDigit = password.chars().anyMatch(Character::isDigit);
-        boolean hasSpecial = password.chars()
-                .anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
-        if (!hasLetter || !hasDigit || !hasSpecial) {
-            throw new AuthException(AuthErrorCode.INVALID_PASSWORD_FORMAT);
-        }
     }
 
     private String normalizeEmail(String email) {
