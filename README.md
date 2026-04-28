@@ -237,58 +237,322 @@ sequenceDiagram
 ## 2. 그룹매칭 상태 다이어그램
 
 ```mermaid
-stateDiagram-v2
-    [*] --> OPEN: 팀방 생성
-    OPEN --> READY_CHECK: 정원 충족
-    READY_CHECK --> OPEN: 팀원 퇴장 / 준비 초기화
-    READY_CHECK --> QUEUE_WAITING: 전원 준비 + 방장 큐 시작
-    QUEUE_WAITING --> READY_CHECK: 큐 이탈
-    QUEUE_WAITING --> MATCHED: 상대 팀 매칭
-    MATCHED --> CLOSED: 최종 그룹채팅방 생성
-    OPEN --> CANCELLED: 방장 해산
-    READY_CHECK --> CANCELLED: 방장 해산
-    QUEUE_WAITING --> CANCELLED: 방장 해산
-    CLOSED --> [*]
-    CANCELLED --> [*]
+sequenceDiagram
+    participant Leader as 방장
+    participant Member as 팀원
+    participant API as GMatchingController
+    participant GS as GMatchingService
+    participant CS as ChatService
+    participant Worker as GMatchingQueueWorker
+    participant Event as STOMP / Push
+
+    Leader->>API: 팀방 생성 요청
+    API->>GS: createTeamRoom()
+    GS->>CS: 임시 채팅방 생성
+    GS-->>Leader: OPEN 팀방 반환
+
+    Member->>API: 팀방 참여
+    API->>GS: joinTeamRoom()
+    GS->>GS: 정원 충족 여부 확인
+    GS-->>Member: OPEN 또는 READY_CHECK 반환
+
+    Member->>API: 준비 상태 변경
+    API->>GS: updateReadyState()
+    GS->>GS: 팀원별 준비 상태 저장
+    GS-->>Event: STATUS_CHANGED 발행
+
+    Leader->>API: 매칭 큐 시작
+    API->>GS: startQueue()
+    GS->>GS: 전원 준비, 방장 권한, 티켓 사전 검증
+    GS-->>Leader: QUEUE_WAITING 반환
+    GS-->>Event: QUEUE_UPDATED 발행
+
+    Worker->>GS: 대기 팀 조회
+    GS->>GS: 팀 크기와 성별 조건으로 상대 팀 매칭
+    GS-->>Worker: MATCHED 처리
+    Worker-->>Event: MATCHED 대기 이벤트 발행
+
+    Worker->>CS: 최종 그룹채팅방 생성
+    CS-->>Worker: finalChatRoomId 반환
+    Worker->>GS: 최종방 연결 및 팀방 종료
+    GS-->>Event: MATCHED 완료 이벤트 발행
+    Event-->>Leader: 최종 그룹채팅방 이동 알림
+    Event-->>Member: 최종 그룹채팅방 이동 알림
 ```
 
-## 3. ER 다이어그램
+## 3. ERD
+
+테이블 수가 많아 전체 ERD를 한 번에 펼치면 가독성이 떨어지므로, 핵심 흐름 기준으로 도메인별 ERD를 분리했습니다.
+
+### 회원 / 인증 / 안전
 
 ```mermaid
 erDiagram
-    USERS ||--|| USER_PROFILES : owns
-    USERS ||--o{ USER_MILESTONES : earns
-    USERS ||--o{ USER_SCHOOL_CONSENTS : agrees
-    USERS ||--o{ REFRESH_TOKENS : issues
+    USERS {
+        bigint id PK
+        string provider
+        string status
+        int tickets
+    }
+    USER_PROFILES {
+        bigint user_id FK
+        int age
+        string mbti
+        string profile_image_path
+    }
+    USER_MILESTONES {
+        bigint user_id FK
+        string milestone_type
+    }
+    USER_SCHOOL_CONSENTS {
+        bigint user_id FK
+        string school_email
+    }
+    REFRESH_TOKEN_REDIS {
+        string id PK
+        bigint user_id
+        string device_id
+    }
+    USER_REPORTS {
+        bigint reporter_user_id FK
+        bigint reported_user_id FK
+        string status
+    }
+    USER_BLOCKS {
+        bigint blocker_user_id FK
+        bigint blocked_user_id FK
+    }
 
+    USERS ||--|| USER_PROFILES : profile
+    USERS ||--o{ USER_MILESTONES : milestones
+    USERS ||--o{ USER_SCHOOL_CONSENTS : consents
+    USERS ||--o{ REFRESH_TOKEN_REDIS : tokens
+    USERS ||--o{ USER_REPORTS : reports
+    USERS ||--o{ USER_BLOCKS : blocks
+```
+
+### 친구찾기 / 채팅
+
+```mermaid
+erDiagram
+    USERS {
+        bigint id PK
+        int tickets
+        string status
+    }
+    USER_PROFILES {
+        bigint user_id FK
+        string gender
+        string profile_image_path
+    }
+    MATCHING_EXPOSURES {
+        bigint user_id FK
+        bigint candidate_user_id FK
+    }
+    MATCHING_CONNECTIONS {
+        bigint id PK
+        bigint user1_id FK
+        bigint user2_id FK
+        bigint requester_id FK
+        string status
+        bigint chat_room_id FK
+    }
+    CHAT_ROOMS {
+        bigint id PK
+        string type
+        bigint connection_id FK
+    }
+    CHAT_ROOM_MEMBERS {
+        bigint chat_room_id FK
+        bigint user_id FK
+        bigint last_read_message_id
+    }
+    CHAT_MESSAGES {
+        bigint id PK
+        bigint chat_room_id FK
+        bigint sender_id FK
+        string message_type
+    }
+
+    USERS ||--|| USER_PROFILES : profile
     USERS ||--o{ MATCHING_EXPOSURES : sees
     USERS ||--o{ MATCHING_CONNECTIONS : participates
     MATCHING_CONNECTIONS ||--o| CHAT_ROOMS : opens
-
-    CHAT_ROOMS ||--o{ CHAT_ROOM_MEMBERS : has
-    CHAT_ROOMS ||--o{ CHAT_MESSAGES : contains
+    CHAT_ROOMS ||--o{ CHAT_ROOM_MEMBERS : members
+    CHAT_ROOMS ||--o{ CHAT_MESSAGES : messages
     USERS ||--o{ CHAT_ROOM_MEMBERS : joins
     USERS ||--o{ CHAT_MESSAGES : sends
+```
+
+### 그룹매칭
+
+```mermaid
+erDiagram
+    USERS {
+        bigint id PK
+        string status
+    }
+    CHAT_ROOMS {
+        bigint id PK
+        string type
+    }
+    G_TEMPORARY_TEAM_ROOMS {
+        bigint id PK
+        bigint leader_id FK
+        bigint temp_chat_room_id FK
+        string status
+        string team_size
+    }
+    G_TEMPORARY_TEAM_MEMBERS {
+        bigint team_room_id FK
+        bigint user_id FK
+        boolean active
+    }
+    G_TEAM_READY_STATES {
+        bigint team_room_id FK
+        bigint user_id FK
+        boolean ready
+    }
+    G_MATCH_RESULTS {
+        bigint id PK
+        bigint team1_room_id FK
+        bigint team2_room_id FK
+    }
+    G_FINAL_GROUP_CHAT_ROOMS {
+        bigint id PK
+        bigint match_result_id FK
+        bigint chat_room_id FK
+        string status
+    }
 
     USERS ||--o{ G_TEMPORARY_TEAM_ROOMS : leads
-    G_TEMPORARY_TEAM_ROOMS ||--o{ G_TEMPORARY_TEAM_MEMBERS : has
-    G_TEMPORARY_TEAM_ROOMS ||--o{ G_TEAM_READY_STATES : tracks
-    G_TEMPORARY_TEAM_ROOMS ||--o{ G_MATCH_RESULTS : matches
+    USERS ||--o{ G_TEMPORARY_TEAM_MEMBERS : joins
+    USERS ||--o{ G_TEAM_READY_STATES : ready
+    CHAT_ROOMS ||--o| G_TEMPORARY_TEAM_ROOMS : temp_chat
+    G_TEMPORARY_TEAM_ROOMS ||--o{ G_TEMPORARY_TEAM_MEMBERS : members
+    G_TEMPORARY_TEAM_ROOMS ||--o{ G_TEAM_READY_STATES : checks
+    G_TEMPORARY_TEAM_ROOMS ||--o{ G_MATCH_RESULTS : team_a
+    G_TEMPORARY_TEAM_ROOMS ||--o{ G_MATCH_RESULTS : team_b
     G_MATCH_RESULTS ||--|| G_FINAL_GROUP_CHAT_ROOMS : creates
-    CHAT_ROOMS ||--o{ G_FINAL_GROUP_CHAT_ROOMS : backs
+    CHAT_ROOMS ||--o| G_FINAL_GROUP_CHAT_ROOMS : final_chat
+```
+
+### 알림 / 푸시
+
+```mermaid
+erDiagram
+    USERS {
+        bigint id PK
+    }
+    NOTIFICATIONS {
+        bigint id PK
+        bigint user_id FK
+        string type
+        string dedupe_key
+    }
+    NOTIFICATION_PREFERENCES {
+        bigint user_id FK
+        boolean push_enabled
+        boolean quiet_hours_enabled
+    }
+    PUSH_DEVICES {
+        bigint id PK
+        bigint user_id FK
+        string device_id
+        string provider
+    }
+    NOTIFICATION_OUTBOX {
+        bigint notification_id FK
+        bigint push_device_id FK
+        string status
+    }
+    PUSH_EVENTS {
+        bigint notification_id FK
+        string device_id
+        string event_type
+    }
 
     USERS ||--o{ NOTIFICATIONS : receives
-    USERS ||--o{ NOTIFICATION_PREFERENCES : configures
+    USERS ||--|| NOTIFICATION_PREFERENCES : configures
     USERS ||--o{ PUSH_DEVICES : registers
     NOTIFICATIONS ||--o{ NOTIFICATION_OUTBOX : dispatches
+    PUSH_DEVICES ||--o{ NOTIFICATION_OUTBOX : targets
     NOTIFICATIONS ||--o{ PUSH_EVENTS : tracks
+    PUSH_DEVICES ||--o{ PUSH_EVENTS : reports
+```
+
+### 티켓 / 결제 / 리워드
+
+```mermaid
+erDiagram
+    USERS {
+        bigint id PK
+        int tickets
+    }
+    IAP_ORDERS {
+        bigint id PK
+        bigint user_id FK
+        string store
+        string status
+    }
+    IAP_EVENTS {
+        bigint order_id FK
+        string event_type
+    }
+    AD_REWARD_SESSIONS {
+        bigint id PK
+        bigint user_id FK
+        string session_key
+        string status
+    }
+    AD_REWARD_CALLBACKS {
+        bigint session_id FK
+        string transaction_id
+    }
+    TICKET_LEDGER {
+        bigint id PK
+        bigint user_id FK
+        int change_amount
+        string ref_type
+        string ref_id
+    }
 
     USERS ||--o{ IAP_ORDERS : purchases
-    USERS ||--o{ TICKET_LEDGER : records
+    IAP_ORDERS ||--o{ IAP_EVENTS : logs
     USERS ||--o{ AD_REWARD_SESSIONS : watches
+    AD_REWARD_SESSIONS ||--o{ AD_REWARD_CALLBACKS : verifies
+    USERS ||--o{ TICKET_LEDGER : records
+    IAP_ORDERS ||--o{ TICKET_LEDGER : grants
+    AD_REWARD_SESSIONS ||--o{ TICKET_LEDGER : rewards
+```
 
-    USERS ||--o{ USER_REPORTS : reports
-    USERS ||--o{ USER_BLOCKS : blocks
+### 운영 / 분석
+
+```mermaid
+erDiagram
+    USERS {
+        bigint id PK
+        string role
+        string status
+    }
+    ADMIN_NOTICES {
+        bigint id PK
+        string title
+        boolean active
+    }
+    MAINTENANCE_SETTINGS {
+        bigint id PK
+        boolean enabled
+        string message
+    }
+    ANALYTICS_EVENTS {
+        bigint id PK
+        bigint user_id FK
+        string event_type
+        string source
+    }
+
+    USERS ||--o{ ANALYTICS_EVENTS : tracks
 ```
 
 <br>
@@ -325,7 +589,3 @@ gitGraph
 - **hotfix**: 운영 중 발생한 긴급 버그 수정을 위한 브랜치입니다.
 
 <br>
-
-> ### AirConnect의 기록
-> #### [친구찾기 명세](docs/%EC%86%8C%EA%B0%9C%ED%8C%85%20%EC%B5%9C%EC%A2%85.md) | [그룹매칭 명세](docs/%EA%B3%BC%ED%8C%85%20%EC%B5%9C%EC%A2%85.md) | [채팅 명세](docs/채팅%20최종.md) | [알림 API](docs/notification-api.md) | [통계 API](docs/statistics-api.md) <br>
-> #### [Android 알림 계약](docs/android-notification-contract.md) | [Android 백엔드 연동](docs/Android%20백엔드%20연동.md) | [개별 보고서](docs/2026-04-21%20AirConnect%20개별보고서.md) | [주간 작업 보고서](docs/2026-04-28%20AirConnect%20주간%20작업%20보고서.md)
