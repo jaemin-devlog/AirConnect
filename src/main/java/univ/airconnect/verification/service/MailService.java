@@ -3,16 +3,24 @@ package univ.airconnect.verification.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StreamUtils;
 import univ.airconnect.verification.exception.VerificationErrorCode;
 import univ.airconnect.verification.exception.VerificationException;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class MailService {
+
+    private static final String TEMPLATE_PATH = "html/verification-email.html";
+    private static final String SUBJECT = "[AirConnect] 이메일 인증 코드";
 
     private final JavaMailSender mailSender;
 
@@ -25,26 +33,42 @@ public class MailService {
     @Value("${spring.mail.port:-1}")
     private int mailPort;
 
+    @Value("${app.verification.code-expiration-minutes:5}")
+    private long codeExpirationMinutes;
+
+    @Value("${app.verification.school-domain:office.hanseo.ac.kr}")
+    private String schoolDomain;
+
     public void sendVerificationCode(String to, String code) {
         validateMailConfiguration();
 
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromEmail);
-        message.setTo(to);
-        message.setSubject("[AirConnect] 이메일 인증 코드");
-        message.setText(
-                "AirConnect 회원가입을 위한 인증 코드입니다.\n\n" +
-                        "인증 코드: " + code + "\n\n" +
-                        "5분 이내에 입력해주세요."
-        );
-
         try {
+            String htmlBody = buildHtmlBody(code);
+            var message = mailSender.createMimeMessage();
+            var helper = new MimeMessageHelper(message, StandardCharsets.UTF_8.name());
+            helper.setFrom(fromEmail);
+            helper.setTo(to);
+            helper.setSubject(SUBJECT);
+            helper.setText(htmlBody, true);
             mailSender.send(message);
             log.info("Verification email sent successfully. to={}", to);
         } catch (Exception e) {
             log.error("Failed to send verification email. to={}, error={}", to, e.getMessage(), e);
             throw new VerificationException(VerificationErrorCode.MAIL_SEND_FAILED);
         }
+    }
+
+    private String buildHtmlBody(String code) throws IOException {
+        String template = loadTemplate();
+        return template
+                .replace("{{VERIFICATION_CODE}}", code)
+                .replace("{{EXPIRE_MINUTES}}", String.valueOf(codeExpirationMinutes))
+                .replace("{{SCHOOL_DOMAIN}}", schoolDomain);
+    }
+
+    private String loadTemplate() throws IOException {
+        ClassPathResource resource = new ClassPathResource(TEMPLATE_PATH);
+        return StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
     }
 
     private void validateMailConfiguration() {
