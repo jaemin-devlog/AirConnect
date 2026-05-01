@@ -1,5 +1,6 @@
 package univ.airconnect.auth.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -7,6 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import univ.airconnect.auth.dto.request.EmailLoginRequest;
 import univ.airconnect.auth.dto.request.LogoutRequest;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
@@ -14,6 +16,7 @@ import univ.airconnect.auth.dto.response.LoginResponse;
 import univ.airconnect.auth.dto.response.TokenPairResponse;
 import univ.airconnect.auth.service.AuthService;
 import univ.airconnect.global.security.resolver.CurrentUserId;
+import univ.airconnect.global.web.ClientIpResolver;
 
 @Slf4j
 @RestController
@@ -28,6 +31,17 @@ public class AuthController {
         log.info("Social login request: provider={}", request.getProvider());
         LoginResponse response = authService.socialLogin(request);
         log.info("Social login succeeded");
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/admin/login")
+    public ResponseEntity<LoginResponse> adminLogin(
+            @RequestBody EmailLoginRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        log.info("Admin login request");
+        LoginResponse response = authService.adminLogin(request, ClientIpResolver.resolve(httpRequest));
+        log.info("Admin login succeeded");
         return ResponseEntity.ok(response);
     }
 

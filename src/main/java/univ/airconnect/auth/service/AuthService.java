@@ -2,12 +2,14 @@ package univ.airconnect.auth.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.auth.dto.request.EmailLoginRequest;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
 import univ.airconnect.auth.dto.response.LoginResponse;
@@ -16,6 +18,7 @@ import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.security.TokenHashService;
+import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
@@ -34,14 +37,22 @@ import java.util.Map;
 @Transactional(readOnly = true)
 public class AuthService {
 
+    private static final String ADMIN_LOGIN_ATTEMPT_SCOPE = "admin_login";
+    private static final int ADMIN_LOGIN_MAX_ATTEMPTS = 5;
+    private static final long ADMIN_LOGIN_COUNTER_TTL_SECONDS = 5 * 60L;
+    private static final long ADMIN_LOGIN_LOCK_TTL_SECONDS = 15 * 60L;
+
     private final SocialAuthResolver socialAuthResolver;
     private final AppleAuthClient appleAuthClient;
+    private final AdminAccountService adminAccountService;
     private final UserRepository userRepository;
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenHashService tokenHashService;
     private final UserService userService;
     private final AnalyticsService analyticsService;
+    private final AttemptThrottleService attemptThrottleService;
+    private final PasswordEncoder passwordEncoder;
 
     @Transactional
     public LoginResponse socialLogin(SocialLoginRequest request) {
@@ -65,6 +76,39 @@ public class AuthService {
 
         log.info("Social login completed: userId={}", user.getId());
         return issueLoginResponse(user, request.getDeviceId(), request.getProvider().name());
+    }
+
+    @Transactional
+    public LoginResponse adminLogin(EmailLoginRequest request, String clientIp) {
+        log.info("Admin login started: clientIp={}", clientIp);
+
+        validateAdminLoginRequest(request);
+        ensureAdminLoginEnabled();
+        ensureAdminLoginNotLocked(clientIp);
+
+        String normalizedEmail = normalizeEmail(request.getEmail());
+        User user = userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, normalizedEmail)
+                .orElse(null);
+
+        if (!adminAccountService.normalizedEmail().equals(normalizedEmail)
+                || user == null
+                || !user.isAdmin()
+                || user.getPasswordHash() == null
+                || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            throw recordAdminLoginFailure(clientIp);
+        }
+
+        attemptThrottleService.clear(
+                ADMIN_LOGIN_ATTEMPT_SCOPE,
+                adminAccountService.loginAttemptIdentifier(),
+                clientIp
+        );
+
+        validateUserStatus(user);
+        user.markActive();
+
+        log.info("Admin login completed: userId={}", user.getId());
+        return issueLoginResponse(user, request.getDeviceId(), "ADMIN_ACCOUNT");
     }
 
     @Transactional
@@ -159,6 +203,21 @@ public class AuthService {
         }
     }
 
+    private void validateAdminLoginRequest(EmailLoginRequest request) {
+        if (request == null) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
+        }
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
+        }
+        if (request.getPassword() == null || request.getPassword().isBlank()) {
+            throw new AuthException(AuthErrorCode.EMAIL_PASSWORD_REQUIRED);
+        }
+        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
+            throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
+        }
+    }
+
     private void validateRefreshRequest(TokenRefreshRequest request) {
         if (request == null) {
             throw new AuthException(AuthErrorCode.INVALID_REFRESH_REQUEST);
@@ -185,6 +244,37 @@ public class AuthService {
 
     private boolean isRestrictedStatus(UserStatus status) {
         return status == UserStatus.DELETED || status == UserStatus.SUSPENDED || status == UserStatus.RESTRICTED;
+    }
+
+    private void ensureAdminLoginEnabled() {
+        if (!adminAccountService.isEnabledAndConfigured()) {
+            throw new AuthException(AuthErrorCode.ADMIN_LOGIN_DISABLED);
+        }
+    }
+
+    private void ensureAdminLoginNotLocked(String clientIp) {
+        if (attemptThrottleService.isLocked(
+                ADMIN_LOGIN_ATTEMPT_SCOPE,
+                adminAccountService.loginAttemptIdentifier(),
+                clientIp
+        )) {
+            throw new AuthException(AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED);
+        }
+    }
+
+    private AuthException recordAdminLoginFailure(String clientIp) {
+        boolean locked = attemptThrottleService.recordFailure(
+                ADMIN_LOGIN_ATTEMPT_SCOPE,
+                adminAccountService.loginAttemptIdentifier(),
+                clientIp,
+                ADMIN_LOGIN_MAX_ATTEMPTS,
+                ADMIN_LOGIN_COUNTER_TTL_SECONDS,
+                ADMIN_LOGIN_LOCK_TTL_SECONDS
+        );
+
+        return new AuthException(locked
+                ? AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED
+                : AuthErrorCode.EMAIL_LOGIN_FAILED);
     }
 
     private LoginResponse issueLoginResponse(User user, String deviceId, String providerName) {
