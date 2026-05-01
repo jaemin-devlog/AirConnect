@@ -63,7 +63,9 @@ class MailServiceTest {
         assertThat(body).contains("5분 동안 유효");
         assertThat(body).contains("@office.hanseo.ac.kr");
         assertThat(body).contains("VERIFICATION CODE");
+        assertThat(body).contains("cid:airconnect-logo");
         assertThat(body).doesNotContain("{{VERIFICATION_CODE}}");
+        assertThat(hasInlineImage(mimeMessage, "airconnect-logo")).isTrue();
     }
 
     private String extractBody(MimeMessage message) throws Exception {
@@ -72,9 +74,50 @@ class MailServiceTest {
             return contentString;
         }
         if (content instanceof Multipart multipart) {
-            BodyPart bodyPart = multipart.getBodyPart(0);
-            return String.valueOf(bodyPart.getContent());
+            return extractBody(multipart);
         }
         return String.valueOf(content);
+    }
+
+    private String extractBody(Multipart multipart) throws Exception {
+        for (int i = 0; i < multipart.getCount(); i++) {
+            BodyPart bodyPart = multipart.getBodyPart(i);
+            Object content = bodyPart.getContent();
+            if (content instanceof String contentString) {
+                return contentString;
+            }
+            if (content instanceof Multipart nestedMultipart) {
+                return extractBody(nestedMultipart);
+            }
+        }
+        return "";
+    }
+
+    private boolean hasInlineImage(MimeMessage message, String contentId) throws Exception {
+        Object content = message.getContent();
+        if (content instanceof Multipart multipart) {
+            return hasInlineImage(multipart, contentId);
+        }
+        return false;
+    }
+
+    private boolean hasInlineImage(Multipart multipart, String contentId) throws Exception {
+        for (int i = 0; i < multipart.getCount(); i++) {
+            BodyPart bodyPart = multipart.getBodyPart(i);
+            String[] contentIdHeaders = bodyPart.getHeader("Content-ID");
+            if (contentIdHeaders != null) {
+                for (String header : contentIdHeaders) {
+                    if (header.contains(contentId)) {
+                        return true;
+                    }
+                }
+            }
+
+            Object content = bodyPart.getContent();
+            if (content instanceof Multipart nestedMultipart && hasInlineImage(nestedMultipart, contentId)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

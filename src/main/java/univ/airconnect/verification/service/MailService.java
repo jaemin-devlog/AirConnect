@@ -20,6 +20,8 @@ import java.nio.charset.StandardCharsets;
 public class MailService {
 
     private static final String TEMPLATE_PATH = "html/verification-email.html";
+    private static final String LOGO_PATH = "static/image-photoroom.png";
+    private static final String LOGO_CONTENT_ID = "airconnect-logo";
     private static final String SUBJECT = "[AirConnect] 이메일 인증 코드";
 
     private final JavaMailSender mailSender;
@@ -45,11 +47,16 @@ public class MailService {
         try {
             String htmlBody = buildHtmlBody(code);
             var message = mailSender.createMimeMessage();
-            var helper = new MimeMessageHelper(message, StandardCharsets.UTF_8.name());
+            var helper = new MimeMessageHelper(
+                    message,
+                    MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED,
+                    StandardCharsets.UTF_8.name()
+            );
             helper.setFrom(fromEmail);
             helper.setTo(to);
             helper.setSubject(SUBJECT);
             helper.setText(htmlBody, true);
+            helper.addInline(LOGO_CONTENT_ID, new ClassPathResource(LOGO_PATH), "image/png");
             mailSender.send(message);
             log.info("Verification email sent successfully. to={}", to);
         } catch (Exception e) {
