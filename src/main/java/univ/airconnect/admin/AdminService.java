@@ -30,6 +30,7 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
 
+import java.time.format.DateTimeFormatter;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -39,6 +40,8 @@ import java.util.*;
 public class AdminService {
 
     private static final int MAX_PAGE_SIZE = 100;
+    private static final String DEFAULT_ADMIN_SENDER_NAME = "운영팀";
+    private static final DateTimeFormatter ADMIN_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final AdminNoticeRepository adminNoticeRepository;
     private final UserRepository userRepository;
@@ -98,13 +101,50 @@ public class AdminService {
     }
 
     @Transactional
-    public AdminDtos.UserDetail applyUserAction(Long userId, AdminRequests.UserActionRequest request) {
+    public AdminDtos.UserDetail applyUserAction(Long adminUserId, Long userId, AdminRequests.UserActionRequest request) {
         User user = getRequiredUser(userId);
+        String reason = trimToNull(request.reason());
         switch (request.action()) {
-            case SUSPEND -> user.suspend(request.until(), trimToNull(request.reason()));
+            case SUSPEND -> {
+                user.suspend(request.until(), reason);
+                sendAdminAnnouncementToUser(
+                        user.getId(),
+                        adminUserId,
+                        buildUserActionMessage(
+                                "회원님의 계정이 정지되었습니다.",
+                                reason,
+                                request.until(),
+                                "정지 해제 예정일"
+                        ),
+                        Map.of(
+                                "kind", "ADMIN_USER_ACTION",
+                                "action", request.action().name(),
+                                "reason", nullablePayloadValue(reason),
+                                "until", nullablePayloadValue(formatDateTime(request.until()))
+                        )
+                );
+            }
             case DELETE -> userService.deleteAccount(userId, null, null);
             case REACTIVATE -> user.reactivate();
-            case RESTRICT_MATCHING -> user.restrictMatching(request.until(), trimToNull(request.reason()));
+            case RESTRICT_MATCHING -> {
+                user.restrictMatching(request.until(), reason);
+                sendAdminAnnouncementToUser(
+                        user.getId(),
+                        adminUserId,
+                        buildUserActionMessage(
+                                "회원님의 매칭 기능이 제한되었습니다.",
+                                reason,
+                                request.until(),
+                                "제한 해제 예정일"
+                        ),
+                        Map.of(
+                                "kind", "ADMIN_USER_ACTION",
+                                "action", request.action().name(),
+                                "reason", nullablePayloadValue(reason),
+                                "until", nullablePayloadValue(formatDateTime(request.until()))
+                        )
+                );
+            }
             case CLEAR_MATCHING_RESTRICTION -> user.clearMatchingRestriction();
         }
         return toUserDetail(getRequiredUser(userId));
@@ -169,10 +209,12 @@ public class AdminService {
     }
 
     @Transactional
-    public AdminDtos.ReportRecord updateReportStatus(Long reportId, AdminRequests.ReportStatusUpdateRequest request) {
+    public AdminDtos.ReportRecord updateReportStatus(Long adminUserId, Long reportId, AdminRequests.ReportStatusUpdateRequest request) {
         UserReport report = userReportRepository.findById(reportId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "신고를 찾을 수 없습니다."));
+        validateReportStatusUpdateRequest(request);
         report.updateStatus(request.status());
+        notifyReporterForReportStatus(adminUserId, report, request);
 
         Set<Long> userIds = new LinkedHashSet<>();
         userIds.add(report.getReporterUserId());
@@ -214,7 +256,7 @@ public class AdminService {
     }
 
     @Transactional
-    public AdminDtos.TicketBalance adjustTickets(AdminRequests.TicketAdjustmentRequest request) {
+    public AdminDtos.TicketBalance adjustTickets(Long adminUserId, AdminRequests.TicketAdjustmentRequest request) {
         if (request.amount() == 0) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "티켓 변경량은 0일 수 없습니다.");
         }
@@ -237,6 +279,19 @@ public class AdminService {
                         after,
                         "ADMIN:" + request.reason().trim(),
                         "admin-adjustment:" + UUID.randomUUID()
+                )
+        );
+
+        sendAdminAnnouncementToUser(
+                user.getId(),
+                adminUserId,
+                buildTicketAdjustmentMessage(request.amount(), request.reason()),
+                Map.of(
+                        "kind", "ADMIN_TICKET_ADJUSTMENT",
+                        "amount", request.amount(),
+                        "reason", request.reason().trim(),
+                        "beforeTickets", before,
+                        "afterTickets", after
                 )
         );
 
@@ -494,6 +549,123 @@ public class AdminService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void validateReportStatusUpdateRequest(AdminRequests.ReportStatusUpdateRequest request) {
+        String reason = trimToNull(request.reason());
+        if ((request.status() == ReportStatus.RESOLVED || request.status() == ReportStatus.REJECTED) && reason == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "해당 신고 상태에는 처리 사유가 필요합니다.");
+        }
+    }
+
+    private void notifyReporterForReportStatus(
+            Long adminUserId,
+            UserReport report,
+            AdminRequests.ReportStatusUpdateRequest request
+    ) {
+        String reason = trimToNull(request.reason());
+        String message = switch (request.status()) {
+            case IN_REVIEW -> "신고가 검토중입니다. 빠른 시일 내에 처리됩니다.";
+            case RESOLVED -> "신고가 처리되었습니다. " + reason;
+            case REJECTED -> "신고가 기각되었습니다. 사유: " + reason;
+            default -> null;
+        };
+
+        if (message == null) {
+            return;
+        }
+
+        sendAdminAnnouncementToUser(
+                report.getReporterUserId(),
+                adminUserId,
+                message,
+                Map.of(
+                        "kind", "ADMIN_REPORT_STATUS_UPDATE",
+                        "reportId", report.getId(),
+                        "status", request.status().name(),
+                        "reason", nullablePayloadValue(reason),
+                        "reportedUserId", report.getReportedUserId()
+                )
+        );
+    }
+
+    private void sendAdminAnnouncementToUser(
+            Long targetUserId,
+            Long adminUserId,
+            String body,
+            Map<String, Object> payload
+    ) {
+        notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+                targetUserId,
+                NotificationType.SYSTEM_ANNOUNCEMENT,
+                resolveAdminSenderName(adminUserId),
+                body,
+                null,
+                adminUserId,
+                null,
+                toPayloadJson(enrichAdminPayload(adminUserId, payload)),
+                null
+        ));
+    }
+
+    private Map<String, Object> enrichAdminPayload(Long adminUserId, Map<String, Object> payload) {
+        Map<String, Object> enriched = new LinkedHashMap<>();
+        enriched.put("senderName", resolveAdminSenderName(adminUserId));
+        enriched.put("senderUserId", adminUserId);
+        enriched.putAll(payload);
+        return enriched;
+    }
+
+    private String resolveAdminSenderName(Long adminUserId) {
+        if (adminUserId == null) {
+            return DEFAULT_ADMIN_SENDER_NAME;
+        }
+        User adminUser = getRequiredUser(adminUserId);
+        if (trimToNull(adminUser.getName()) != null) {
+            return adminUser.getName().trim();
+        }
+        if (trimToNull(adminUser.getNickname()) != null) {
+            return adminUser.getNickname().trim();
+        }
+        return DEFAULT_ADMIN_SENDER_NAME;
+    }
+
+    private String buildUserActionMessage(
+            String actionLead,
+            String reason,
+            LocalDateTime until,
+            String untilLabel
+    ) {
+        StringBuilder builder = new StringBuilder(actionLead);
+        if (reason != null) {
+            builder.append(" 사유: ").append(reason).append(".");
+        }
+        String formattedUntil = formatDateTime(until);
+        if (formattedUntil != null) {
+            builder.append(" ").append(untilLabel).append(": ").append(formattedUntil).append(".");
+        }
+        return builder.toString().trim();
+    }
+
+    private String buildTicketAdjustmentMessage(int amount, String reason) {
+        String trimmedReason = requestSafeReason(reason);
+        if (amount > 0) {
+            return "티켓 " + amount + "개가 지급되었습니다. 사유: " + trimmedReason + ".";
+        }
+        return "티켓 " + Math.abs(amount) + "개가 차감되었습니다. 사유: " + trimmedReason + ".";
+    }
+
+    private String requestSafeReason(String reason) {
+        String trimmed = trimToNull(reason);
+        return trimmed != null ? trimmed : "운영 정책에 따른 조치";
+    }
+
+    private String formatDateTime(LocalDateTime value) {
+        return value == null ? null : value.format(ADMIN_TIME_FORMATTER);
+    }
+
+    private Object nullablePayloadValue(Object value) {
+        return value != null ? value : "";
     }
 
     private String toPayloadJson(Map<String, Object> payload) {

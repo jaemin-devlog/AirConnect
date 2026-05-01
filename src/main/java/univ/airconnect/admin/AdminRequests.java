@@ -28,7 +28,8 @@ public final class AdminRequests {
     }
 
     public record ReportStatusUpdateRequest(
-            @NotNull ReportStatus status
+            @NotNull ReportStatus status,
+            String reason
     ) {
     }
 
