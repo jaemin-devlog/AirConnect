@@ -29,6 +29,8 @@ import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -75,7 +77,7 @@ public class AuthService {
         user.markActive();
 
         log.info("Social login completed: userId={}", user.getId());
-        return issueLoginResponse(user, request.getDeviceId(), request.getProvider().name());
+        return issueLoginResponse(user, request.getDeviceId(), request.getProvider().name(), true);
     }
 
     @Transactional
@@ -106,9 +108,10 @@ public class AuthService {
 
         validateUserStatus(user);
         user.markActive();
+        revokeAllRefreshTokens(user.getId());
 
         log.info("Admin login completed: userId={}", user.getId());
-        return issueLoginResponse(user, request.getDeviceId(), "ADMIN_ACCOUNT");
+        return issueLoginResponse(user, request.getDeviceId(), "ADMIN_ACCOUNT", false);
     }
 
     @Transactional
@@ -277,14 +280,18 @@ public class AuthService {
                 : AuthErrorCode.EMAIL_LOGIN_FAILED);
     }
 
-    private LoginResponse issueLoginResponse(User user, String deviceId, String providerName) {
+    private LoginResponse issueLoginResponse(User user, String deviceId, String providerName, boolean issueRefreshToken) {
         String accessToken = jwtProvider.createAccessToken(user.getId());
-        String refreshToken = jwtProvider.createRefreshToken(user.getId(), deviceId);
-        String refreshTokenHash = tokenHashService.hash(refreshToken);
+        String refreshToken = null;
 
-        refreshTokenRepository.save(
-                RefreshToken.create(user.getId(), deviceId, refreshTokenHash)
-        );
+        if (issueRefreshToken) {
+            refreshToken = jwtProvider.createRefreshToken(user.getId(), deviceId);
+            String refreshTokenHash = tokenHashService.hash(refreshToken);
+
+            refreshTokenRepository.save(
+                    RefreshToken.create(user.getId(), deviceId, refreshTokenHash)
+            );
+        }
 
         UserMeResponse userInfo = userService.getMe(user.getId());
         analyticsService.trackServerEvent(
@@ -301,6 +308,17 @@ public class AuthService {
                 .refreshToken(refreshToken)
                 .user(userInfo)
                 .build();
+    }
+
+    private void revokeAllRefreshTokens(Long userId) {
+        Iterable<RefreshToken> tokens = refreshTokenRepository.findByUserId(userId);
+        List<String> tokenIds = new ArrayList<>();
+        for (RefreshToken token : tokens) {
+            tokenIds.add(token.getId());
+        }
+        if (!tokenIds.isEmpty()) {
+            refreshTokenRepository.deleteAllById(tokenIds);
+        }
     }
 
     private String normalizeEmail(String email) {
