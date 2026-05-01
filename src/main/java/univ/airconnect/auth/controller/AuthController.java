@@ -34,7 +34,7 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/email/login")
+    @PostMapping("/admin/login")
     public ResponseEntity<LoginResponse> adminLogin(
             @RequestBody EmailLoginRequest request,
             HttpServletRequest httpRequest
