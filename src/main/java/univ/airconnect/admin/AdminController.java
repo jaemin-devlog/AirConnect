@@ -43,12 +43,13 @@ public class AdminController {
 
     @PatchMapping("/users/{userId}/actions")
     public ResponseEntity<ApiResponse<AdminDtos.UserDetail>> applyUserAction(
+            @CurrentUserId Long adminUserId,
             @PathVariable Long userId,
             @Valid @RequestBody AdminRequests.UserActionRequest body,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(adminService.applyUserAction(userId, body), traceId));
+        return ResponseEntity.ok(ApiResponse.ok(adminService.applyUserAction(adminUserId, userId, body), traceId));
     }
 
     @GetMapping("/matchings")
@@ -77,12 +78,13 @@ public class AdminController {
 
     @PatchMapping("/reports/{reportId}")
     public ResponseEntity<ApiResponse<AdminDtos.ReportRecord>> updateReportStatus(
+            @CurrentUserId Long adminUserId,
             @PathVariable Long reportId,
             @Valid @RequestBody AdminRequests.ReportStatusUpdateRequest body,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(adminService.updateReportStatus(reportId, body), traceId));
+        return ResponseEntity.ok(ApiResponse.ok(adminService.updateReportStatus(adminUserId, reportId, body), traceId));
     }
 
     @GetMapping("/tickets/users/{userId}")
@@ -107,11 +109,12 @@ public class AdminController {
 
     @PostMapping("/tickets/adjustments")
     public ResponseEntity<ApiResponse<AdminDtos.TicketBalance>> adjustTickets(
+            @CurrentUserId Long adminUserId,
             @Valid @RequestBody AdminRequests.TicketAdjustmentRequest body,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(adminService.adjustTickets(body), traceId));
+        return ResponseEntity.ok(ApiResponse.ok(adminService.adjustTickets(adminUserId, body), traceId));
     }
 
     @GetMapping("/statistics/overview")

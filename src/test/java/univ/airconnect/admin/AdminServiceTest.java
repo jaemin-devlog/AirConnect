@@ -17,15 +17,20 @@ import univ.airconnect.iap.domain.entity.IapOrder;
 import univ.airconnect.iap.domain.entity.TicketLedger;
 import univ.airconnect.iap.repository.IapOrderRepository;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
+import univ.airconnect.moderation.domain.ReportReasonCode;
+import univ.airconnect.moderation.domain.ReportSourceType;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.moderation.domain.ReportStatus;
+import univ.airconnect.moderation.domain.entity.UserReport;
+import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.moderation.repository.UserReportRepository;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
 import univ.airconnect.statistics.service.StatisticsService;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.user.domain.OnboardingStatus;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
@@ -87,27 +92,41 @@ class AdminServiceTest {
     @Test
     void adjustTickets_updatesBalanceAndCreatesLedger() {
         User user = user(1L, 10);
+        User admin = adminUser(999L, "운영팀");
+        when(userRepository.findById(999L)).thenReturn(Optional.of(admin));
         when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
 
         AdminDtos.TicketBalance response = adminService.adjustTickets(
+                999L,
                 new AdminRequests.TicketAdjustmentRequest(1L, 5, "bug compensation")
         );
 
         ArgumentCaptor<TicketLedger> captor = ArgumentCaptor.forClass(TicketLedger.class);
+        ArgumentCaptor<NotificationService.CreateCommand> notificationCaptor =
+                ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
         verify(ticketLedgerRepository).save(captor.capture());
+        verify(notificationService).createAndEnqueue(notificationCaptor.capture());
         assertThat(response.currentTickets()).isEqualTo(15);
         assertThat(captor.getValue().getChangeAmount()).isEqualTo(5);
         assertThat(captor.getValue().getAfterAmount()).isEqualTo(15);
         assertThat(captor.getValue().getReason()).isEqualTo("ADMIN:bug compensation");
+        assertThat(notificationCaptor.getValue().userId()).isEqualTo(1L);
+        assertThat(notificationCaptor.getValue().type()).isEqualTo(NotificationType.SYSTEM_ANNOUNCEMENT);
+        assertThat(notificationCaptor.getValue().title()).isEqualTo("운영팀");
+        assertThat(notificationCaptor.getValue().body()).contains("티켓 5개가 지급되었습니다.");
+        assertThat(notificationCaptor.getValue().body()).contains("bug compensation");
     }
 
     @Test
     void applyUserAction_restrictMatching_marksUserRestricted() {
         User user = user(2L, 10);
+        User admin = adminUser(999L, "운영 매니저");
+        when(userRepository.findById(999L)).thenReturn(Optional.of(admin));
         when(userRepository.findById(2L)).thenReturn(Optional.of(user));
         when(userReportRepository.countByReportedUserIdAndStatus(2L, ReportStatus.OPEN)).thenReturn(0L);
 
         AdminDtos.UserDetail response = adminService.applyUserAction(
+                999L,
                 2L,
                 new AdminRequests.UserActionRequest(
                         AdminRequests.UserActionType.RESTRICT_MATCHING,
@@ -116,8 +135,67 @@ class AdminServiceTest {
                 )
         );
 
+        ArgumentCaptor<NotificationService.CreateCommand> notificationCaptor =
+                ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
+        verify(notificationService).createAndEnqueue(notificationCaptor.capture());
         assertThat(user.isMatchingRestricted()).isTrue();
         assertThat(response.restrictedReason()).isEqualTo("abuse");
+        assertThat(notificationCaptor.getValue().userId()).isEqualTo(2L);
+        assertThat(notificationCaptor.getValue().title()).isEqualTo("운영 매니저");
+        assertThat(notificationCaptor.getValue().body()).contains("회원님의 매칭 기능이 제한되었습니다.");
+        assertThat(notificationCaptor.getValue().body()).contains("abuse");
+    }
+
+    @Test
+    void updateReportStatus_inReview_notifiesReporter() {
+        User admin = adminUser(999L, "운영팀");
+        User reporter = user(10L, 10);
+        ReflectionTestUtils.setField(reporter, "nickname", "신고자");
+        User reported = user(20L, 10);
+        ReflectionTestUtils.setField(reported, "nickname", "피신고자");
+        UserReport report = report(10L, 20L);
+
+        when(userRepository.findById(999L)).thenReturn(Optional.of(admin));
+        when(userReportRepository.findById(1L)).thenReturn(Optional.of(report));
+        when(userRepository.findAllByIdWithProfile(java.util.Set.of(10L, 20L))).thenReturn(List.of(reporter, reported));
+
+        AdminDtos.ReportRecord response = adminService.updateReportStatus(
+                999L,
+                1L,
+                new AdminRequests.ReportStatusUpdateRequest(ReportStatus.IN_REVIEW, null)
+        );
+
+        ArgumentCaptor<NotificationService.CreateCommand> notificationCaptor =
+                ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
+        verify(notificationService).createAndEnqueue(notificationCaptor.capture());
+        assertThat(response.status()).isEqualTo(ReportStatus.IN_REVIEW);
+        assertThat(notificationCaptor.getValue().userId()).isEqualTo(10L);
+        assertThat(notificationCaptor.getValue().title()).isEqualTo("운영팀");
+        assertThat(notificationCaptor.getValue().body()).isEqualTo("신고가 검토중입니다. 빠른 시일 내에 처리됩니다.");
+    }
+
+    @Test
+    void updateReportStatus_resolved_includesResolutionReason() {
+        User admin = adminUser(999L, "운영팀");
+        User reporter = user(10L, 10);
+        User reported = user(20L, 10);
+        UserReport report = report(10L, 20L);
+
+        when(userRepository.findById(999L)).thenReturn(Optional.of(admin));
+        when(userReportRepository.findById(2L)).thenReturn(Optional.of(report));
+        when(userRepository.findAllByIdWithProfile(java.util.Set.of(10L, 20L))).thenReturn(List.of(reporter, reported));
+
+        adminService.updateReportStatus(
+                999L,
+                2L,
+                new AdminRequests.ReportStatusUpdateRequest(ReportStatus.RESOLVED, "대상이 30일 정지 처리되었습니다.")
+        );
+
+        ArgumentCaptor<NotificationService.CreateCommand> notificationCaptor =
+                ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
+        verify(notificationService).createAndEnqueue(notificationCaptor.capture());
+        assertThat(notificationCaptor.getValue().body())
+                .isEqualTo("신고가 처리되었습니다. 대상이 30일 정지 처리되었습니다.");
     }
 
     @Test
@@ -245,6 +323,35 @@ class AdminServiceTest {
                 .build();
         ReflectionTestUtils.setField(user, "id", id);
         return user;
+    }
+
+    private User adminUser(Long id, String name) {
+        User user = User.builder()
+                .provider(SocialProvider.EMAIL)
+                .socialId("admin-" + id + "@airconnect.test")
+                .email("admin-" + id + "@airconnect.test")
+                .name(name)
+                .role(UserRole.ADMIN)
+                .tickets(10)
+                .status(UserStatus.ACTIVE)
+                .onboardingStatus(OnboardingStatus.FULL)
+                .createdAt(LocalDateTime.now())
+                .build();
+        ReflectionTestUtils.setField(user, "id", id);
+        return user;
+    }
+
+    private UserReport report(Long reporterUserId, Long reportedUserId) {
+        UserReport report = UserReport.createReceived(
+                reporterUserId,
+                reportedUserId,
+                ReportReasonCode.HARASSMENT,
+                "신고 상세",
+                ReportSourceType.PROFILE,
+                "profile-1"
+        );
+        ReflectionTestUtils.setField(report, "id", 1L);
+        return report;
     }
 
     private IapOrder iapOrder(Long userId) {
