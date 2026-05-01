@@ -2,6 +2,7 @@ package univ.airconnect.auth.service;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -10,6 +11,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.auth.dto.request.EmailLoginRequest;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
 import univ.airconnect.auth.dto.response.LoginResponse;
@@ -18,10 +20,12 @@ import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.security.TokenHashService;
+import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
 import univ.airconnect.global.security.jwt.JwtProvider;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.dto.response.UserMeResponse;
@@ -46,6 +50,8 @@ class AuthServiceTest {
     @Mock
     private AppleAuthClient appleAuthClient;
     @Mock
+    private AdminAccountService adminAccountService;
+    @Mock
     private UserRepository userRepository;
     @Mock
     private JwtProvider jwtProvider;
@@ -57,6 +63,10 @@ class AuthServiceTest {
     private UserService userService;
     @Mock
     private AnalyticsService analyticsService;
+    @Mock
+    private AttemptThrottleService attemptThrottleService;
+    @Mock
+    private PasswordEncoder passwordEncoder;
     @Mock
     private SocialAuthClient socialAuthClient;
 
@@ -120,6 +130,65 @@ class AuthServiceTest {
                 .isInstanceOf(AuthException.class)
                 .extracting(ex -> ((AuthException) ex).getErrorCode())
                 .isEqualTo(AuthErrorCode.INVALID_LOGIN_REQUEST);
+    }
+
+    @Test
+    void adminLogin_issuesTokensForConfiguredAdmin() {
+        EmailLoginRequest request = new EmailLoginRequest("Admin@AirConnect.test", "super-secret", "device-admin");
+        User adminUser = createAdminUser(88L, "admin@airconnect.test", "stored-hash");
+
+        when(adminAccountService.isEnabledAndConfigured()).thenReturn(true);
+        when(adminAccountService.loginAttemptIdentifier()).thenReturn("admin@airconnect.test");
+        when(adminAccountService.normalizedEmail()).thenReturn("admin@airconnect.test");
+        when(attemptThrottleService.isLocked("admin_login", "admin@airconnect.test", "127.0.0.1")).thenReturn(false);
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "admin@airconnect.test"))
+                .thenReturn(Optional.of(adminUser));
+        when(passwordEncoder.matches("super-secret", "stored-hash")).thenReturn(true);
+        when(jwtProvider.createAccessToken(88L)).thenReturn("admin-access-token");
+        when(jwtProvider.createRefreshToken(88L, "device-admin")).thenReturn("admin-refresh-token");
+        when(tokenHashService.hash("admin-refresh-token")).thenReturn("admin-refresh-hash");
+        when(userService.getMe(88L)).thenReturn(UserMeResponse.builder().userId(88L).role(UserRole.ADMIN).build());
+
+        LoginResponse response = authService.adminLogin(request, "127.0.0.1");
+
+        assertThat(response.getAccessToken()).isEqualTo("admin-access-token");
+        assertThat(response.getRefreshToken()).isEqualTo("admin-refresh-token");
+        verify(attemptThrottleService).clear("admin_login", "admin@airconnect.test", "127.0.0.1");
+    }
+
+    @Test
+    void adminLogin_recordsFailureForWrongPassword() {
+        EmailLoginRequest request = new EmailLoginRequest("admin@airconnect.test", "wrong-password", "device-admin");
+        User adminUser = createAdminUser(89L, "admin@airconnect.test", "stored-hash");
+
+        when(adminAccountService.isEnabledAndConfigured()).thenReturn(true);
+        when(adminAccountService.loginAttemptIdentifier()).thenReturn("admin@airconnect.test");
+        when(adminAccountService.normalizedEmail()).thenReturn("admin@airconnect.test");
+        when(attemptThrottleService.isLocked("admin_login", "admin@airconnect.test", "127.0.0.1")).thenReturn(false);
+        when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "admin@airconnect.test"))
+                .thenReturn(Optional.of(adminUser));
+        when(passwordEncoder.matches("wrong-password", "stored-hash")).thenReturn(false);
+        when(attemptThrottleService.recordFailure("admin_login", "admin@airconnect.test", "127.0.0.1",
+                5, 300L, 900L)).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.adminLogin(request, "127.0.0.1"))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.EMAIL_LOGIN_FAILED);
+    }
+
+    @Test
+    void adminLogin_blocksLockedRequest() {
+        EmailLoginRequest request = new EmailLoginRequest("admin@airconnect.test", "secret", "device-admin");
+
+        when(adminAccountService.isEnabledAndConfigured()).thenReturn(true);
+        when(adminAccountService.loginAttemptIdentifier()).thenReturn("admin@airconnect.test");
+        when(attemptThrottleService.isLocked("admin_login", "admin@airconnect.test", "127.0.0.1")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.adminLogin(request, "127.0.0.1"))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED);
     }
 
     @Test
@@ -202,6 +271,14 @@ class AuthServiceTest {
 
     private User createUser(Long userId) {
         User user = User.create(SocialProvider.APPLE, "social-" + userId, "u" + userId + "@airconnect.test");
+        ReflectionTestUtils.setField(user, "id", userId);
+        return user;
+    }
+
+    private User createAdminUser(Long userId, String email, String passwordHash) {
+        User user = User.createEmailUser(email, passwordHash);
+        user.changeRole(UserRole.ADMIN);
+        user.completeSignUp("Admin", "admin", 99999999, "운영팀");
         ReflectionTestUtils.setField(user, "id", userId);
         return user;
     }
