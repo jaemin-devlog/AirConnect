@@ -21,6 +21,8 @@ import univ.airconnect.user.repository.UserRepository;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    public static final String AUTH_EXCEPTION_ATTRIBUTE = "authException";
+
     private final JwtProvider jwtProvider;
     private final UserRepository userRepository;
 
@@ -60,6 +62,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (AuthException e) {
                 SecurityContextHolder.clearContext();
+                request.setAttribute(AUTH_EXCEPTION_ATTRIBUTE, e);
             }
         }
 
