@@ -15,6 +15,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import univ.airconnect.analytics.web.UserActivityFilter;
 import univ.airconnect.global.security.VerifiedSchoolEmailFilter;
+import univ.airconnect.global.security.RestAccessDeniedHandler;
+import univ.airconnect.global.security.RestAuthenticationEntryPoint;
 import univ.airconnect.global.security.jwt.JwtAuthenticationFilter;
 import univ.airconnect.maintenance.service.MaintenanceService;
 import univ.airconnect.maintenance.web.MaintenanceModeFilter;
@@ -27,6 +29,8 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final VerifiedSchoolEmailFilter verifiedSchoolEmailFilter;
     private final UserActivityFilter userActivityFilter;
+    private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
+    private final RestAccessDeniedHandler restAccessDeniedHandler;
 
     @Bean
     public MaintenanceModeFilter maintenanceModeFilter(
@@ -46,6 +50,10 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(restAuthenticationEntryPoint)
+                        .accessDeniedHandler(restAccessDeniedHandler)
                 )
                 .authorizeHttpRequests(auth -> auth
 

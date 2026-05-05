@@ -8,6 +8,8 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import univ.airconnect.auth.exception.AuthErrorCode;
+import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserRole;
@@ -20,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -65,6 +68,21 @@ class JwtAuthenticationFilterTest {
         jwtAuthenticationFilter.doFilter(request, response, new MockFilterChain());
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void storesAuthExceptionWhenAccessTokenIsExpired() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer expired-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AuthException authException = new AuthException(AuthErrorCode.TOKEN_EXPIRED);
+
+        doThrow(authException).when(jwtProvider).validateAccessToken("expired-token");
+
+        jwtAuthenticationFilter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        assertThat(request.getAttribute(JwtAuthenticationFilter.AUTH_EXCEPTION_ATTRIBUTE)).isSameAs(authException);
     }
 
     private User user(Long id, UserRole role, UserStatus status) {
