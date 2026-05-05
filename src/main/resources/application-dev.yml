@@ -154,8 +154,8 @@ moderation:
 app:
   rewards:
     milestone:
-      profile-image-uploaded-tickets: ${PROFILE_IMAGE_UPLOADED_REWARD_TICKETS:2}
-      email-verified-tickets: ${EMAIL_VERIFIED_REWARD_TICKETS:0}
+      profile-image-uploaded-tickets: ${PROFILE_IMAGE_UPLOADED_REWARD_TICKETS:1}
+      email-verified-tickets: ${EMAIL_VERIFIED_REWARD_TICKETS:1}
   upload:
     profile-image-dir: ${PROFILE_IMAGE_DIR:/var/lib/airconnect/profile-images}
     profile-image-url-base: ${PROFILE_IMAGE_URL_BASE}

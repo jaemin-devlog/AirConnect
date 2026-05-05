@@ -58,8 +58,8 @@ class UserProfileImageServiceTest {
         properties.setProfileImageMaxPixels(25_000_000L);
         properties.setProfileImageAllowedFormats(List.of("jpg", "jpeg", "png"));
         MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
-        rewardProperties.setProfileImageUploadedTickets(2);
-        rewardProperties.setEmailVerifiedTickets(0);
+        rewardProperties.setProfileImageUploadedTickets(1);
+        rewardProperties.setEmailVerifiedTickets(1);
         service = new UserProfileImageService(
                 userProfileRepository,
                 userRepository,
@@ -142,8 +142,8 @@ class UserProfileImageServiceTest {
         tinyLimit.setProfileImageMaxBytes(10);
         tinyLimit.setProfileImageAllowedFormats(List.of("jpg", "jpeg", "png"));
         MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
-        rewardProperties.setProfileImageUploadedTickets(2);
-        rewardProperties.setEmailVerifiedTickets(0);
+        rewardProperties.setProfileImageUploadedTickets(1);
+        rewardProperties.setEmailVerifiedTickets(1);
         UserProfileImageService tinyLimitService = new UserProfileImageService(
                 userProfileRepository,
                 userRepository,
@@ -180,7 +180,7 @@ class UserProfileImageServiceTest {
     }
 
     @Test
-    void saveProfileImage_grantsTwoTicketsForProfileImageMilestone() throws Exception {
+    void saveProfileImage_grantsOneTicketForProfileImageMilestone() throws Exception {
         Long userId = 7L;
         User user = activeUser(userId);
         UserProfile profile = profile(user);
@@ -195,7 +195,7 @@ class UserProfileImageServiceTest {
 
         service.saveProfileImage(userId, file);
 
-        assertThat(user.getTickets()).isEqualTo(before + 2);
+        assertThat(user.getTickets()).isEqualTo(before + 1);
         verify(userMilestoneRepository).save(org.mockito.ArgumentMatchers.any());
     }
 
