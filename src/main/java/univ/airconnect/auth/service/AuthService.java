@@ -2,6 +2,7 @@ package univ.airconnect.auth.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,6 +10,7 @@ import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.auth.domain.entity.SocialLoginDeviceBinding;
 import univ.airconnect.auth.dto.request.EmailLoginRequest;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
@@ -17,6 +19,7 @@ import univ.airconnect.auth.dto.response.TokenPairResponse;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
+import univ.airconnect.auth.repository.SocialLoginDeviceBindingRepository;
 import univ.airconnect.auth.security.TokenHashService;
 import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
@@ -50,6 +53,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final SocialLoginDeviceBindingRepository socialLoginDeviceBindingRepository;
     private final TokenHashService tokenHashService;
     private final UserService userService;
     private final AnalyticsService analyticsService;
@@ -67,11 +71,9 @@ public class AuthService {
         String email = normalizeOptionalEmail(resolveEmail(request));
 
         User user = userRepository.findByProviderAndSocialId(request.getProvider(), socialId)
-                .orElseGet(() -> {
-                    log.info("Creating new user for social login: provider={}, socialIdMasked={}",
-                            request.getProvider(), maskSocialId(socialId));
-                    return userRepository.save(User.create(request.getProvider(), socialId, email));
-                });
+                .orElseGet(() -> createUserForSocialLogin(request.getProvider(), socialId, email, request.getDeviceId()));
+
+        bindSocialLoginDevice(user.getId(), request.getDeviceId());
 
         validateUserStatus(user);
         user.markActive();
@@ -179,6 +181,55 @@ public class AuthService {
 
         refreshTokenRepository.deleteById(buildRefreshTokenKey(userId, deviceId));
         log.info("Logout completed: userId={}", userId);
+    }
+
+    private User createUserForSocialLogin(
+            SocialProvider provider,
+            String socialId,
+            String email,
+            String deviceId
+    ) {
+        ensureDeviceAvailableForNewSocialAccount(deviceId);
+        log.info("Creating new user for social login: provider={}, socialIdMasked={}, deviceIdMasked={}",
+                provider, maskSocialId(socialId), maskDeviceId(deviceId));
+        return userRepository.save(User.create(provider, socialId, email));
+    }
+
+    private void ensureDeviceAvailableForNewSocialAccount(String deviceId) {
+        socialLoginDeviceBindingRepository.findByDeviceId(deviceId)
+                .ifPresent(binding -> {
+                    log.warn("Blocked new social account creation on bound device: deviceIdMasked={}, boundUserId={}",
+                            maskDeviceId(deviceId), binding.getUserId());
+                    throw new AuthException(AuthErrorCode.DEVICE_ALREADY_LINKED_TO_ANOTHER_ACCOUNT);
+                });
+    }
+
+    private void bindSocialLoginDevice(Long userId, String deviceId) {
+        var existingBinding = socialLoginDeviceBindingRepository.findByDeviceId(deviceId);
+        if (existingBinding.isPresent()) {
+            SocialLoginDeviceBinding binding = existingBinding.get();
+            if (!binding.getUserId().equals(userId)) {
+                log.warn("Blocked social login on device bound to another user: deviceIdMasked={}, boundUserId={}, requestedUserId={}",
+                        maskDeviceId(deviceId), binding.getUserId(), userId);
+                throw new AuthException(AuthErrorCode.DEVICE_ALREADY_LINKED_TO_ANOTHER_ACCOUNT);
+            }
+            binding.touch();
+            return;
+        }
+
+        try {
+            socialLoginDeviceBindingRepository.save(SocialLoginDeviceBinding.bind(userId, deviceId));
+        } catch (DataIntegrityViolationException e) {
+            Long boundUserId = socialLoginDeviceBindingRepository.findByDeviceId(deviceId)
+                    .map(SocialLoginDeviceBinding::getUserId)
+                    .orElse(null);
+            if (boundUserId != null && !boundUserId.equals(userId)) {
+                log.warn("Blocked concurrent social login device binding collision: deviceIdMasked={}, boundUserId={}, requestedUserId={}",
+                        maskDeviceId(deviceId), boundUserId, userId);
+                throw new AuthException(AuthErrorCode.DEVICE_ALREADY_LINKED_TO_ANOTHER_ACCOUNT, e);
+            }
+            throw e;
+        }
     }
 
     private String resolveEmail(SocialLoginRequest request) {
