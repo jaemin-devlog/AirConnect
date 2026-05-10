@@ -55,6 +55,9 @@ public class User {
     @Column(length = 100)
     private String nickname;
 
+    @Column(name = "last_nickname_changed_at")
+    private LocalDateTime lastNicknameChangedAt;
+
     @Column(length = 20)
     private Integer studentNum;
 
@@ -110,6 +113,7 @@ public class User {
             String passwordHash,
             String name,
             String nickname,
+            LocalDateTime lastNicknameChangedAt,
             String deptName,
             Integer studentNum,
             UserStatus status,
@@ -133,6 +137,7 @@ public class User {
         this.passwordHash = passwordHash;
         this.name = name;
         this.nickname = nickname;
+        this.lastNicknameChangedAt = lastNicknameChangedAt;
         this.deptName = deptName;
         this.studentNum = studentNum;
         this.status = status;
@@ -203,13 +208,16 @@ public class User {
     }
 
     public void changeNickname(String nickname) {
+        LocalDateTime now = LocalDateTime.now();
         this.nickname = nickname;
-        this.lastActiveAt = LocalDateTime.now();
+        this.lastNicknameChangedAt = now;
+        this.lastActiveAt = now;
     }
 
     public void resetOnboarding() {
         this.name = null;
         this.nickname = null;
+        this.lastNicknameChangedAt = null;
         this.studentNum = null;
         this.deptName = null;
         this.onboardingStatus = OnboardingStatus.BASIC;
@@ -222,6 +230,7 @@ public class User {
         this.passwordHash = null;
         this.name = null;
         this.nickname = null;
+        this.lastNicknameChangedAt = null;
         this.studentNum = null;
         this.deptName = null;
         this.onboardingStatus = OnboardingStatus.BASIC;

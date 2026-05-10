@@ -35,6 +35,7 @@ import univ.airconnect.user.repository.UserRepository;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,6 +59,7 @@ public class UserService {
 
     private static final String USER_ACTIVITY_TOUCH_KEY_PREFIX = "analytics:user:last-active:";
     private static final int NICKNAME_MAX_LENGTH = 100;
+    private static final long NICKNAME_CHANGE_COOLDOWN_DAYS = 14L;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -268,6 +270,22 @@ public class UserService {
         ensureUserActive(user);
 
         String normalizedNickname = normalizeNickname(request.getNickname());
+        if (normalizedNickname.equals(user.getNickname())) {
+            return UpdateNicknameResponse.builder()
+                    .userId(user.getId())
+                    .nickname(user.getNickname())
+                    .build();
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime lastNicknameChangedAt = user.getLastNicknameChangedAt();
+        if (lastNicknameChangedAt != null
+                && lastNicknameChangedAt.plusDays(NICKNAME_CHANGE_COOLDOWN_DAYS).isAfter(now)) {
+            log.warn("⚠️ 닉네임 변경 쿨다운 중입니다: userId={}, availableAt={}",
+                    userId, lastNicknameChangedAt.plusDays(NICKNAME_CHANGE_COOLDOWN_DAYS));
+            throw new UserException(UserErrorCode.NICKNAME_CHANGE_TOO_EARLY);
+        }
+
         user.changeNickname(normalizedNickname);
 
         log.info("✅ 닉네임 변경 완료: userId={}, nickname={}", userId, normalizedNickname);

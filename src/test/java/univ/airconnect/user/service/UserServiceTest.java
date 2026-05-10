@@ -230,6 +230,7 @@ class UserServiceTest {
         UpdateNicknameResponse response = service.updateNickname(userId, request);
 
         assertThat(user.getNickname()).isEqualTo("newNick");
+        assertThat(user.getLastNicknameChangedAt()).isNotNull();
         assertThat(response.getUserId()).isEqualTo(userId);
         assertThat(response.getNickname()).isEqualTo("newNick");
     }
@@ -251,6 +252,69 @@ class UserServiceTest {
         assertThatThrownBy(() -> service.updateNickname(userId, request))
                 .isInstanceOfSatisfying(UserException.class, ex ->
                         assertThat(ex.getErrorCode()).isEqualTo(UserErrorCode.INVALID_INPUT));
+    }
+
+    @Test
+    void updateNickname_rejectsChangeWithinFourteenDays() {
+        UserService service = createService();
+        Long userId = 81L;
+
+        User user = User.createEmailUser("cooldown@airconnect.test", "encoded-password");
+        user.completeSignUp("tester", "oldNick", 20230081, "dept");
+        ReflectionTestUtils.setField(user, "id", userId);
+        ReflectionTestUtils.setField(user, "lastNicknameChangedAt", LocalDateTime.now().minusDays(13));
+
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+
+        UpdateNicknameRequest request = new UpdateNicknameRequest();
+        ReflectionTestUtils.setField(request, "nickname", "newNick");
+
+        assertThatThrownBy(() -> service.updateNickname(userId, request))
+                .isInstanceOfSatisfying(UserException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(UserErrorCode.NICKNAME_CHANGE_TOO_EARLY));
+    }
+
+    @Test
+    void updateNickname_allowsChangeAfterFourteenDays() {
+        UserService service = createService();
+        Long userId = 82L;
+
+        User user = User.createEmailUser("after14@airconnect.test", "encoded-password");
+        user.completeSignUp("tester", "oldNick", 20230082, "dept");
+        ReflectionTestUtils.setField(user, "id", userId);
+        ReflectionTestUtils.setField(user, "lastNicknameChangedAt", LocalDateTime.now().minusDays(14).minusMinutes(1));
+
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+
+        UpdateNicknameRequest request = new UpdateNicknameRequest();
+        ReflectionTestUtils.setField(request, "nickname", "newNick");
+
+        UpdateNicknameResponse response = service.updateNickname(userId, request);
+
+        assertThat(response.getNickname()).isEqualTo("newNick");
+        assertThat(user.getNickname()).isEqualTo("newNick");
+    }
+
+    @Test
+    void updateNickname_allowsSameNicknameWithoutCooldownPenalty() {
+        UserService service = createService();
+        Long userId = 83L;
+
+        User user = User.createEmailUser("same@airconnect.test", "encoded-password");
+        user.completeSignUp("tester", "sameNick", 20230083, "dept");
+        ReflectionTestUtils.setField(user, "id", userId);
+        LocalDateTime changedAt = LocalDateTime.now().minusDays(1);
+        ReflectionTestUtils.setField(user, "lastNicknameChangedAt", changedAt);
+
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+
+        UpdateNicknameRequest request = new UpdateNicknameRequest();
+        ReflectionTestUtils.setField(request, "nickname", "  sameNick  ");
+
+        UpdateNicknameResponse response = service.updateNickname(userId, request);
+
+        assertThat(response.getNickname()).isEqualTo("sameNick");
+        assertThat(user.getLastNicknameChangedAt()).isEqualTo(changedAt);
     }
 
     @Test

@@ -11,6 +11,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.auth.domain.entity.SocialLoginDeviceBinding;
 import univ.airconnect.auth.dto.request.EmailLoginRequest;
 import univ.airconnect.auth.dto.request.SocialLoginRequest;
 import univ.airconnect.auth.dto.request.TokenRefreshRequest;
@@ -19,6 +20,7 @@ import univ.airconnect.auth.dto.response.TokenPairResponse;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
+import univ.airconnect.auth.repository.SocialLoginDeviceBindingRepository;
 import univ.airconnect.auth.security.TokenHashService;
 import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
@@ -38,7 +40,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,6 +63,8 @@ class AuthServiceTest {
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
+    private SocialLoginDeviceBindingRepository socialLoginDeviceBindingRepository;
+    @Mock
     private TokenHashService tokenHashService;
     @Mock
     private UserService userService;
@@ -73,6 +79,11 @@ class AuthServiceTest {
 
     @InjectMocks
     private AuthService authService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        lenient().when(socialLoginDeviceBindingRepository.findByDeviceId(anyString())).thenReturn(Optional.empty());
+    }
 
     @Test
     void socialLogin_savesHashedRefreshToken() {
@@ -121,6 +132,50 @@ class AuthServiceTest {
 
         assertThat(response.getAccessToken()).isEqualTo("access-token");
         verify(userRepository).save(any(User.class));
+        verify(socialLoginDeviceBindingRepository).save(any(SocialLoginDeviceBinding.class));
+    }
+
+    @Test
+    void socialLogin_rejectsWhenDeviceAlreadyBoundToAnotherUser() {
+        SocialLoginRequest request = new SocialLoginRequest(SocialProvider.APPLE, "apple-identity-token", "device-locked");
+        User user = createUser(11L);
+        SocialLoginDeviceBinding binding = SocialLoginDeviceBinding.bind(99L, "device-locked");
+
+        when(socialAuthResolver.getClient(SocialProvider.APPLE)).thenReturn(socialAuthClient);
+        when(socialAuthClient.getSocialId("apple-identity-token")).thenReturn("apple-social-id");
+        when(appleAuthClient.getEmail("apple-identity-token")).thenReturn("u11@airconnect.test");
+        when(userRepository.findByProviderAndSocialId(SocialProvider.APPLE, "apple-social-id"))
+                .thenReturn(Optional.of(user));
+        when(socialLoginDeviceBindingRepository.findByDeviceId("device-locked"))
+                .thenReturn(Optional.of(binding));
+
+        assertThatThrownBy(() -> authService.socialLogin(request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.DEVICE_ALREADY_LINKED_TO_ANOTHER_ACCOUNT);
+
+        verify(refreshTokenRepository, never()).save(any());
+        verify(userService, never()).getMe(any());
+    }
+
+    @Test
+    void socialLogin_rejectsNewSocialAccountCreationWhenDeviceAlreadyBound() {
+        SocialLoginRequest request = new SocialLoginRequest(SocialProvider.KAKAO, "kakao-access-token", "device-locked");
+        SocialLoginDeviceBinding binding = SocialLoginDeviceBinding.bind(77L, "device-locked");
+
+        when(socialAuthResolver.getClient(SocialProvider.KAKAO)).thenReturn(socialAuthClient);
+        when(socialAuthClient.getSocialId("kakao-access-token")).thenReturn("kakao-social-id");
+        when(userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, "kakao-social-id"))
+                .thenReturn(Optional.empty());
+        when(socialLoginDeviceBindingRepository.findByDeviceId("device-locked"))
+                .thenReturn(Optional.of(binding));
+
+        assertThatThrownBy(() -> authService.socialLogin(request))
+                .isInstanceOf(AuthException.class)
+                .extracting(ex -> ((AuthException) ex).getErrorCode())
+                .isEqualTo(AuthErrorCode.DEVICE_ALREADY_LINKED_TO_ANOTHER_ACCOUNT);
+
+        verify(userRepository, never()).save(any(User.class));
     }
 
     @Test

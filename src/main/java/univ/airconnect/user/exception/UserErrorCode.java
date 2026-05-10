@@ -12,6 +12,7 @@ public enum UserErrorCode {
     PASSWORD_CHANGE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "PASSWORD_CHANGE_NOT_ALLOWED", "비밀번호 변경은 이메일 계정에서만 가능합니다."),
     PASSWORD_REQUIRED(HttpStatus.BAD_REQUEST, "PASSWORD_REQUIRED", "비밀번호는 필수입니다."),
     PASSWORD_INVALID_FORMAT(HttpStatus.BAD_REQUEST, "PASSWORD_INVALID_FORMAT", "비밀번호 형식이 올바르지 않습니다."),
+    NICKNAME_CHANGE_TOO_EARLY(HttpStatus.TOO_MANY_REQUESTS, "NICKNAME_CHANGE_TOO_EARLY", "닉네임은 14일에 한 번만 변경할 수 있습니다."),
     PROFILE_IMAGE_EMPTY(HttpStatus.BAD_REQUEST, "PROFILE_IMAGE_EMPTY", "프로필 이미지 파일이 비어 있습니다."),
     PROFILE_IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "PROFILE_IMAGE_TOO_LARGE", "프로필 이미지 파일 용량이 너무 큽니다."),
     PROFILE_IMAGE_UNSUPPORTED_FORMAT(HttpStatus.BAD_REQUEST, "PROFILE_IMAGE_UNSUPPORTED_FORMAT", "지원하지 않는 프로필 이미지 형식입니다."),
