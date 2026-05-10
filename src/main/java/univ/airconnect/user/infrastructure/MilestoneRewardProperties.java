@@ -9,6 +9,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app.rewards.milestone")
 public class MilestoneRewardProperties {
 
-    private int profileImageUploadedTickets = 2;
-    private int emailVerifiedTickets = 0;
+    private int profileImageUploadedTickets = 1;
+    private int emailVerifiedTickets = 1;
 }

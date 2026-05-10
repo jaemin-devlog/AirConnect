@@ -51,6 +51,44 @@ class VerificationServiceTest {
     private AttemptThrottleService attemptThrottleService;
 
     @Test
+    void verifyCode_grantsOneTicket_whenEmailRewardUsesDefaultValue() {
+        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+
+        VerificationService service = new VerificationService(
+                mailService,
+                redisTemplate,
+                userRepository,
+                userMilestoneRepository,
+                verifiedSchoolEmailRepository,
+                rewardProperties,
+                attemptThrottleService
+        );
+
+        Long userId = 1L;
+        String email = "student@office.hanseo.ac.kr";
+        String code = "123456";
+
+        User user = User.create(SocialProvider.KAKAO, "social-1", email);
+        ReflectionTestUtils.setField(user, "id", userId);
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn(null);
+        when(valueOperations.get("email_verification:" + email)).thenReturn(code);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.EMAIL_VERIFIED))
+                .thenReturn(false);
+        when(verifiedSchoolEmailRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.empty());
+
+        int before = user.getTickets();
+
+        VerifiedEmailSession session = service.verifyCode(userId, email, code, VerificationPurpose.SIGN_UP);
+
+        assertThat(session.verificationToken()).isNotBlank();
+        assertThat(user.getTickets()).isEqualTo(before + 1);
+        verify(userMilestoneRepository).save(any());
+    }
+
+    @Test
     void verifyCode_doesNotGrantTicket_whenEmailRewardIsZero() {
         MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
         rewardProperties.setEmailVerifiedTickets(0);
