@@ -58,8 +58,8 @@ public class ApplePurchaseVerifier implements StorePurchaseVerifier {
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new IapException(IapErrorCode.IAP_UNAUTHORIZED));
             String issuedToken = user.ensureIosAppAccountToken();
-            log.info("Apple verifier payload parsed. userId={}, transactionId={}, productId={}, env={}",
-                    userId, transactionId, productId, env);
+            log.info("Apple verifier payload parsed. userId={}, transactionId={}, productId={}, payloadEnv={}, configuredEnv={}",
+                    userId, transactionId, productId, env, iapProperties.getApple().getEnvironment());
 
             if (bundleId == null || !bundleId.equals(iapProperties.getApple().getBundleId())) {
                 throw new IapException(IapErrorCode.IAP_ENVIRONMENT_MISMATCH, "Apple bundleId 불일치");
@@ -84,7 +84,7 @@ public class ApplePurchaseVerifier implements StorePurchaseVerifier {
             }
 
             IapEnvironment payloadEnvironment = parseEnv(env);
-            validateEnvironment(payloadEnvironment);
+            validateEnvironment(payloadEnvironment, env);
 
             StoreVerificationResult result = StoreVerificationResult.builder()
                     .store(IapStore.APPLE)
@@ -157,13 +157,18 @@ public class ApplePurchaseVerifier implements StorePurchaseVerifier {
         return node != null && node.hasNonNull(key);
     }
 
-    private void validateEnvironment(IapEnvironment payloadEnvironment) {
-        IapEnvironment configuredEnvironment = parseEnv(iapProperties.getApple().getEnvironment());
+    private void validateEnvironment(IapEnvironment payloadEnvironment, String payloadEnvironmentRaw) {
+        String configuredEnvironmentRaw = iapProperties.getApple().getEnvironment();
+        IapEnvironment configuredEnvironment = parseEnv(configuredEnvironmentRaw);
         if (configuredEnvironment == IapEnvironment.UNKNOWN || payloadEnvironment == IapEnvironment.UNKNOWN) {
             return;
         }
         if (configuredEnvironment != payloadEnvironment) {
-            throw new IapException(IapErrorCode.IAP_ENVIRONMENT_MISMATCH, "Apple environment 불일치");
+            throw new IapException(
+                    IapErrorCode.IAP_ENVIRONMENT_MISMATCH,
+                    "Apple environment 불일치. payload=%s, configured=%s"
+                            .formatted(payloadEnvironmentRaw, configuredEnvironmentRaw)
+            );
         }
     }
 

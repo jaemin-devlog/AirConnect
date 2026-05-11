@@ -163,6 +163,39 @@ class ApplePurchaseVerifierTest {
         assertThat(result.isTransactionRevoked()).isTrue();
     }
 
+    @Test
+    void verify_throwsEnvironmentMismatch_withDetailedMessage() {
+        User user = User.create(SocialProvider.APPLE, "apple-social", "test@airconnect.com");
+        Long userId = 5L;
+        org.springframework.test.util.ReflectionTestUtils.setField(user, "id", userId);
+
+        String issued = user.getIosAppAccountToken();
+
+        IapProperties props = new IapProperties();
+        props.getApple().setBundleId("com.airconnect.app");
+        props.getApple().setEnvironment("SANDBOX");
+
+        ApplePurchaseVerifier verifier = new ApplePurchaseVerifier(
+                props,
+                new PayloadSecurityUtil(),
+                userRepository,
+                signedTransactionVerifier
+        );
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(signedTransactionVerifier.verifyAndExtractPayload(anyString()))
+                .thenReturn(productionPayloadNode("com.airconnect.app", "com.airconnect.tickets.pack10", "tx-5", issued));
+
+        IosTransactionVerifyRequest request = new IosTransactionVerifyRequest("signed-jws", "tx-5", null);
+
+        assertThatThrownBy(() -> verifier.verify(userId, request))
+                .isInstanceOfSatisfying(IapException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(IapErrorCode.IAP_ENVIRONMENT_MISMATCH);
+                    assertThat(ex.getMessage()).contains("payload=Production");
+                    assertThat(ex.getMessage()).contains("configured=SANDBOX");
+                });
+    }
+
     private JsonNode payloadNode(String bundleId, String productId, String txId, String appAccountToken) {
         return objectMapper.createObjectNode()
                 .put("bundleId", bundleId)
@@ -170,5 +203,14 @@ class ApplePurchaseVerifierTest {
                 .put("transactionId", txId)
                 .put("appAccountToken", appAccountToken)
                 .put("environment", "SANDBOX");
+    }
+
+    private JsonNode productionPayloadNode(String bundleId, String productId, String txId, String appAccountToken) {
+        return objectMapper.createObjectNode()
+                .put("bundleId", bundleId)
+                .put("productId", productId)
+                .put("transactionId", txId)
+                .put("appAccountToken", appAccountToken)
+                .put("environment", "Production");
     }
 }
