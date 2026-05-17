@@ -111,4 +111,7 @@ application-test.yml
 # Firebase service account (local)
 config/firebase-service-account.json
 
+# Google Play service account (local)
+secrets/
+!secrets/.gitkeep
 
