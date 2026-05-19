@@ -12,7 +12,8 @@ public enum IapProductPolicy {
     LEGACY_PACK_5("com.airconnect.tickets.pack5", 5),
     LEGACY_PACK_10("com.airconnect.tickets.pack10", 10),
     LEGACY_PACK_30("com.airconnect.tickets.pack30", 30),
-    LEGACY_PACK_50("com.airconnect.tickets.pack50", 50);
+    LEGACY_PACK_50("com.airconnect.tickets.pack50", 50),
+    LEGACY_PACK_70("com.airconnect.tickets.pack70", 70);
 
     private static final Map<String, IapProductPolicy> BY_PRODUCT_ID = new LinkedHashMap<>();
 
