@@ -7,6 +7,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class IapProductPolicyTest {
 
     @Test
+    void fromProductId_returnsPolicy_forAndroidPack12() {
+        IapProductPolicy policy = IapProductPolicy.fromProductId("com.airconnect.tickets.pack12");
+
+        assertThat(policy).isEqualTo(IapProductPolicy.LEGACY_PACK_12);
+        assertThat(policy.getTickets()).isEqualTo(12);
+    }
+
+    @Test
     void fromProductId_returnsPolicy_forAndroidPack70() {
         IapProductPolicy policy = IapProductPolicy.fromProductId("com.airconnect.tickets.pack70");
 
