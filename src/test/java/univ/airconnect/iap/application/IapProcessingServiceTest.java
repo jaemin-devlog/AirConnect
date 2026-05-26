@@ -10,6 +10,7 @@ import univ.airconnect.iap.domain.GrantStatus;
 import univ.airconnect.iap.domain.IapEnvironment;
 import univ.airconnect.iap.domain.IapStore;
 import univ.airconnect.iap.domain.entity.IapOrder;
+import univ.airconnect.iap.dto.request.AndroidPurchaseVerifyRequest;
 import univ.airconnect.iap.dto.request.IosTransactionVerifyRequest;
 import univ.airconnect.iap.dto.request.IosTransactionsSyncRequest;
 import univ.airconnect.iap.dto.response.IapSyncResponse;
@@ -46,6 +47,49 @@ class IapProcessingServiceTest {
 
     @InjectMocks
     private IapProcessingService iapProcessingService;
+
+    @Test
+    void verifyAndroid_grantsTickets_whenPack12ProductIsVerified() {
+        Long userId = 1L;
+        AndroidPurchaseVerifyRequest request = new AndroidPurchaseVerifyRequest(
+                "com.airconnect.tickets.pack12",
+                "purchase-token-12",
+                "order-12",
+                "com.airconnect.app",
+                null
+        );
+
+        StoreVerificationResult verificationResult = StoreVerificationResult.builder()
+                .store(IapStore.GOOGLE)
+                .productId("com.airconnect.tickets.pack12")
+                .purchaseToken("purchase-token-12")
+                .orderId("order-12")
+                .transactionId("order-12")
+                .environment(IapEnvironment.PRODUCTION)
+                .verificationHash("hash")
+                .rawPayloadMasked("mask")
+                .valid(true)
+                .build();
+
+        IapOrder order = IapOrder.createPending(userId, IapStore.GOOGLE, "com.airconnect.tickets.pack12",
+                "order-12", null, "purchase-token-12", "order-12", null, IapEnvironment.PRODUCTION, "hash", "mask");
+        ReflectionTestUtils.setField(order, "id", 12L);
+
+        when(storeVerifierResolver.resolve(IapStore.GOOGLE)).thenReturn(storePurchaseVerifier);
+        when(storePurchaseVerifier.verify(eq(userId), any())).thenReturn(verificationResult);
+        when(iapOrderRepository.findByStoreAndPurchaseToken(IapStore.GOOGLE, "purchase-token-12")).thenReturn(Optional.empty());
+        when(iapOrderRepository.save(any(IapOrder.class))).thenReturn(order);
+        when(iapOrderRepository.findByIdForUpdate(12L)).thenReturn(Optional.of(order));
+        when(ticketGrantService.grantTickets(any(IapOrder.class), eq(12)))
+                .thenReturn(new TicketGrantService.TicketGrantResult(8, 20, "TICKET_LEDGER_12"));
+
+        IapVerifyResponse response = iapProcessingService.verifyAndroid(userId, request);
+
+        assertThat(response.getGrantStatus()).isEqualTo(GrantStatus.GRANTED);
+        assertThat(response.getGrantedTickets()).isEqualTo(12);
+        assertThat(response.getBeforeTickets()).isEqualTo(8);
+        assertThat(response.getAfterTickets()).isEqualTo(20);
+    }
 
     @Test
     void verifyIos_grantsTickets_whenFirstProcessed() {

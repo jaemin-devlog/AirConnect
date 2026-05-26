@@ -10,6 +10,7 @@ public enum IapProductPolicy {
     IOS_BUSINESS_30("AirConnect_Business_30", 30),
     IOS_FIRST_CLASS_50("AirConnect_FirstClass_50", 70),
     LEGACY_PACK_5("com.airconnect.tickets.pack5", 5),
+    LEGACY_PACK_12("com.airconnect.tickets.pack12", 12),
     LEGACY_PACK_10("com.airconnect.tickets.pack10", 10),
     LEGACY_PACK_30("com.airconnect.tickets.pack30", 30),
     LEGACY_PACK_50("com.airconnect.tickets.pack50", 50),
