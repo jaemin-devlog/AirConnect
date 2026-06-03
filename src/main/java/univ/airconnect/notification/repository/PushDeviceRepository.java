@@ -18,4 +18,6 @@ public interface PushDeviceRepository extends JpaRepository<PushDevice, Long> {
     List<PushDevice> findByUserIdAndActiveTrueAndNotificationPermissionGrantedTrue(Long userId);
 
     Optional<PushDevice> findByIdAndUserId(Long id, Long userId);
+
+    long deleteByUserId(Long userId);
 }

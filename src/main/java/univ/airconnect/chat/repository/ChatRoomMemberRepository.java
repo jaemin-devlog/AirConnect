@@ -1,6 +1,7 @@
 package univ.airconnect.chat.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import univ.airconnect.chat.domain.entity.ChatRoomMember;
@@ -65,4 +66,8 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
         ) broken_rooms
     """, nativeQuery = true)
     long countPersonalRoomsWithInvalidVisibleMemberCount();
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM ChatRoomMember m WHERE m.user.id = :userId")
+    long deleteByUserId(@Param("userId") Long userId);
 }

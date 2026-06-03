@@ -6,4 +6,6 @@ import univ.airconnect.notification.domain.entity.NotificationPreference;
 public interface NotificationPreferenceRepository extends JpaRepository<NotificationPreference, Long> {
 
     java.util.Optional<NotificationPreference> findByUserId(Long userId);
+
+    long deleteByUserId(Long userId);
 }

@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 
@@ -21,11 +22,17 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByProviderAndSocialId(SocialProvider provider, String socialId);
 
+    Optional<User> findFirstByOrderByCreatedAtAsc();
+
     Optional<User> findByEmail(String email);
 
     boolean existsByEmailIgnoreCase(String email);
 
     boolean existsByVerifiedSchoolEmailIgnoreCase(String verifiedSchoolEmail);
+
+    long countByOnboardingStatus(OnboardingStatus onboardingStatus);
+
+    long countByLastActiveAtGreaterThanEqual(LocalDateTime since);
 
     @Query("""
         SELECT u

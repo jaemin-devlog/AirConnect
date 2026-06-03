@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import univ.airconnect.groupmatching.domain.entity.GTeamReadyState;
 
 import java.util.List;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Repository
@@ -32,6 +33,25 @@ public interface GTeamReadyStateRepository extends JpaRepository<GTeamReadyState
     long countByTeamRoomId(Long teamRoomId);
 
     long countByTeamRoomIdAndReadyTrue(Long teamRoomId);
+
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM (
+                SELECT r.team_room_id
+                FROM matching_team_ready_states r
+                JOIN matching_temporary_team_rooms t
+                  ON t.id = r.team_room_id
+                WHERE r.is_ready = true
+                  AND r.ready_at >= :since
+                GROUP BY r.team_room_id, t.team_size
+                HAVING COUNT(*) >= CASE
+                    WHEN t.team_size = 'TWO' THEN 2
+                    WHEN t.team_size = 'THREE' THEN 3
+                    ELSE 999999
+                END
+            ) ready_teams
+            """, nativeQuery = true)
+    long countReadyTeamsSince(@Param("since") LocalDateTime since);
 
     void deleteByTeamRoomId(Long teamRoomId);
 

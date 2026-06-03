@@ -14,6 +14,7 @@ import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamRoom;
 
 import java.util.Collection;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,6 +46,28 @@ public interface GTemporaryTeamRoomRepository extends JpaRepository<GTemporaryTe
     List<GTemporaryTeamRoom> findByStatus(GTemporaryTeamRoomStatus status);
 
     List<GTemporaryTeamRoom> findByStatusIn(Collection<GTemporaryTeamRoomStatus> statuses);
+
+    long countByCreatedAtGreaterThanEqual(LocalDateTime since);
+
+    long countByQueuedAtGreaterThanEqual(LocalDateTime since);
+
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM matching_temporary_team_rooms t
+            WHERE t.created_at >= :since
+              AND t.status IN ('MATCHED', 'CLOSED')
+              AND t.matched_at IS NOT NULL
+            """, nativeQuery = true)
+    long countMatchedRoomsSince(@Param("since") LocalDateTime since);
+
+    @Query(value = """
+            SELECT COALESCE(AVG(TIMESTAMPDIFF(SECOND, queued_at, matched_at)), 0)
+            FROM matching_temporary_team_rooms
+            WHERE queued_at IS NOT NULL
+              AND matched_at IS NOT NULL
+              AND queued_at >= :since
+            """, nativeQuery = true)
+    Double averageQueueWaitSecondsSince(@Param("since") LocalDateTime since);
 
     boolean existsByLeaderIdAndStatusIn(Long leaderId, Collection<GTemporaryTeamRoomStatus> statuses);
 

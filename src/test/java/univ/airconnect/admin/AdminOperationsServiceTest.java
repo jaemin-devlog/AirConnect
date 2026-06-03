@@ -8,18 +8,30 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.repository.AnalyticsEventRepository;
+import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
+import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
+import univ.airconnect.groupmatching.repository.GMatchResultRepository;
+import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
+import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
+import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
+import univ.airconnect.moderation.domain.ReportStatus;
+import univ.airconnect.moderation.repository.UserReportRepository;
 import univ.airconnect.notification.domain.NotificationDeliveryStatus;
 import univ.airconnect.notification.domain.PushProvider;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
+import univ.airconnect.notification.repository.NotificationRepository;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
+import univ.airconnect.user.domain.OnboardingStatus;
+import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -33,15 +45,37 @@ class AdminOperationsServiceTest {
     @Mock
     private NotificationOutboxRepository notificationOutboxRepository;
     @Mock
+    private NotificationRepository notificationRepository;
+    @Mock
     private AnalyticsEventRepository analyticsEventRepository;
     @Mock
     private MatchingConnectionRepository matchingConnectionRepository;
+    @Mock
+    private UserRepository userRepository;
+    @Mock
+    private ChatMessageRepository chatMessageRepository;
     @Mock
     private ChatRoomRepository chatRoomRepository;
     @Mock
     private ChatRoomMemberRepository chatRoomMemberRepository;
     @Mock
+    private UserReportRepository userReportRepository;
+    @Mock
+    private GTemporaryTeamRoomRepository gTemporaryTeamRoomRepository;
+    @Mock
+    private GTemporaryTeamMemberRepository gTemporaryTeamMemberRepository;
+    @Mock
+    private GTeamReadyStateRepository gTeamReadyStateRepository;
+    @Mock
+    private GMatchResultRepository gMatchResultRepository;
+    @Mock
+    private GFinalGroupChatRoomRepository gFinalGroupChatRoomRepository;
+    @Mock
     private TicketLedgerRepository ticketLedgerRepository;
+    @Mock
+    private AdminNoticeRepository adminNoticeRepository;
+    @Mock
+    private AdminAuditLogRepository adminAuditLogRepository;
     @Mock
     private AdminAuditLogService adminAuditLogService;
 
@@ -51,11 +85,22 @@ class AdminOperationsServiceTest {
     void setUp() {
         adminOperationsService = new AdminOperationsService(
                 notificationOutboxRepository,
+                notificationRepository,
                 analyticsEventRepository,
                 matchingConnectionRepository,
+                userRepository,
+                chatMessageRepository,
                 chatRoomRepository,
                 chatRoomMemberRepository,
+                userReportRepository,
+                gTemporaryTeamRoomRepository,
+                gTemporaryTeamMemberRepository,
+                gTeamReadyStateRepository,
+                gMatchResultRepository,
+                gFinalGroupChatRoomRepository,
                 ticketLedgerRepository,
+                adminNoticeRepository,
+                adminAuditLogRepository,
                 adminAuditLogService
         );
     }
@@ -113,14 +158,57 @@ class AdminOperationsServiceTest {
                 eq(ConnectionStatus.ACCEPTED),
                 org.mockito.ArgumentMatchers.any(LocalDateTime.class)
         )).thenReturn(6L);
+        when(matchingConnectionRepository.countByStatusAndRespondedAtGreaterThanEqual(
+                eq(ConnectionStatus.REJECTED),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class)
+        )).thenReturn(4L);
+        when(matchingConnectionRepository.averageResponseSecondsSince(any(LocalDateTime.class))).thenReturn(42.0);
 
         AdminDtos.MatchingFunnel response = adminOperationsService.getMatchingFunnel(999L, 30);
 
         assertThat(response.days()).isEqualTo(30);
-        assertThat(response.steps()).hasSize(4);
+        assertThat(response.requestCount()).isEqualTo(30L);
+        assertThat(response.acceptedCount()).isEqualTo(6L);
+        assertThat(response.rejectedOrExpiredCount()).isEqualTo(4L);
+        assertThat(response.acceptanceRatePercentage()).isEqualTo(20);
+        assertThat(response.averageResponseSeconds()).isEqualTo(42.0);
+        assertThat(response.steps()).hasSize(5);
         assertThat(response.steps().get(1).conversionFromPreviousPercentage()).isEqualTo(25);
         assertThat(response.steps().get(2).conversionFromPreviousPercentage()).isEqualTo(20);
-        assertThat(response.steps().get(3).conversionFromPreviousPercentage()).isEqualTo(100);
+        assertThat(response.steps().get(4).conversionFromPreviousPercentage()).isEqualTo(100);
+    }
+
+    @Test
+    void getOperationsSummary_returnsCoreDashboardMetrics() {
+        LocalDateTime createdAt = LocalDateTime.now().minusDays(9);
+        univ.airconnect.user.domain.entity.User firstUser =
+                univ.airconnect.user.domain.entity.User.builder()
+                        .provider(univ.airconnect.auth.domain.entity.SocialProvider.APPLE)
+                        .socialId("first")
+                        .status(univ.airconnect.user.domain.UserStatus.ACTIVE)
+                        .onboardingStatus(OnboardingStatus.FULL)
+                        .tickets(10)
+                        .createdAt(createdAt)
+                        .build();
+
+        when(userRepository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.of(firstUser));
+        when(notificationOutboxRepository.countByStatus(NotificationDeliveryStatus.PENDING)).thenReturn(3L);
+        when(notificationOutboxRepository.countByStatus(NotificationDeliveryStatus.PROCESSING)).thenReturn(2L);
+        when(userReportRepository.countByStatusIn(List.of(ReportStatus.OPEN, ReportStatus.IN_REVIEW))).thenReturn(4L);
+        when(userRepository.count()).thenReturn(20L);
+        when(userRepository.countByOnboardingStatus(OnboardingStatus.FULL)).thenReturn(15L);
+        when(userRepository.countByLastActiveAtGreaterThanEqual(any(LocalDateTime.class))).thenReturn(9L, 12L, 14L);
+        when(matchingConnectionRepository.countByStatus(ConnectionStatus.ACCEPTED)).thenReturn(7L);
+        when(chatMessageRepository.countByDeletedFalse()).thenReturn(50L);
+
+        AdminDtos.OperationsSummary response = adminOperationsService.getOperationsSummary(999L);
+
+        assertThat(response.totalRegisteredUsers()).isEqualTo(20L);
+        assertThat(response.onboardingCompletedUsers()).isEqualTo(15L);
+        assertThat(response.dailyActiveUsers()).isEqualTo(9L);
+        assertThat(response.weeklyActiveUsers()).isEqualTo(12L);
+        assertThat(response.monthlyActiveUsers()).isEqualTo(14L);
+        assertThat(response.outboxBacklog()).isEqualTo(5L);
     }
 
     @Test

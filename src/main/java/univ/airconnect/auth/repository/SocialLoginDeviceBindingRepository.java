@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface SocialLoginDeviceBindingRepository extends JpaRepository<SocialLoginDeviceBinding, Long> {
 
     Optional<SocialLoginDeviceBinding> findByDeviceId(String deviceId);
+
+    long deleteByUserId(Long userId);
 }

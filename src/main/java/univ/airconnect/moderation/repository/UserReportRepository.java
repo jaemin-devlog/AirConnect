@@ -11,6 +11,7 @@ import univ.airconnect.moderation.domain.ReportStatus;
 import univ.airconnect.moderation.domain.entity.UserReport;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 public interface UserReportRepository extends JpaRepository<UserReport, Long> {
@@ -30,7 +31,16 @@ public interface UserReportRepository extends JpaRepository<UserReport, Long> {
 
     long countByStatus(ReportStatus status);
 
+    long countByStatusIn(Collection<ReportStatus> statuses);
+
     long countByReportedUserIdAndStatus(Long reportedUserId, ReportStatus status);
+
+    @Query(value = """
+        SELECT COALESCE(AVG(TIMESTAMPDIFF(SECOND, created_at, updated_at)), 0)
+        FROM user_reports
+        WHERE status IN ('RESOLVED', 'REJECTED')
+    """, nativeQuery = true)
+    Double averageProcessingSeconds();
 
     @Query("""
         SELECT CASE WHEN COUNT(r) > 0 THEN true ELSE false END

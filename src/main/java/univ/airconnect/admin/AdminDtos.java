@@ -293,9 +293,32 @@ public final class AdminDtos {
     ) {
     }
 
+    public record OperationsSummary(
+            LocalDateTime operationStartedAt,
+            long operationDays,
+            long totalRegisteredUsers,
+            long onboardingCompletedUsers,
+            long dailyActiveUsers,
+            long weeklyActiveUsers,
+            long monthlyActiveUsers,
+            long totalMatchSuccessCount,
+            long totalChatMessages,
+            long unresolvedReports,
+            long outboxBacklog,
+            LocalDateTime generatedAt
+    ) {
+    }
+
     public record MatchingFunnel(
             int days,
             LocalDateTime since,
+            long recommendationViewCount,
+            long requestCount,
+            long acceptedCount,
+            long rejectedOrExpiredCount,
+            Integer acceptanceRatePercentage,
+            Double averageResponseSeconds,
+            long chatRoomCreatedCount,
             List<FunnelStep> steps,
             LocalDateTime generatedAt
     ) {
@@ -306,6 +329,55 @@ public final class AdminDtos {
             String label,
             long count,
             Integer conversionFromPreviousPercentage
+    ) {
+    }
+
+    public record GroupMatchingFunnel(
+            int days,
+            LocalDateTime since,
+            long teamRoomCreatedCount,
+            long teamRoomJoinCount,
+            long readyTeamCount,
+            long queueEnteredCount,
+            long matchSuccessCount,
+            long finalGroupChatRoomCreatedCount,
+            Double averageQueueWaitSeconds,
+            List<FunnelStep> steps,
+            LocalDateTime generatedAt
+    ) {
+    }
+
+    public record NotificationOperations(
+            int days,
+            LocalDateTime since,
+            long notificationCreatedCount,
+            List<OutboxStatusCount> outboxStatusCounts,
+            Integer deliverySuccessRatePercentage,
+            List<FailureReasonCount> failureReasons,
+            long invalidTokenCount,
+            Double averageProcessingSeconds,
+            LocalDateTime generatedAt
+    ) {
+    }
+
+    public record FailureReasonCount(
+            String reason,
+            long count
+    ) {
+    }
+
+    public record OperationsManagement(
+            long reportReceivedCount,
+            long reportProcessedCount,
+            long reportUnresolvedCount,
+            Double averageReportProcessingSeconds,
+            long suspendedActionCount,
+            long matchingRestrictedActionCount,
+            long matchingRestrictionClearedActionCount,
+            long noticeBroadcastCount,
+            long noticeRecipientCount,
+            long auditLogCount,
+            LocalDateTime generatedAt
     ) {
     }
 
@@ -336,6 +408,26 @@ public final class AdminDtos {
             String reason,
             String metadataJson,
             LocalDateTime createdAt
+    ) {
+    }
+
+    public record UserPermanentDeleteResult(
+            Long userId,
+            String provider,
+            String socialId,
+            String status,
+            long deletedProfileRows,
+            long deletedSchoolConsentRows,
+            long deletedChatRoomMemberRows,
+            long deletedRefreshTokenRows,
+            long deletedSocialDeviceBindingRows,
+            long deletedPushDeviceRows,
+            long deletedNotificationPreferenceRows,
+            long deletedNotificationRows,
+            long deletedNotificationOutboxRows,
+            long deletedPushEventRows,
+            long deletedUserMilestoneRows,
+            boolean userDeleted
     ) {
     }
 }

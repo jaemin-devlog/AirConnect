@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamMember;
 
 import java.util.List;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Repository
@@ -31,6 +32,8 @@ public interface GTemporaryTeamMemberRepository extends JpaRepository<GTemporary
     boolean existsByUserIdAndLeftAtIsNull(Long userId);
 
     long countByTeamRoomIdAndLeftAtIsNull(Long teamRoomId);
+
+    long countByJoinedAtGreaterThanEqual(LocalDateTime since);
 
     List<GTemporaryTeamMember> findByTeamRoomIdOrderByJoinedAtAsc(Long teamRoomId);
 
