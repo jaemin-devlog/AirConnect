@@ -19,4 +19,16 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("SELECT r FROM ChatRoom r WHERE r.id = :roomId")
 	Optional<ChatRoom> findByIdForUpdate(@Param("roomId") Long roomId);
+
+	@Query("""
+		SELECT COUNT(r)
+		FROM ChatRoom r
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM ChatRoomMember m
+			WHERE m.chatRoom = r
+			  AND m.hiddenAt IS NULL
+		)
+	""")
+	long countRoomsWithoutVisibleMembers();
 }

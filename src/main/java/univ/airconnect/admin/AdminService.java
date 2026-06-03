@@ -54,6 +54,7 @@ public class AdminService {
     private final NotificationService notificationService;
     private final StatisticsService statisticsService;
     private final ObjectMapper objectMapper;
+    private final AdminAuditLogService adminAuditLogService;
 
     public AdminDtos.PageResponse<AdminDtos.UserSummary> getUsers(Integer page,
                                                                   Integer size,
@@ -147,7 +148,20 @@ public class AdminService {
             }
             case CLEAR_MATCHING_RESTRICTION -> user.clearMatchingRestriction();
         }
-        return toUserDetail(getRequiredUser(userId));
+        AdminDtos.UserDetail detail = toUserDetail(getRequiredUser(userId));
+        adminAuditLogService.record(
+                adminUserId,
+                AdminAuditAction.USER_ACTION_APPLIED,
+                "USER",
+                userId,
+                "사용자 #" + userId + "에게 " + request.action().name() + " 조치를 적용했습니다.",
+                reason,
+                Map.of(
+                        "action", request.action().name(),
+                        "until", nullablePayloadValue(formatDateTime(request.until()))
+                )
+        );
+        return detail;
     }
 
     public AdminDtos.PageResponse<AdminDtos.MatchingRecord> getMatchings(Integer page,
@@ -215,6 +229,19 @@ public class AdminService {
         validateReportStatusUpdateRequest(request);
         report.updateStatus(request.status());
         notifyReporterForReportStatus(adminUserId, report, request);
+        adminAuditLogService.record(
+                adminUserId,
+                AdminAuditAction.REPORT_STATUS_UPDATED,
+                "REPORT",
+                reportId,
+                "신고 #" + reportId + " 상태를 " + request.status().name() + "로 변경했습니다.",
+                trimToNull(request.reason()),
+                Map.of(
+                        "status", request.status().name(),
+                        "reporterUserId", report.getReporterUserId(),
+                        "reportedUserId", report.getReportedUserId()
+                )
+        );
 
         Set<Long> userIds = new LinkedHashSet<>();
         userIds.add(report.getReporterUserId());
@@ -294,13 +321,30 @@ public class AdminService {
                         "afterTickets", after
                 )
         );
+        adminAuditLogService.record(
+                adminUserId,
+                AdminAuditAction.TICKET_ADJUSTED,
+                "USER",
+                user.getId(),
+                "사용자 #" + user.getId() + " 티켓을 " + request.amount() + "만큼 조정했습니다.",
+                request.reason().trim(),
+                Map.of(
+                        "amount", request.amount(),
+                        "beforeTickets", before,
+                        "afterTickets", after
+                )
+        );
 
         return new AdminDtos.TicketBalance(user.getId(), user.getTickets());
     }
 
     public AdminDtos.StatisticsOverview getStatisticsOverview() {
+        return getStatisticsOverview(null);
+    }
+
+    public AdminDtos.StatisticsOverview getStatisticsOverview(Long adminUserId) {
         MainStatisticsResponse main = statisticsService.getMainStatistics();
-        return new AdminDtos.StatisticsOverview(
+        AdminDtos.StatisticsOverview response = new AdminDtos.StatisticsOverview(
                 main.getTotalRegisteredUsers(),
                 main.getDailyActiveUsers(),
                 AdminDtos.GenderRatio.from(main.getGenderRatio()),
@@ -311,6 +355,20 @@ public class AdminService {
                 userReportRepository.countByStatus(ReportStatus.OPEN),
                 LocalDateTime.now()
         );
+        adminAuditLogService.record(
+                adminUserId,
+                AdminAuditAction.DASHBOARD_VIEWED,
+                "OPERATIONS",
+                "statistics-overview",
+                "관리자 통계 대시보드를 조회했습니다.",
+                null,
+                Map.of(
+                        "totalRegisteredUsers", response.totalRegisteredUsers(),
+                        "dailyActiveUsers", response.dailyActiveUsers(),
+                        "openReports", response.openReports()
+                )
+        );
+        return response;
     }
 
     @Transactional
@@ -348,6 +406,20 @@ public class AdminService {
                         request.deeplink(),
                         activeUsersOnly,
                         recipientIds.size()
+                )
+        );
+        adminAuditLogService.record(
+                adminUserId,
+                AdminAuditAction.NOTICE_BROADCASTED,
+                "NOTICE",
+                savedNotice.getId(),
+                "운영 공지 \"" + request.title() + "\"를 발송했습니다.",
+                null,
+                Map.of(
+                        "noticeId", savedNotice.getId(),
+                        "recipients", recipientIds.size(),
+                        "activeUsersOnly", activeUsersOnly,
+                        "deeplink", nullablePayloadValue(request.deeplink())
                 )
         );
 
