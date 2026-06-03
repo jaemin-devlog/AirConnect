@@ -265,6 +265,57 @@ public final class AdminDtos {
     ) {
     }
 
+    public record ChatRoomSummary(
+            Long chatRoomId,
+            String name,
+            univ.airconnect.chat.domain.ChatRoomType type,
+            Long connectionId,
+            Long user1Id,
+            String user1Nickname,
+            Long user2Id,
+            String user2Nickname,
+            String lastMessage,
+            LocalDateTime lastMessageAt,
+            long memberCount,
+            long messageCount,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {
+    }
+
+    public record ChatRoomDetail(
+            ChatRoomSummary room,
+            List<ChatRoomMemberItem> members,
+            PageResponse<ChatMessageItem> messages
+    ) {
+    }
+
+    public record ChatRoomMemberItem(
+            Long memberId,
+            Long userId,
+            String nickname,
+            String email,
+            LocalDateTime joinedAt,
+            Long lastReadMessageId,
+            LocalDateTime hiddenAt,
+            String hiddenReason
+    ) {
+    }
+
+    public record ChatMessageItem(
+            Long messageId,
+            Long roomId,
+            Long senderId,
+            String senderNickname,
+            String content,
+            univ.airconnect.chat.domain.MessageType type,
+            boolean deleted,
+            LocalDateTime deletedAt,
+            LocalDateTime readAt,
+            LocalDateTime createdAt
+    ) {
+    }
+
     public record OutboxMonitor(
             List<OutboxStatusCount> statusCounts,
             long oldPendingCount,

@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
+import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.moderation.domain.ReportStatus;
 import univ.airconnect.user.domain.UserStatus;
@@ -156,6 +157,30 @@ public class AdminController {
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         return ResponseEntity.ok(ApiResponse.ok(adminService.getNoticeDetail(noticeId), traceId));
+    }
+
+    @GetMapping("/chat-rooms")
+    public ResponseEntity<ApiResponse<AdminDtos.PageResponse<AdminDtos.ChatRoomSummary>>> getChatRooms(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) ChatRoomType type,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String keyword,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getChatRooms(page, size, type, userId, keyword), traceId));
+    }
+
+    @GetMapping("/chat-rooms/{roomId}")
+    public ResponseEntity<ApiResponse<AdminDtos.ChatRoomDetail>> getChatRoomDetail(
+            @PathVariable Long roomId,
+            @RequestParam(required = false) Integer messagePage,
+            @RequestParam(required = false) Integer messageSize,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getChatRoomDetail(roomId, messagePage, messageSize), traceId));
     }
 
     @PostMapping("/notices/broadcast")
