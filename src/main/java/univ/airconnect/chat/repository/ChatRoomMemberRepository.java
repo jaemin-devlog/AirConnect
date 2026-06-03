@@ -50,4 +50,19 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
            "WHERE m1.user.id = :user1Id AND m2.user.id = :user2Id " +
            "AND m1.chatRoom.type = 'PERSONAL'")
     List<Long> findCommonPersonalRoomIds(@Param("user1Id") Long user1Id, @Param("user2Id") Long user2Id);
+
+    @Query(value = """
+        SELECT COUNT(*)
+        FROM (
+            SELECT cr.id
+            FROM chat_rooms cr
+            LEFT JOIN chat_room_members crm
+              ON crm.chat_room_id = cr.id
+             AND crm.hidden_at IS NULL
+            WHERE cr.type = 'PERSONAL'
+            GROUP BY cr.id
+            HAVING COUNT(crm.id) <> 2
+        ) broken_rooms
+    """, nativeQuery = true)
+    long countPersonalRoomsWithInvalidVisibleMemberCount();
 }

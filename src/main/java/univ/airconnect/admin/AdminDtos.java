@@ -6,6 +6,7 @@ import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.iap.domain.IapOrderStatus;
 import univ.airconnect.iap.domain.IapStore;
 import univ.airconnect.matching.domain.ConnectionStatus;
+import univ.airconnect.notification.domain.NotificationDeliveryStatus;
 import univ.airconnect.moderation.domain.ReportReasonCode;
 import univ.airconnect.moderation.domain.ReportStatus;
 import univ.airconnect.user.domain.Gender;
@@ -260,6 +261,80 @@ public final class AdminDtos {
             boolean activeUsersOnly,
             int recipientCount,
             Long createdByUserId,
+            LocalDateTime createdAt
+    ) {
+    }
+
+    public record OutboxMonitor(
+            List<OutboxStatusCount> statusCounts,
+            long oldPendingCount,
+            long staleProcessingCount,
+            Double averageDeliverySeconds,
+            List<OutboxFailureItem> recentFailures,
+            LocalDateTime generatedAt
+    ) {
+    }
+
+    public record OutboxStatusCount(
+            NotificationDeliveryStatus status,
+            long count
+    ) {
+    }
+
+    public record OutboxFailureItem(
+            Long outboxId,
+            Long notificationId,
+            Long userId,
+            NotificationDeliveryStatus status,
+            Integer attemptCount,
+            String lastErrorCode,
+            String lastErrorMessage,
+            LocalDateTime updatedAt
+    ) {
+    }
+
+    public record MatchingFunnel(
+            int days,
+            LocalDateTime since,
+            List<FunnelStep> steps,
+            LocalDateTime generatedAt
+    ) {
+    }
+
+    public record FunnelStep(
+            String key,
+            String label,
+            long count,
+            Integer conversionFromPreviousPercentage
+    ) {
+    }
+
+    public record IntegrityReport(
+            List<IntegrityCheckItem> checks,
+            long warningCount,
+            long failureCount,
+            LocalDateTime generatedAt
+    ) {
+    }
+
+    public record IntegrityCheckItem(
+            String key,
+            String label,
+            String status,
+            long count,
+            String description
+    ) {
+    }
+
+    public record AuditLogItem(
+            Long auditLogId,
+            Long actorUserId,
+            AdminAuditAction action,
+            String targetType,
+            String targetId,
+            String summary,
+            String reason,
+            String metadataJson,
             LocalDateTime createdAt
     ) {
     }

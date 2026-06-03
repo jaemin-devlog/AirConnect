@@ -47,6 +47,12 @@ public interface MatchingConnectionRepository extends JpaRepository<MatchingConn
 
     long countByStatus(ConnectionStatus status);
 
+    long countByStatusAndRespondedAtGreaterThanEqual(ConnectionStatus status, java.time.LocalDateTime since);
+
+    long countByStatusAndChatRoomIdIsNotNullAndRespondedAtGreaterThanEqual(ConnectionStatus status, java.time.LocalDateTime since);
+
+    long countByStatusAndChatRoomIdIsNull(ConnectionStatus status);
+
     @Query("""
         SELECT mc
         FROM MatchingConnection mc
@@ -57,6 +63,19 @@ public interface MatchingConnectionRepository extends JpaRepository<MatchingConn
     Page<MatchingConnection> searchForAdmin(@Param("status") ConnectionStatus status,
                                             @Param("userId") Long userId,
                                             Pageable pageable);
+
+    @Query(value = """
+        SELECT COUNT(*)
+        FROM matching_connections mc
+        WHERE mc.status = 'ACCEPTED'
+          AND mc.chat_room_id IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM chat_rooms cr
+              WHERE cr.id = mc.chat_room_id
+          )
+    """, nativeQuery = true)
+    long countAcceptedConnectionsWithMissingChatRoom();
 
     @Query(value = """
         SELECT u.dept_name AS deptName, COUNT(*) AS requestCount

@@ -19,6 +19,8 @@ import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 public class AdminController {
 
     private final AdminService adminService;
+    private final AdminOperationsService adminOperationsService;
+    private final AdminAuditLogService adminAuditLogService;
 
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<AdminDtos.PageResponse<AdminDtos.UserSummary>>> getUsers(
@@ -118,9 +120,12 @@ public class AdminController {
     }
 
     @GetMapping("/statistics/overview")
-    public ResponseEntity<ApiResponse<AdminDtos.StatisticsOverview>> getStatisticsOverview(HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<AdminDtos.StatisticsOverview>> getStatisticsOverview(
+            @CurrentUserId Long adminUserId,
+            HttpServletRequest request
+    ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(adminService.getStatisticsOverview(), traceId));
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getStatisticsOverview(adminUserId), traceId));
     }
 
     @GetMapping("/notices")
@@ -150,5 +155,49 @@ public class AdminController {
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         return ResponseEntity.ok(ApiResponse.ok(adminService.broadcastNotice(adminUserId, body), traceId));
+    }
+
+    @GetMapping("/operations/outbox")
+    public ResponseEntity<ApiResponse<AdminDtos.OutboxMonitor>> getOutboxMonitor(
+            @CurrentUserId Long adminUserId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getOutboxMonitor(adminUserId), traceId));
+    }
+
+    @GetMapping("/operations/matching-funnel")
+    public ResponseEntity<ApiResponse<AdminDtos.MatchingFunnel>> getMatchingFunnel(
+            @CurrentUserId Long adminUserId,
+            @RequestParam(required = false) Integer days,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getMatchingFunnel(adminUserId, days), traceId));
+    }
+
+    @GetMapping("/operations/integrity")
+    public ResponseEntity<ApiResponse<AdminDtos.IntegrityReport>> getIntegrityReport(
+            @CurrentUserId Long adminUserId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getIntegrityReport(adminUserId), traceId));
+    }
+
+    @GetMapping("/audit-logs")
+    public ResponseEntity<ApiResponse<AdminDtos.PageResponse<AdminDtos.AuditLogItem>>> getAuditLogs(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) Long actorUserId,
+            @RequestParam(required = false) AdminAuditAction action,
+            @RequestParam(required = false) String targetType,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(
+                adminAuditLogService.search(page, size, actorUserId, action, targetType),
+                traceId
+        ));
     }
 }

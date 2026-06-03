@@ -69,6 +69,8 @@ class AdminServiceTest {
     private NotificationService notificationService;
     @Mock
     private StatisticsService statisticsService;
+    @Mock
+    private AdminAuditLogService adminAuditLogService;
 
     private AdminService adminService;
 
@@ -85,7 +87,8 @@ class AdminServiceTest {
                 userService,
                 notificationService,
                 statisticsService,
-                new ObjectMapper()
+                new ObjectMapper(),
+                adminAuditLogService
         );
     }
 

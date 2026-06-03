@@ -7,6 +7,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import univ.airconnect.admin.AdminAuditLogService;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.maintenance.dto.request.MaintenanceUpdateRequest;
 import univ.airconnect.maintenance.dto.response.MaintenanceStatusResponse;
@@ -23,13 +24,15 @@ class MaintenanceAdminControllerTest {
 
     @Mock
     private MaintenanceService maintenanceService;
+    @Mock
+    private AdminAuditLogService adminAuditLogService;
 
     @Mock
     private HttpServletRequest request;
 
     @Test
     void updateStatus_returnsWrappedMaintenanceStatus() {
-        MaintenanceAdminController controller = new MaintenanceAdminController(maintenanceService);
+        MaintenanceAdminController controller = new MaintenanceAdminController(maintenanceService, adminAuditLogService);
         MaintenanceStatusResponse status = new MaintenanceStatusResponse(
                 true,
                 "긴급 점검",

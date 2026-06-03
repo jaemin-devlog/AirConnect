@@ -14,6 +14,49 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
 
     List<NotificationOutbox> findByIdInOrderByIdAsc(Collection<Long> ids);
 
+    long countByStatus(NotificationDeliveryStatus status);
+
+    List<NotificationOutbox> findTop10ByStatusOrderByUpdatedAtDesc(NotificationDeliveryStatus status);
+
+    @Query("""
+            SELECT COUNT(o)
+            FROM NotificationOutbox o
+            WHERE o.status = :status
+              AND o.nextAttemptAt < :threshold
+            """)
+    long countByStatusAndNextAttemptAtBefore(@Param("status") NotificationDeliveryStatus status,
+                                             @Param("threshold") LocalDateTime threshold);
+
+    @Query("""
+            SELECT COUNT(o)
+            FROM NotificationOutbox o
+            WHERE o.status = :status
+              AND o.claimedAt IS NOT NULL
+              AND o.claimedAt < :threshold
+            """)
+    long countProcessingOlderThan(@Param("status") NotificationDeliveryStatus status,
+                                  @Param("threshold") LocalDateTime threshold);
+
+    @Query(value = """
+            SELECT COALESCE(AVG(TIMESTAMPDIFF(SECOND, created_at, sent_at)), 0)
+            FROM notification_outbox
+            WHERE status = 'SENT'
+              AND sent_at IS NOT NULL
+              AND created_at >= :since
+            """, nativeQuery = true)
+    Double averageDeliverySecondsSince(@Param("since") LocalDateTime since);
+
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM notification_outbox o
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM notifications n
+                WHERE n.id = o.notification_id
+            )
+            """, nativeQuery = true)
+    long countRowsMissingNotification();
+
     @Query(value = """
             SELECT no.id
             FROM notification_outbox no

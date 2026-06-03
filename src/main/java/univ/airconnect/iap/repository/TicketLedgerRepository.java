@@ -39,4 +39,22 @@ public interface TicketLedgerRepository extends JpaRepository<TicketLedger, Long
         WHERE tl.refType <> univ.airconnect.iap.domain.LedgerRefType.ADMIN_ADJUSTMENT
     """)
     long sumConsumedTickets();
+
+    @Query("""
+        SELECT COUNT(tl)
+        FROM TicketLedger tl
+        WHERE tl.afterAmount <> tl.beforeAmount + tl.changeAmount
+    """)
+    long countBrokenAmountRows();
+
+    @Query(value = """
+        SELECT COUNT(*)
+        FROM (
+            SELECT ref_type, ref_id
+            FROM ticket_ledger
+            GROUP BY ref_type, ref_id
+            HAVING COUNT(*) > 1
+        ) duplicated_refs
+    """, nativeQuery = true)
+    long countDuplicateRefRows();
 }
