@@ -115,3 +115,4 @@ config/firebase-service-account.json
 secrets/
 !secrets/.gitkeep
 
+.md
