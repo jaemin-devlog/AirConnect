@@ -43,6 +43,8 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
 
     List<ChatRoomMember> findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(Long chatRoomId);
 
+    long countByChatRoomId(Long chatRoomId);
+
     /**
      * 두 사용자가 모두 참여 중인 PERSONAL 타입의 채팅방 ID 조회
      */

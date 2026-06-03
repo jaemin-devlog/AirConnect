@@ -2,6 +2,13 @@ package univ.airconnect.admin;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import univ.airconnect.chat.domain.ChatRoomType;
+import univ.airconnect.chat.domain.entity.ChatMessage;
+import univ.airconnect.chat.domain.entity.ChatRoom;
+import univ.airconnect.chat.domain.entity.ChatRoomMember;
+import univ.airconnect.chat.repository.ChatMessageRepository;
+import univ.airconnect.chat.repository.ChatRoomMemberRepository;
+import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.analytics.domain.entity.AnalyticsEvent;
 import univ.airconnect.analytics.repository.AnalyticsEventRepository;
 import org.springframework.data.domain.Page;
@@ -50,6 +57,9 @@ public class AdminService {
     private final IapOrderRepository iapOrderRepository;
     private final TicketLedgerRepository ticketLedgerRepository;
     private final AnalyticsEventRepository analyticsEventRepository;
+    private final ChatRoomRepository chatRoomRepository;
+    private final ChatRoomMemberRepository chatRoomMemberRepository;
+    private final ChatMessageRepository chatMessageRepository;
     private final UserService userService;
     private final NotificationService notificationService;
     private final StatisticsService statisticsService;
@@ -93,6 +103,61 @@ public class AdminService {
                 notice.getRecipientCount(),
                 notice.getCreatedByUserId(),
                 notice.getCreatedAt()
+        );
+    }
+
+    public AdminDtos.PageResponse<AdminDtos.ChatRoomSummary> getChatRooms(Integer page,
+                                                                          Integer size,
+                                                                          ChatRoomType type,
+                                                                          Long userId,
+                                                                          String keyword) {
+        Pageable pageable = PageRequest.of(safePage(page), safeSize(size));
+        Page<ChatRoom> result = chatRoomRepository.searchForAdmin(type, userId, normalizeKeyword(keyword), pageable);
+
+        Set<Long> userIds = new LinkedHashSet<>();
+        for (ChatRoom room : result.getContent()) {
+            if (room.getUser1Id() != null) {
+                userIds.add(room.getUser1Id());
+            }
+            if (room.getUser2Id() != null) {
+                userIds.add(room.getUser2Id());
+            }
+        }
+        Map<Long, User> users = loadUsers(userIds);
+
+        Page<AdminDtos.ChatRoomSummary> mapped = result.map(room -> toChatRoomSummary(room, users));
+        return AdminDtos.PageResponse.from(mapped);
+    }
+
+    public AdminDtos.ChatRoomDetail getChatRoomDetail(Long roomId, Integer messagePage, Integer messageSize) {
+        ChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "채팅방을 찾을 수 없습니다."));
+
+        List<ChatRoomMember> members = chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(roomId));
+        Set<Long> userIds = new LinkedHashSet<>();
+        if (room.getUser1Id() != null) {
+            userIds.add(room.getUser1Id());
+        }
+        if (room.getUser2Id() != null) {
+            userIds.add(room.getUser2Id());
+        }
+        for (ChatRoomMember member : members) {
+            userIds.add(member.getUser().getId());
+        }
+        Map<Long, User> users = loadUsers(userIds);
+
+        Pageable pageable = PageRequest.of(safePage(messagePage), safeSize(messageSize));
+        Page<AdminDtos.ChatMessageItem> messages = chatMessageRepository
+                .findByRoomIdOrderByCreatedAtDesc(roomId, pageable)
+                .map(this::toChatMessageItem);
+
+        return new AdminDtos.ChatRoomDetail(
+                toChatRoomSummary(room, users),
+                members.stream()
+                        .sorted(Comparator.comparing(ChatRoomMember::getJoinedAt))
+                        .map(this::toChatRoomMemberItem)
+                        .toList(),
+                AdminDtos.PageResponse.from(messages)
         );
     }
 
@@ -490,6 +555,54 @@ public class AdminService {
                 loadSentRequestHistories(user.getId()),
                 loadTicketUsageHistories(user.getId()),
                 loadApiUsageHistories(user.getId())
+        );
+    }
+
+    private AdminDtos.ChatRoomSummary toChatRoomSummary(ChatRoom room, Map<Long, User> users) {
+        return new AdminDtos.ChatRoomSummary(
+                room.getId(),
+                room.getName(),
+                room.getType(),
+                room.getConnectionId(),
+                room.getUser1Id(),
+                getNickname(users.get(room.getUser1Id())),
+                room.getUser2Id(),
+                getNickname(users.get(room.getUser2Id())),
+                room.getLastMessage(),
+                room.getLastMessageAt(),
+                chatRoomMemberRepository.countByChatRoomId(room.getId()),
+                chatMessageRepository.countByRoomId(room.getId()),
+                room.getCreatedAt(),
+                room.getUpdatedAt()
+        );
+    }
+
+    private AdminDtos.ChatRoomMemberItem toChatRoomMemberItem(ChatRoomMember member) {
+        User user = member.getUser();
+        return new AdminDtos.ChatRoomMemberItem(
+                member.getId(),
+                user.getId(),
+                getNickname(user),
+                user.getPrimaryEmail(),
+                member.getJoinedAt(),
+                member.getLastReadMessageId(),
+                member.getHiddenAt(),
+                member.getHiddenReason()
+        );
+    }
+
+    private AdminDtos.ChatMessageItem toChatMessageItem(ChatMessage message) {
+        return new AdminDtos.ChatMessageItem(
+                message.getId(),
+                message.getRoomId(),
+                message.getSenderId(),
+                message.getSenderNickname(),
+                message.getDisplayContent(),
+                message.getType(),
+                message.isDeleted(),
+                message.getDeletedAt(),
+                message.getReadAt(),
+                message.getCreatedAt()
         );
     }
 

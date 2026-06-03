@@ -11,6 +11,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.domain.entity.AnalyticsEvent;
 import univ.airconnect.analytics.repository.AnalyticsEventRepository;
+import univ.airconnect.chat.repository.ChatMessageRepository;
+import univ.airconnect.chat.repository.ChatRoomMemberRepository;
+import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.iap.domain.IapEnvironment;
 import univ.airconnect.iap.domain.IapStore;
 import univ.airconnect.iap.domain.entity.IapOrder;
@@ -64,6 +67,12 @@ class AdminServiceTest {
     @Mock
     private AnalyticsEventRepository analyticsEventRepository;
     @Mock
+    private ChatRoomRepository chatRoomRepository;
+    @Mock
+    private ChatRoomMemberRepository chatRoomMemberRepository;
+    @Mock
+    private ChatMessageRepository chatMessageRepository;
+    @Mock
     private UserService userService;
     @Mock
     private NotificationService notificationService;
@@ -84,6 +93,9 @@ class AdminServiceTest {
                 iapOrderRepository,
                 ticketLedgerRepository,
                 analyticsEventRepository,
+                chatRoomRepository,
+                chatRoomMemberRepository,
+                chatMessageRepository,
                 userService,
                 notificationService,
                 statisticsService,
