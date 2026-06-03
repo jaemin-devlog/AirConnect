@@ -82,7 +82,7 @@ public class GMatchingService {
 
     private static final int FULL_QUEUE_SCAN = -1;
     private static final Duration MATCH_PROCESS_LOCK_TTL = Duration.ofSeconds(5);
-    private static final Duration MATCH_FINALIZATION_DELAY = Duration.ofSeconds(10);
+    private static final Duration MATCH_FINALIZATION_DELAY = Duration.ofSeconds(1);
     private static final Duration QUEUE_TOKEN_TTL = Duration.ofHours(12);
     private static final int PROCESS_LOCK_RETRY_COUNT = 20;
     private static final long PROCESS_LOCK_RETRY_DELAY_MS = 50L;
