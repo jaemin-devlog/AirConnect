@@ -44,6 +44,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     Optional<ChatMessage> findTopByRoomIdAndDeletedFalseOrderByIdDesc(Long roomId);
 
+    long countByDeletedFalse();
+
     @Query("SELECT m FROM ChatMessage m, ChatRoomMember crm " +
             "WHERE m.roomId = :roomId " +
             "AND crm.chatRoom.id = m.roomId " +

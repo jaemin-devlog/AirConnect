@@ -53,6 +53,16 @@ public interface MatchingConnectionRepository extends JpaRepository<MatchingConn
 
     long countByStatusAndChatRoomIdIsNull(ConnectionStatus status);
 
+    long countByConnectedAtGreaterThanEqual(java.time.LocalDateTime since);
+
+    @Query(value = """
+        SELECT COALESCE(AVG(TIMESTAMPDIFF(SECOND, connected_at, responded_at)), 0)
+        FROM matching_connections
+        WHERE responded_at IS NOT NULL
+          AND connected_at >= :since
+    """, nativeQuery = true)
+    Double averageResponseSecondsSince(@Param("since") java.time.LocalDateTime since);
+
     @Query("""
         SELECT mc
         FROM MatchingConnection mc

@@ -14,6 +14,8 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
 
     List<NotificationOutbox> findByIdInOrderByIdAsc(Collection<Long> ids);
 
+    long deleteByUserId(Long userId);
+
     long countByStatus(NotificationDeliveryStatus status);
 
     List<NotificationOutbox> findTop10ByStatusOrderByUpdatedAtDesc(NotificationDeliveryStatus status);
@@ -45,6 +47,36 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
               AND created_at >= :since
             """, nativeQuery = true)
     Double averageDeliverySecondsSince(@Param("since") LocalDateTime since);
+
+    @Query(value = """
+            SELECT COALESCE(AVG(TIMESTAMPDIFF(SECOND, created_at, updated_at)), 0)
+            FROM notification_outbox
+            WHERE status IN ('SENT', 'FAILED', 'SKIPPED')
+              AND created_at >= :since
+            """, nativeQuery = true)
+    Double averageProcessingSecondsSince(@Param("since") LocalDateTime since);
+
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM notification_outbox
+            WHERE (
+                LOWER(COALESCE(last_error_code, '')) LIKE '%invalid%'
+                OR LOWER(COALESCE(last_error_code, '')) LIKE '%unregistered%'
+                OR LOWER(COALESCE(last_error_message, '')) LIKE '%invalid%token%'
+                OR LOWER(COALESCE(last_error_message, '')) LIKE '%unregistered%'
+            )
+            """, nativeQuery = true)
+    long countInvalidTokenFailures();
+
+    @Query(value = """
+            SELECT COALESCE(last_error_code, 'UNKNOWN') AS reason, COUNT(*) AS count
+            FROM notification_outbox
+            WHERE status = 'FAILED'
+            GROUP BY COALESCE(last_error_code, 'UNKNOWN')
+            ORDER BY COUNT(*) DESC, reason ASC
+            LIMIT 10
+            """, nativeQuery = true)
+    List<Object[]> countFailuresByReason();
 
     @Query(value = """
             SELECT COUNT(*)

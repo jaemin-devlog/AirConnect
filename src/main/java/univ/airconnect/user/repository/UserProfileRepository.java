@@ -13,6 +13,8 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, Long> 
 
     Optional<UserProfile> findByUserId(Long userId);
 
+    long deleteByUserId(Long userId);
+
     @Query("""
         SELECT up
         FROM UserProfile up

@@ -10,6 +10,7 @@ import univ.airconnect.groupmatching.domain.GFinalGroupRoomStatus;
 import univ.airconnect.groupmatching.domain.entity.GFinalGroupChatRoom;
 
 import java.util.Collection;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,6 +40,8 @@ public interface GFinalGroupChatRoomRepository extends JpaRepository<GFinalGroup
     long countByTeamSize(univ.airconnect.groupmatching.domain.GTeamSize teamSize);
 
     long countByStatusIn(Collection<GFinalGroupRoomStatus> statuses);
+
+    long countByCreatedAtGreaterThanEqual(LocalDateTime since);
 
     /**
      * team pair 역순까지 포함한 최종 그룹방 조회

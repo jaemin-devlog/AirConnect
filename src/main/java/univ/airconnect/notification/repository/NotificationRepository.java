@@ -22,6 +22,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     long countByUserIdAndTypeNotAndReadAtIsNullAndDeletedAtIsNull(Long userId, NotificationType excludedType);
 
+    long countByCreatedAtGreaterThanEqual(LocalDateTime since);
+
     List<Notification> findByUserIdAndDeletedAtIsNullOrderByIdDesc(Long userId, Pageable pageable);
 
     List<Notification> findByUserIdAndReadAtIsNullAndDeletedAtIsNullOrderByIdDesc(Long userId, Pageable pageable);
@@ -89,6 +91,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             Long cursorId,
             Pageable pageable
     );
+
+    long deleteByUserId(Long userId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""

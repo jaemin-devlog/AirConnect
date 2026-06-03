@@ -10,6 +10,7 @@ import univ.airconnect.groupmatching.domain.GMatchResultStatus;
 import univ.airconnect.groupmatching.domain.entity.GMatchResult;
 
 import java.util.Collection;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,6 +30,8 @@ public interface GMatchResultRepository extends JpaRepository<GMatchResult, Long
     List<GMatchResult> findByStatus(GMatchResultStatus status);
 
     List<GMatchResult> findByStatusIn(Collection<GMatchResultStatus> statuses);
+
+    long countByMatchedAtGreaterThanEqual(LocalDateTime since);
 
     /**
      * team pair 역순까지 포함해서 동일 매칭 조회

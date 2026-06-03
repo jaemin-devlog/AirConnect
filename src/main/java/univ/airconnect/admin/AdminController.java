@@ -21,6 +21,7 @@ public class AdminController {
     private final AdminService adminService;
     private final AdminOperationsService adminOperationsService;
     private final AdminAuditLogService adminAuditLogService;
+    private final AdminUserPurgeService adminUserPurgeService;
 
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<AdminDtos.PageResponse<AdminDtos.UserSummary>>> getUsers(
@@ -52,6 +53,16 @@ public class AdminController {
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         return ResponseEntity.ok(ApiResponse.ok(adminService.applyUserAction(adminUserId, userId, body), traceId));
+    }
+
+    @DeleteMapping("/users/{userId}/permanent")
+    public ResponseEntity<ApiResponse<AdminDtos.UserPermanentDeleteResult>> permanentlyDeleteUser(
+            @CurrentUserId Long adminUserId,
+            @PathVariable Long userId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminUserPurgeService.permanentlyDeleteDeletedUser(adminUserId, userId), traceId));
     }
 
     @GetMapping("/matchings")
@@ -166,6 +177,15 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getOutboxMonitor(adminUserId), traceId));
     }
 
+    @GetMapping("/operations/summary")
+    public ResponseEntity<ApiResponse<AdminDtos.OperationsSummary>> getOperationsSummary(
+            @CurrentUserId Long adminUserId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getOperationsSummary(adminUserId), traceId));
+    }
+
     @GetMapping("/operations/matching-funnel")
     public ResponseEntity<ApiResponse<AdminDtos.MatchingFunnel>> getMatchingFunnel(
             @CurrentUserId Long adminUserId,
@@ -174,6 +194,35 @@ public class AdminController {
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getMatchingFunnel(adminUserId, days), traceId));
+    }
+
+    @GetMapping("/operations/group-matching-funnel")
+    public ResponseEntity<ApiResponse<AdminDtos.GroupMatchingFunnel>> getGroupMatchingFunnel(
+            @CurrentUserId Long adminUserId,
+            @RequestParam(required = false) Integer days,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getGroupMatchingFunnel(adminUserId, days), traceId));
+    }
+
+    @GetMapping("/operations/notifications")
+    public ResponseEntity<ApiResponse<AdminDtos.NotificationOperations>> getNotificationOperations(
+            @CurrentUserId Long adminUserId,
+            @RequestParam(required = false) Integer days,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getNotificationOperations(adminUserId, days), traceId));
+    }
+
+    @GetMapping("/operations/management")
+    public ResponseEntity<ApiResponse<AdminDtos.OperationsManagement>> getOperationsManagement(
+            @CurrentUserId Long adminUserId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getOperationsManagement(adminUserId), traceId));
     }
 
     @GetMapping("/operations/integrity")

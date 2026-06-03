@@ -20,4 +20,8 @@ public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog, Lo
                                @Param("action") AdminAuditAction action,
                                @Param("targetType") String targetType,
                                Pageable pageable);
+
+    long countByAction(AdminAuditAction action);
+
+    long countByActionAndMetadataJsonContaining(AdminAuditAction action, String text);
 }
