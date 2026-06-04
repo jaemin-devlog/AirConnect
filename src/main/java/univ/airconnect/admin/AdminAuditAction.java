@@ -1,6 +1,7 @@
 package univ.airconnect.admin;
 
 public enum AdminAuditAction {
+    ADMIN_API_CALLED,
     DASHBOARD_VIEWED,
     OPERATIONS_SUMMARY_VIEWED,
     OUTBOX_MONITOR_VIEWED,

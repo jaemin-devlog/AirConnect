@@ -6,6 +6,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog, Long> {
 
     @Query("""
@@ -23,5 +26,58 @@ public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog, Lo
 
     long countByAction(AdminAuditAction action);
 
+    long countByCreatedAtGreaterThanEqual(LocalDateTime since);
+
+    long countByActionAndCreatedAtGreaterThanEqual(AdminAuditAction action, LocalDateTime since);
+
     long countByActionAndMetadataJsonContaining(AdminAuditAction action, String text);
+
+    @Query("""
+        SELECT COUNT(DISTINCT l.actorUserId)
+        FROM AdminAuditLog l
+        WHERE l.createdAt >= :since
+          AND l.actorUserId IS NOT NULL
+    """)
+    long countDistinctActorsSince(@Param("since") LocalDateTime since);
+
+    @Query("""
+        SELECT l.action AS action, COUNT(l) AS count
+        FROM AdminAuditLog l
+        WHERE l.createdAt >= :since
+          AND l.action <> :excludedAction
+        GROUP BY l.action
+        ORDER BY COUNT(l) DESC
+    """)
+    List<ActionCountProjection> countActionsSince(@Param("since") LocalDateTime since,
+                                                  @Param("excludedAction") AdminAuditAction excludedAction,
+                                                  Pageable pageable);
+
+    @Query("""
+        SELECT l.apiMethod AS method,
+               l.apiPath AS path,
+               COUNT(l) AS count,
+               AVG(l.durationMs) AS averageDurationMs
+        FROM AdminAuditLog l
+        WHERE l.createdAt >= :since
+          AND l.apiPath IS NOT NULL
+        GROUP BY l.apiMethod, l.apiPath
+        ORDER BY COUNT(l) DESC
+    """)
+    List<ApiCountProjection> countApiCallsSince(@Param("since") LocalDateTime since, Pageable pageable);
+
+    interface ActionCountProjection {
+        AdminAuditAction getAction();
+
+        long getCount();
+    }
+
+    interface ApiCountProjection {
+        String getMethod();
+
+        String getPath();
+
+        long getCount();
+
+        Double getAverageDurationMs();
+    }
 }

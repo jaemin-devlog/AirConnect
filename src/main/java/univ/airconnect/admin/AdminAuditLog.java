@@ -22,7 +22,8 @@ import java.time.LocalDateTime;
         indexes = {
                 @Index(name = "idx_admin_audit_actor_created", columnList = "actor_user_id, created_at"),
                 @Index(name = "idx_admin_audit_action_created", columnList = "action, created_at"),
-                @Index(name = "idx_admin_audit_target_created", columnList = "target_type, target_id, created_at")
+                @Index(name = "idx_admin_audit_target_created", columnList = "target_type, target_id, created_at"),
+                @Index(name = "idx_admin_audit_api_created", columnList = "api_path, created_at")
         }
 )
 @Getter
@@ -55,6 +56,18 @@ public class AdminAuditLog {
     @Column(name = "metadata_json", columnDefinition = "JSON", nullable = false)
     private String metadataJson;
 
+    @Column(name = "api_method", length = 12)
+    private String apiMethod;
+
+    @Column(name = "api_path", length = 200)
+    private String apiPath;
+
+    @Column(name = "http_status")
+    private Integer httpStatus;
+
+    @Column(name = "duration_ms")
+    private Long durationMs;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -65,7 +78,11 @@ public class AdminAuditLog {
                           String targetId,
                           String summary,
                           String reason,
-                          String metadataJson) {
+                          String metadataJson,
+                          String apiMethod,
+                          String apiPath,
+                          Integer httpStatus,
+                          Long durationMs) {
         this.actorUserId = actorUserId;
         this.action = action;
         this.targetType = trimToNull(targetType);
@@ -73,6 +90,10 @@ public class AdminAuditLog {
         this.summary = requireText(summary, "summary");
         this.reason = trimToNull(reason);
         this.metadataJson = metadataJson == null || metadataJson.isBlank() ? "{}" : metadataJson;
+        this.apiMethod = trimToNull(apiMethod);
+        this.apiPath = trimToNull(apiPath);
+        this.httpStatus = httpStatus;
+        this.durationMs = durationMs;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -94,6 +115,27 @@ public class AdminAuditLog {
                 .summary(summary)
                 .reason(reason)
                 .metadataJson(metadataJson)
+                .build();
+    }
+
+    public static AdminAuditLog createApiCall(Long actorUserId,
+                                              String method,
+                                              String path,
+                                              Integer httpStatus,
+                                              Long durationMs,
+                                              String summary,
+                                              String metadataJson) {
+        return AdminAuditLog.builder()
+                .actorUserId(actorUserId)
+                .action(AdminAuditAction.ADMIN_API_CALLED)
+                .targetType("ADMIN_API")
+                .targetId(trimToNull(method) + " " + trimToNull(path))
+                .summary(summary)
+                .metadataJson(metadataJson)
+                .apiMethod(method)
+                .apiPath(path)
+                .httpStatus(httpStatus)
+                .durationMs(durationMs)
                 .build();
     }
 
