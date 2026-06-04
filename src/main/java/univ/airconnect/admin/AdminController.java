@@ -211,6 +211,16 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getOperationsSummary(adminUserId), traceId));
     }
 
+    @GetMapping("/operations/api-usage")
+    public ResponseEntity<ApiResponse<AdminDtos.ApiUsageStatistics>> getApiUsageStatistics(
+            @CurrentUserId Long adminUserId,
+            @RequestParam(required = false) Integer days,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getApiUsageStatistics(adminUserId, days), traceId));
+    }
+
     @GetMapping("/operations/matching-funnel")
     public ResponseEntity<ApiResponse<AdminDtos.MatchingFunnel>> getMatchingFunnel(
             @CurrentUserId Long adminUserId,
