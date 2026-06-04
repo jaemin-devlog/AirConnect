@@ -462,6 +462,32 @@ public final class AdminDtos {
     ) {
     }
 
+    public record AuditLogStatistics(
+            int days,
+            LocalDateTime since,
+            long totalAuditLogCount,
+            long apiCallCount,
+            long uniqueActorCount,
+            List<ApiCallCount> topApiCalls,
+            List<AuditActionCount> topActions,
+            LocalDateTime generatedAt
+    ) {
+    }
+
+    public record ApiCallCount(
+            String method,
+            String path,
+            long count,
+            Double averageDurationMs
+    ) {
+    }
+
+    public record AuditActionCount(
+            AdminAuditAction action,
+            long count
+    ) {
+    }
+
     public record UserPermanentDeleteResult(
             Long userId,
             String provider,

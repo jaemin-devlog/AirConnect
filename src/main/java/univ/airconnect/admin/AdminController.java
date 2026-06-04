@@ -274,4 +274,13 @@ public class AdminController {
                 traceId
         ));
     }
+
+    @GetMapping("/audit-logs/statistics")
+    public ResponseEntity<ApiResponse<AdminDtos.AuditLogStatistics>> getAuditLogStatistics(
+            @RequestParam(required = false) Integer days,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(adminAuditLogService.statistics(days), traceId));
+    }
 }
