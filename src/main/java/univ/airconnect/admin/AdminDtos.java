@@ -360,6 +360,26 @@ public final class AdminDtos {
     ) {
     }
 
+    public record ApiUsageStatistics(
+            int days,
+            LocalDateTime since,
+            long totalApiCallCount,
+            long uniqueEndpointCount,
+            ApiEndpointUsage mostCalledApi,
+            List<ApiEndpointUsage> topApiCalls,
+            LocalDateTime generatedAt
+    ) {
+    }
+
+    public record ApiEndpointUsage(
+            String method,
+            String path,
+            long count,
+            Double averageDurationMs,
+            LocalDateTime lastCalledAt
+    ) {
+    }
+
     public record MatchingFunnel(
             int days,
             LocalDateTime since,

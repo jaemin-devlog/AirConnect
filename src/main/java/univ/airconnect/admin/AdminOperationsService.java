@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
+import univ.airconnect.analytics.repository.ApiRequestLogRepository;
 import univ.airconnect.analytics.repository.AnalyticsEventRepository;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
@@ -41,6 +42,7 @@ public class AdminOperationsService {
 
     private final NotificationOutboxRepository notificationOutboxRepository;
     private final NotificationRepository notificationRepository;
+    private final ApiRequestLogRepository apiRequestLogRepository;
     private final AnalyticsEventRepository analyticsEventRepository;
     private final MatchingConnectionRepository matchingConnectionRepository;
     private final UserRepository userRepository;
@@ -94,6 +96,49 @@ public class AdminOperationsService {
                         "totalRegisteredUsers", response.totalRegisteredUsers(),
                         "dailyActiveUsers", response.dailyActiveUsers(),
                         "outboxBacklog", response.outboxBacklog()
+                )
+        );
+        return response;
+    }
+
+    public AdminDtos.ApiUsageStatistics getApiUsageStatistics(Long adminUserId, Integer requestedDays) {
+        int days = safeDays(requestedDays);
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
+
+        List<AdminDtos.ApiEndpointUsage> topApiCalls = apiRequestLogRepository.findTopEndpointsSince(since, org.springframework.data.domain.PageRequest.of(0, 10))
+                .stream()
+                .map(row -> new AdminDtos.ApiEndpointUsage(
+                        row.getMethod(),
+                        row.getPath(),
+                        row.getCount(),
+                        row.getAverageDurationMs(),
+                        row.getLastCalledAt()
+                ))
+                .toList();
+
+        AdminDtos.ApiUsageStatistics response = new AdminDtos.ApiUsageStatistics(
+                days,
+                since,
+                apiRequestLogRepository.countByCreatedAtGreaterThanEqual(since),
+                apiRequestLogRepository.countDistinctEndpointsSince(since),
+                topApiCalls.isEmpty() ? null : topApiCalls.get(0),
+                topApiCalls,
+                LocalDateTime.now()
+        );
+
+        adminAuditLogService.record(
+                adminUserId,
+                AdminAuditAction.API_USAGE_VIEWED,
+                "OPERATIONS",
+                "api-usage",
+                "전체 API 사용 통계를 조회했습니다.",
+                null,
+                Map.of(
+                        "days", days,
+                        "totalApiCallCount", response.totalApiCallCount(),
+                        "mostCalledApi", response.mostCalledApi() == null
+                                ? ""
+                                : response.mostCalledApi().method() + " " + response.mostCalledApi().path()
                 )
         );
         return response;

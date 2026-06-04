@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import univ.airconnect.analytics.repository.ApiRequestLogRepository;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.repository.AnalyticsEventRepository;
 import univ.airconnect.chat.repository.ChatMessageRepository;
@@ -47,6 +48,8 @@ class AdminOperationsServiceTest {
     @Mock
     private NotificationRepository notificationRepository;
     @Mock
+    private ApiRequestLogRepository apiRequestLogRepository;
+    @Mock
     private AnalyticsEventRepository analyticsEventRepository;
     @Mock
     private MatchingConnectionRepository matchingConnectionRepository;
@@ -86,6 +89,7 @@ class AdminOperationsServiceTest {
         adminOperationsService = new AdminOperationsService(
                 notificationOutboxRepository,
                 notificationRepository,
+                apiRequestLogRepository,
                 analyticsEventRepository,
                 matchingConnectionRepository,
                 userRepository,
@@ -179,6 +183,28 @@ class AdminOperationsServiceTest {
     }
 
     @Test
+    void getApiUsageStatistics_returnsTotalAndTopEndpoint() {
+        LocalDateTime now = LocalDateTime.now();
+        when(apiRequestLogRepository.countByCreatedAtGreaterThanEqual(any(LocalDateTime.class))).thenReturn(240L);
+        when(apiRequestLogRepository.countDistinctEndpointsSince(any(LocalDateTime.class))).thenReturn(18L);
+        when(apiRequestLogRepository.findTopEndpointsSince(any(LocalDateTime.class), any()))
+                .thenReturn(List.of(
+                        projection("GET", "/api/v1/matchings/recommendations", 120L, 82.4, now.minusMinutes(3)),
+                        projection("POST", "/api/v1/chat-rooms/{roomId}/messages", 75L, 45.0, now.minusMinutes(1))
+                ));
+
+        AdminDtos.ApiUsageStatistics response = adminOperationsService.getApiUsageStatistics(999L, 30);
+
+        assertThat(response.totalApiCallCount()).isEqualTo(240L);
+        assertThat(response.uniqueEndpointCount()).isEqualTo(18L);
+        assertThat(response.mostCalledApi()).isNotNull();
+        assertThat(response.mostCalledApi().method()).isEqualTo("GET");
+        assertThat(response.mostCalledApi().path()).isEqualTo("/api/v1/matchings/recommendations");
+        assertThat(response.topApiCalls()).hasSize(2);
+        verify(adminAuditLogService).record(any(), eq(AdminAuditAction.API_USAGE_VIEWED), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void getOperationsSummary_returnsCoreDashboardMetrics() {
         LocalDateTime createdAt = LocalDateTime.now().minusDays(9);
         univ.airconnect.user.domain.entity.User firstUser =
@@ -228,5 +254,40 @@ class AdminOperationsServiceTest {
         assertThat(response.checks())
                 .extracting(AdminDtos.IntegrityCheckItem::status)
                 .contains("PASS", "FAIL");
+    }
+
+    private ApiRequestLogRepository.ApiRequestUsageProjection projection(
+            String method,
+            String path,
+            long count,
+            Double averageDurationMs,
+            LocalDateTime lastCalledAt
+    ) {
+        return new ApiRequestLogRepository.ApiRequestUsageProjection() {
+            @Override
+            public String getMethod() {
+                return method;
+            }
+
+            @Override
+            public String getPath() {
+                return path;
+            }
+
+            @Override
+            public long getCount() {
+                return count;
+            }
+
+            @Override
+            public Double getAverageDurationMs() {
+                return averageDurationMs;
+            }
+
+            @Override
+            public LocalDateTime getLastCalledAt() {
+                return lastCalledAt;
+            }
+        };
     }
 }
