@@ -1,0 +1,3 @@
+airconnect.cloud {
+    reverse_proxy airconnect-app:8080
+}
