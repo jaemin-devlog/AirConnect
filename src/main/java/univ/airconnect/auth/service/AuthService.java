@@ -62,7 +62,7 @@ public class AuthService {
 
     @Transactional
     public LoginResponse socialLogin(SocialLoginRequest request) {
-        log.info("Social login started: provider={}", request.getProvider());
+        log.debug("Social login started: provider={}", request.getProvider());
 
         validateSocialLoginRequest(request);
 
@@ -84,7 +84,7 @@ public class AuthService {
 
     @Transactional
     public LoginResponse adminLogin(EmailLoginRequest request, String clientIp) {
-        log.info("Admin login started: clientIp={}", clientIp);
+        log.debug("Admin login started: clientIp={}", clientIp);
 
         validateAdminLoginRequest(request);
         ensureAdminLoginEnabled();
@@ -118,7 +118,7 @@ public class AuthService {
 
     @Transactional
     public TokenPairResponse refresh(TokenRefreshRequest request) {
-        log.info("Token refresh started: deviceIdMasked={}", maskDeviceId(request.getDeviceId()));
+        log.debug("Token refresh started: deviceIdMasked={}", maskDeviceId(request.getDeviceId()));
 
         validateRefreshRequest(request);
         jwtProvider.validateRefreshToken(request.getRefreshToken());
@@ -167,13 +167,13 @@ public class AuthService {
                 RefreshToken.create(user.getId(), request.getDeviceId(), newRefreshTokenHash)
         );
 
-        log.info("Token refresh completed: userId={}", userId);
+        log.debug("Token refresh completed: userId={}", userId);
         return new TokenPairResponse(newAccessToken, newRefreshToken);
     }
 
     @Transactional
     public void logout(Long userId, String deviceId) {
-        log.info("Logout requested: userId={}, deviceIdMasked={}", userId, maskDeviceId(deviceId));
+        log.debug("Logout requested: userId={}, deviceIdMasked={}", userId, maskDeviceId(deviceId));
 
         if (userId == null || deviceId == null || deviceId.isBlank()) {
             throw new AuthException(AuthErrorCode.INVALID_LOGOUT_REQUEST);

@@ -187,7 +187,7 @@ public class MatchingService {
 
     @Transactional
     public MatchingConnectResponse connect(Long userId, Long targetUserId) {
-        log.info("📨 매칭 요청 시작: requester={}, target={}", userId, targetUserId);
+        log.debug("📨 매칭 요청 시작: requester={}, target={}", userId, targetUserId);
         
         if (Objects.equals(userId, targetUserId)) {
             log.warn("⚠️ 자신에게 요청 불가: userId={}", userId);
@@ -354,7 +354,7 @@ public class MatchingService {
         List<MatchingConnection> receivedConnections = matchingConnectionRepository
                 .findReceivedRequestsByStatus(userId, ConnectionStatus.PENDING);
 
-        log.info("📬 요청 목록 조회: userId={}, 보낸요청={}건, 받은요청={}건", 
+        log.debug("📬 요청 목록 조회: userId={}, 보낸요청={}건, 받은요청={}건",
                 userId, sentConnections.size(), receivedConnections.size());
 
         List<MatchingRequestResponse> sent = sentConnections.stream()
@@ -419,7 +419,7 @@ public class MatchingService {
     public MatchingResponseResponse acceptRequest(Long userId, Long connectionId) {
         validateActiveUser(userId);
 
-        log.info("💬 요청 수락 시작: userId={}, connectionId={}", userId, connectionId);
+        log.debug("💬 요청 수락 시작: userId={}, connectionId={}", userId, connectionId);
 
         MatchingConnection connection = matchingConnectionRepository.findById(connectionId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.CONNECTION_NOT_FOUND));
@@ -480,7 +480,7 @@ public class MatchingService {
     public MatchingResponseResponse rejectRequest(Long userId, Long connectionId) {
         validateActiveUser(userId);
 
-        log.info("❌ 요청 거절 시작: userId={}, connectionId={}", userId, connectionId);
+        log.debug("❌ 요청 거절 시작: userId={}, connectionId={}", userId, connectionId);
 
         MatchingConnection connection = matchingConnectionRepository.findById(connectionId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.CONNECTION_NOT_FOUND));

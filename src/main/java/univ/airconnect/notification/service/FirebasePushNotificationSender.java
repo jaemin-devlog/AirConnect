@@ -83,7 +83,7 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
 
         try {
             String providerMessageId = firebaseMessaging.send(buildMessage(outbox));
-            log.info("Push dispatched via FCM: outboxId={}, messageId={}", outbox.getId(), providerMessageId);
+            log.debug("Push dispatched via FCM: outboxId={}, messageId={}", outbox.getId(), providerMessageId);
             return PushSendResult.success(providerMessageId);
         } catch (FirebaseMessagingException e) {
             return mapFailure(outbox, e);

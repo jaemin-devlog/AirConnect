@@ -21,8 +21,8 @@
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>logs/airconnect-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>10MB</maxFileSize>
-            <maxHistory>30</maxHistory>
-            <totalSizeCap>1GB</totalSizeCap>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>512MB</totalSizeCap>
         </rollingPolicy>
     </appender>
 
@@ -40,7 +40,7 @@
             <fileNamePattern>logs/error-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>10MB</maxFileSize>
             <maxHistory>30</maxHistory>
-            <totalSizeCap>1GB</totalSizeCap>
+            <totalSizeCap>256MB</totalSizeCap>
         </rollingPolicy>
     </appender>
 
@@ -58,18 +58,24 @@
         <logger name="org.hibernate.orm.jdbc.bind" level="TRACE"/>
     </springProfile>
 
-    <!-- 프로덕션 프로필 설정 -->
-    <springProfile name="prod">
+    <!-- 서버 프로필 설정 -->
+    <springProfile name="dev | prod">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE"/>
             <appender-ref ref="ERROR_FILE"/>
         </root>
-        <logger name="univ.airconnect" level="DEBUG"/>
-        <logger name="univ.airconnect.auth" level="DEBUG"/>
-        <logger name="org.springframework.web" level="INFO"/>
-        <logger name="org.hibernate.SQL" level="DEBUG"/>
-        <logger name="org.hibernate.orm.jdbc.bind" level="TRACE"/>
+        <logger name="univ.airconnect" level="INFO"/>
+        <logger name="univ.airconnect.auth.controller" level="WARN"/>
+        <logger name="univ.airconnect.verification.controller" level="WARN"/>
+        <logger name="univ.airconnect.matching.controller" level="WARN"/>
+        <logger name="univ.airconnect.user.controller" level="WARN"/>
+        <logger name="univ.airconnect.iap.controller" level="WARN"/>
+        <logger name="org.springframework.web" level="WARN"/>
+        <logger name="org.springframework.web.socket.config.WebSocketMessageBrokerStats" level="WARN"/>
+        <logger name="org.springframework.security" level="WARN"/>
+        <logger name="org.hibernate.SQL" level="WARN"/>
+        <logger name="org.hibernate.orm.jdbc.bind" level="WARN"/>
     </springProfile>
 
     <!-- 기본 설정 -->

@@ -18,7 +18,7 @@ public class LoggingPushNotificationSender implements PushNotificationSender {
      */
     @Override
     public PushSendResult send(NotificationOutbox outbox) {
-        log.info("Push dispatch simulated: outboxId={}, userId={}, provider={}",
+        log.debug("Push dispatch simulated: outboxId={}, userId={}, provider={}",
                 outbox.getId(), outbox.getUserId(), outbox.getProvider());
         return PushSendResult.success("simulated-" + outbox.getId());
     }

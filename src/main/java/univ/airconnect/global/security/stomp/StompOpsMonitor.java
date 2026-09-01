@@ -111,17 +111,19 @@ public class StompOpsMonitor {
         long failures = inboundFailures.get();
         long deltaFailures = failures - lastInboundFailuresReported.getAndSet(failures);
 
-        log.info("STOMP OPS STATS: inboundTotal={}, inboundFailures={}, connectSuccess={}, connectFailures={}, subscribeSuccess={}, subscribeFailures={}, sideEffectFailures={}, outboundConnectedFrames={}, outboundErrorFramesCreated={}, outboundErrorFrames={}",
-                total,
-                failures,
-                connectSuccess.get(),
-                connectFailures.get(),
-                subscribeSuccess.get(),
-                subscribeFailures.get(),
-                sideEffectFailures.get(),
-                outboundConnectedFrames.get(),
-                outboundErrorFramesCreated.get(),
-                outboundErrorFrames.get());
+        if (log.isDebugEnabled()) {
+            log.debug("STOMP OPS STATS: inboundTotal={}, inboundFailures={}, connectSuccess={}, connectFailures={}, subscribeSuccess={}, subscribeFailures={}, sideEffectFailures={}, outboundConnectedFrames={}, outboundErrorFramesCreated={}, outboundErrorFrames={}",
+                    total,
+                    failures,
+                    connectSuccess.get(),
+                    connectFailures.get(),
+                    subscribeSuccess.get(),
+                    subscribeFailures.get(),
+                    sideEffectFailures.get(),
+                    outboundConnectedFrames.get(),
+                    outboundErrorFramesCreated.get(),
+                    outboundErrorFrames.get());
+        }
 
         if (deltaFailures >= inboundFailureWarnThreshold) {
             log.warn("STOMP OPS ALERT: inbound failures in interval exceeded threshold. deltaFailures={}, threshold={}, topFailureKeys={}",

@@ -37,7 +37,7 @@ public class ChatController {
             throw new IllegalStateException("인증된 사용자 정보를 확인할 수 없습니다.");
         }
 
-        log.info("STOMP SEND: roomId={}, senderId={}", request.getRoomId(), userId);
+        log.debug("STOMP SEND: roomId={}, senderId={}", request.getRoomId(), userId);
         chatService.sendMessage(userId, request);
     }
 

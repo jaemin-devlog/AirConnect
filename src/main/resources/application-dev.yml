@@ -62,10 +62,17 @@ spring:
 logging:
   level:
     root: INFO
-    org.springframework.web: INFO
-    org.hibernate.SQL: INFO
-    org.hibernate.orm.jdbc.bind: INFO
+    org.springframework.web: WARN
+    org.springframework.web.socket.config.WebSocketMessageBrokerStats: WARN
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
     univ.airconnect: INFO
+    univ.airconnect.auth.controller: WARN
+    univ.airconnect.verification.controller: WARN
+    univ.airconnect.matching.controller: WARN
+    univ.airconnect.user.controller: WARN
+    univ.airconnect.iap.controller: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 

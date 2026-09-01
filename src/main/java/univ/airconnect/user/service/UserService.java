@@ -71,7 +71,7 @@ public class UserService {
 
     @Transactional
     public SignUpResponse signUp(Long userId, SignUpRequest request) {
-        log.info("📝 회원가입 시작: userId={}", userId);
+        log.debug("📝 회원가입 시작: userId={}", userId);
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> {
@@ -122,7 +122,7 @@ public class UserService {
                         ))
                 );
 
-        log.info("✅ 회원가입/프로필 생성 완료: userId={}, name={}", userId, request.getName());
+        log.info("✅ 회원가입/프로필 생성 완료: userId={}", userId);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("deptName", request.getDeptName());
@@ -192,7 +192,7 @@ public class UserService {
 
     @Transactional
     public UserProfileResponse createProfile(Long userId, UpdateProfileRequest request) {
-        log.info("📸 프로필 생성 시작: userId={}", userId);
+        log.debug("📸 프로필 생성 시작: userId={}", userId);
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> {
@@ -230,7 +230,7 @@ public class UserService {
 
     @Transactional
     public UserProfileResponse updateProfile(Long userId, UpdateProfileRequest request) {
-        log.info("🔄 프로필 업데이트 시작: userId={}", userId);
+        log.debug("🔄 프로필 업데이트 시작: userId={}", userId);
 
         UserProfile userProfile = userProfileRepository.findByUserId(userId)
                 .orElseThrow(() -> {
@@ -288,7 +288,7 @@ public class UserService {
 
         user.changeNickname(normalizedNickname);
 
-        log.info("✅ 닉네임 변경 완료: userId={}, nickname={}", userId, normalizedNickname);
+        log.info("✅ 닉네임 변경 완료: userId={}", userId);
 
         return UpdateNicknameResponse.builder()
                 .userId(user.getId())
@@ -297,7 +297,7 @@ public class UserService {
     }
 
     public UserProfileResponse getProfile(Long userId) {
-        log.info("📖 프로필 조회: userId={}", userId);
+        log.debug("📖 프로필 조회: userId={}", userId);
         log.debug("🔗 현재 imageUrlBase: {}", imageUrlBase);
 
         UserProfile userProfile = userProfileRepository.findByUserId(userId)

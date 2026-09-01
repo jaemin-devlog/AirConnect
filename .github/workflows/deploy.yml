@@ -1,10 +1,16 @@
-name: CI/CD Deploy AirConnect
+name: CI and Manual Deploy AirConnect
 
 on:
+  pull_request:
+    branches:
+      - develop
   push:
     branches:
       - develop
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   ci:
@@ -28,13 +34,17 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      - name: Build
-        run: ./gradlew clean build -x test --no-daemon
+      - name: Build and test
+        run: ./gradlew clean build --no-daemon
 
   cd:
-    name: Deploy to Server
+    name: Deploy to Production
     runs-on: ubuntu-latest
     needs: ci
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+    concurrency:
+      group: airconnect-production
+      cancel-in-progress: false
 
     steps:
       - name: Deploy via SSH
@@ -50,9 +60,10 @@ jobs:
             cd /home/ubuntu/AirConnect
 
             git fetch origin
-            git checkout develop
-            git pull --ff-only origin develop
+            git checkout --detach "${{ github.sha }}"
 
+            docker compose config --quiet
             docker compose up -d --build
+            docker compose ps
 
             docker image prune -f

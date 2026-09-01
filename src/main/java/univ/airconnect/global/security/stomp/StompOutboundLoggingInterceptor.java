@@ -27,7 +27,7 @@ public class StompOutboundLoggingInterceptor implements ChannelInterceptor {
         StompCommand command = accessor.getCommand();
         if (command == StompCommand.CONNECTED) {
             stompOpsMonitor.recordOutboundConnectedFrame();
-            log.info("STOMP OUTBOUND CONNECTED: sessionId={}, user={}",
+            log.debug("STOMP OUTBOUND CONNECTED: sessionId={}, user={}",
                     accessor.getSessionId(),
                     accessor.getUser() != null ? accessor.getUser().getName() : "anonymous");
         } else if (command == StompCommand.ERROR) {
