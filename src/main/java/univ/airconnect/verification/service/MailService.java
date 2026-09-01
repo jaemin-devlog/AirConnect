@@ -58,9 +58,9 @@ public class MailService {
             helper.setText(htmlBody, true);
             helper.addInline(LOGO_CONTENT_ID, new ClassPathResource(LOGO_PATH), "image/png");
             mailSender.send(message);
-            log.info("Verification email sent successfully. to={}", to);
+            log.debug("Verification email sent successfully. to={}", maskEmail(to));
         } catch (Exception e) {
-            log.error("Failed to send verification email. to={}, error={}", to, e.getMessage(), e);
+            log.error("Failed to send verification email. to={}, error={}", maskEmail(to), e.getMessage(), e);
             throw new VerificationException(VerificationErrorCode.MAIL_SEND_FAILED);
         }
     }
@@ -84,7 +84,7 @@ public class MailService {
                     "Invalid mail configuration. spring.mail.host='{}', spring.mail.port={}, spring.mail.username='{}'",
                     mailHost,
                     mailPort,
-                    fromEmail
+                    maskEmail(fromEmail)
             );
             throw new VerificationException(VerificationErrorCode.MAIL_SEND_FAILED);
         }
@@ -94,5 +94,20 @@ public class MailService {
                     "Mail configuration resolved to localhost:25. If this is unintended, check SPRING_PROFILES_ACTIVE/MAIL_HOST/MAIL_PORT."
             );
         }
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return "-";
+        }
+        int at = email.indexOf('@');
+        if (at <= 0) {
+            return "***";
+        }
+        String localPart = email.substring(0, at);
+        String maskedLocalPart = localPart.length() == 1
+                ? "*"
+                : localPart.charAt(0) + "***";
+        return maskedLocalPart + email.substring(at);
     }
 }

@@ -59,7 +59,7 @@ public class GMatchingApiLogFilter extends OncePerRequestFilter {
             }
 
             long elapsedMs = System.currentTimeMillis() - startedAt;
-            log.info(
+            log.debug(
                     "[과팅][API 성공] [{}] {} {} status={} userId={} ua='{}' origin='{}' elapsedMs={}",
                     traceId,
                     method,

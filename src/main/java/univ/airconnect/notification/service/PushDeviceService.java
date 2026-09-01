@@ -52,7 +52,8 @@ public class PushDeviceService {
                     normalizedTimezone,
                     command.lastSeenAt()
             );
-            log.info("Push device updated: userId={}, deviceId={}", command.userId(), command.deviceId());
+            log.debug("Push device updated: userId={}, deviceIdMasked={}",
+                    command.userId(), maskDeviceId(command.deviceId()));
             return pushDevice;
         }
 
@@ -72,7 +73,8 @@ public class PushDeviceService {
                         command.lastSeenAt()
                 )
         );
-        log.info("Push device registered: userId={}, deviceId={}", command.userId(), command.deviceId());
+        log.info("Push device registered: userId={}, deviceIdMasked={}",
+                command.userId(), maskDeviceId(command.deviceId()));
         return pushDevice;
     }
 
@@ -83,7 +85,7 @@ public class PushDeviceService {
     public void deactivate(Long userId, String deviceId) {
         PushDevice pushDevice = getRequiredDevice(userId, deviceId);
         pushDevice.deactivate();
-        log.info("Push device deactivated: userId={}, deviceId={}", userId, deviceId);
+        log.info("Push device deactivated: userId={}, deviceIdMasked={}", userId, maskDeviceId(deviceId));
     }
 
     /**
@@ -94,8 +96,8 @@ public class PushDeviceService {
         pushDeviceRepository.findByProviderAndPushToken(provider, pushToken)
                 .ifPresent(pushDevice -> {
                     pushDevice.releaseTokenOwnership();
-                    log.warn("Push token released after provider failure: deviceId={}, provider={}",
-                            pushDevice.getDeviceId(), provider);
+                    log.warn("Push token released after provider failure: deviceIdMasked={}, provider={}",
+                            maskDeviceId(pushDevice.getDeviceId()), provider);
                 });
     }
 
@@ -121,7 +123,8 @@ public class PushDeviceService {
         PushDevice pushDevice = getRequiredDevice(userId, deviceId);
         pushDevice.updatePermission(granted);
         pushDevice.touchLastSeen(lastSeenAt);
-        log.info("Push device permission updated: userId={}, deviceId={}, granted={}", userId, deviceId, granted);
+        log.debug("Push device permission updated: userId={}, deviceIdMasked={}, granted={}",
+                userId, maskDeviceId(deviceId), granted);
         return pushDevice;
     }
 
@@ -134,9 +137,9 @@ public class PushDeviceService {
                         return;
                     }
                     existingTokenOwner.releaseTokenOwnership();
-                    log.info("Push token ownership transferred: oldUserId={}, oldDeviceId={}, newUserId={}, newDeviceId={}",
-                            existingTokenOwner.getUserId(), existingTokenOwner.getDeviceId(),
-                            command.userId(), command.deviceId());
+                    log.info("Push token ownership transferred: oldUserId={}, oldDeviceIdMasked={}, newUserId={}, newDeviceIdMasked={}",
+                            existingTokenOwner.getUserId(), maskDeviceId(existingTokenOwner.getDeviceId()),
+                            command.userId(), maskDeviceId(command.deviceId()));
                 });
     }
 
@@ -184,6 +187,17 @@ public class PushDeviceService {
             return trimmed;
         }
         return trimmed.substring(0, maxLength);
+    }
+
+    private String maskDeviceId(String deviceId) {
+        if (deviceId == null || deviceId.isBlank()) {
+            return "-";
+        }
+        String trimmed = deviceId.trim();
+        if (trimmed.length() <= 6) {
+            return "***";
+        }
+        return trimmed.substring(0, 3) + "***" + trimmed.substring(trimmed.length() - 3);
     }
 
     public record UpsertCommand(

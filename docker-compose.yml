@@ -1,4 +1,8 @@
-version: '3.8'
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 services:
   airconnect-app:
@@ -85,6 +89,7 @@ services:
         condition: service_started
     networks:
       - airconnect-network
+    logging: *default-logging
     restart: always
 
   caddy:
@@ -100,6 +105,7 @@ services:
       - airconnect-app
     networks:
       - airconnect-network
+    logging: *default-logging
     restart: unless-stopped
 
   mysql:
@@ -122,6 +128,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *default-logging
     restart: always
 
   redis:
@@ -133,6 +140,7 @@ services:
       - "./redis-data:/data"
     networks:
       - airconnect-network
+    logging: *default-logging
     restart: always
 
 networks:
