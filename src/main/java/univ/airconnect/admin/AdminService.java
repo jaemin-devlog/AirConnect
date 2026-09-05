@@ -191,7 +191,19 @@ public class AdminService {
                 );
             }
             case DELETE -> userService.deleteAccount(userId, null, null);
-            case REACTIVATE -> user.reactivate();
+            case REACTIVATE -> {
+                if (user.getStatus() == UserStatus.DELETED) {
+                    if (user.isEmailProvider()) {
+                        throw new BusinessException(
+                                ErrorCode.INVALID_REQUEST,
+                                "이메일 로그인 탈퇴 계정은 비밀번호가 삭제되어 복구할 수 없습니다."
+                        );
+                    }
+                    user.restoreDeletedSocialAccount();
+                } else {
+                    user.reactivate();
+                }
+            }
             case RESTRICT_MATCHING -> {
                 user.restrictMatching(request.until(), reason);
                 sendAdminAnnouncementToUser(

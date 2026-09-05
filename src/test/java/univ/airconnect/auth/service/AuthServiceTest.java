@@ -189,7 +189,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void adminLogin_returnsAccessTokenOnly_andRevokesExistingRefreshTokens() {
+    void adminLogin_returnsRefreshableSession_andRevokesExistingRefreshTokens() {
         EmailLoginRequest request = new EmailLoginRequest("Admin@AirConnect.test", "super-secret", "device-admin");
         User adminUser = createAdminUser(88L, "admin@airconnect.test", "stored-hash");
         RefreshToken legacyToken = RefreshToken.create(88L, "legacy-device", "legacy-hash");
@@ -202,16 +202,20 @@ class AuthServiceTest {
                 .thenReturn(Optional.of(adminUser));
         when(passwordEncoder.matches("super-secret", "stored-hash")).thenReturn(true);
         when(jwtProvider.createAccessToken(88L)).thenReturn("admin-access-token");
+        when(jwtProvider.createRefreshToken(88L, "device-admin")).thenReturn("admin-refresh-token");
+        when(tokenHashService.hash("admin-refresh-token")).thenReturn("admin-refresh-token-hash");
         when(refreshTokenRepository.findByUserId(88L)).thenReturn(List.of(legacyToken));
         when(userService.getMe(88L)).thenReturn(UserMeResponse.builder().userId(88L).role(UserRole.ADMIN).build());
 
         LoginResponse response = authService.adminLogin(request, "127.0.0.1");
 
         assertThat(response.getAccessToken()).isEqualTo("admin-access-token");
-        assertThat(response.getRefreshToken()).isNull();
+        assertThat(response.getRefreshToken()).isEqualTo("admin-refresh-token");
         verify(attemptThrottleService).clear("admin_login", "admin@airconnect.test", "127.0.0.1");
         verify(refreshTokenRepository).deleteAllById(List.of(legacyToken.getId()));
-        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+        ArgumentCaptor<RefreshToken> refreshTokenCaptor = ArgumentCaptor.forClass(RefreshToken.class);
+        verify(refreshTokenRepository).save(refreshTokenCaptor.capture());
+        assertThat(refreshTokenCaptor.getValue().getToken()).isEqualTo("admin-refresh-token-hash");
     }
 
     @Test

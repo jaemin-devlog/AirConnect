@@ -113,7 +113,7 @@ public class AuthService {
         revokeAllRefreshTokens(user.getId());
 
         log.info("Admin login completed: userId={}", user.getId());
-        return issueLoginResponse(user, request.getDeviceId(), "ADMIN_ACCOUNT", false);
+        return issueLoginResponse(user, request.getDeviceId(), "ADMIN_ACCOUNT", true);
     }
 
     @Transactional

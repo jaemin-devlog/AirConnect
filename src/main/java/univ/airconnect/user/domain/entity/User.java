@@ -342,6 +342,23 @@ public class User {
         this.suspendedUntil = null;
     }
 
+    /**
+     * Restores only the retained account identity after privacy deletion.
+     * Personal/profile fields stay anonymized and onboarding must be completed again.
+     */
+    public void restoreDeletedSocialAccount() {
+        if (this.status != UserStatus.DELETED) {
+            return;
+        }
+        if (isEmailProvider()) {
+            throw new IllegalStateException("Email accounts cannot be restored after password deletion.");
+        }
+        this.status = UserStatus.ACTIVE;
+        this.deletedAt = null;
+        this.suspendedUntil = null;
+        this.lastActiveAt = null;
+    }
+
     public void restrictMatching(LocalDateTime until, String reason) {
         this.restrictedAt = LocalDateTime.now();
         this.restrictedUntil = until;
