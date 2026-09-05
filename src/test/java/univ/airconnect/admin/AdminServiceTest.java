@@ -35,9 +35,12 @@ import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
 import univ.airconnect.statistics.service.StatisticsService;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.user.domain.OnboardingStatus;
+import univ.airconnect.user.domain.Gender;
+import univ.airconnect.user.domain.MilitaryStatus;
 import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
 
@@ -347,6 +350,15 @@ class AdminServiceTest {
     @Test
     void getUserDetail_includesRecentHistories() {
         User user = user(5L, 10);
+        user.updateVerifiedSchoolEmail("student@school.ac.kr");
+        LocalDateTime nicknameChangedAt = LocalDateTime.of(2026, 9, 1, 12, 30);
+        ReflectionTestUtils.setField(user, "lastNicknameChangedAt", nicknameChangedAt);
+        UserProfile profile = UserProfile.create(
+                user, 178, 24, "ENFP", "NON_SMOKER", Gender.MALE,
+                MilitaryStatus.COMPLETED, "무교", "서울", "반갑습니다", "airconnect_member"
+        );
+        profile.updateProfileImagePath("profile-5.png");
+        ReflectionTestUtils.setField(user, "userProfile", profile);
         User target = user(6L, 20);
         ReflectionTestUtils.setField(target, "nickname", "상대방");
 
@@ -360,6 +372,18 @@ class AdminServiceTest {
 
         AdminDtos.UserDetail detail = adminService.getUserDetail(5L);
 
+        assertThat(detail.email()).isEqualTo("student@school.ac.kr");
+        assertThat(detail.socialEmail()).isEqualTo("u5@airconnect.test");
+        assertThat(detail.verifiedSchoolEmail()).isEqualTo("student@school.ac.kr");
+        assertThat(detail.lastNicknameChangedAt()).isEqualTo(nicknameChangedAt);
+        assertThat(detail.profile()).isNotNull();
+        assertThat(detail.profile().height()).isEqualTo(178);
+        assertThat(detail.profile().mbti()).isEqualTo("ENFP");
+        assertThat(detail.profile().instagram()).isEqualTo("airconnect_member");
+        assertThat(detail.profile().profileImagePath()).isEqualTo("profile-5.png");
+        assertThat(detail.matchingRestricted()).isFalse();
+        assertThat(new ObjectMapper().findAndRegisterModules().valueToTree(detail).toString())
+                .doesNotContain("passwordHash", "iosAppAccountToken", "refreshToken", "accessToken");
         assertThat(detail.openReportCount()).isEqualTo(2L);
         assertThat(detail.purchaseHistories()).hasSize(1);
         assertThat(detail.purchaseHistories().get(0).productId()).isEqualTo("ticket_10");

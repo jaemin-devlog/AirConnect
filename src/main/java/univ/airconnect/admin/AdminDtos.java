@@ -10,6 +10,7 @@ import univ.airconnect.notification.domain.NotificationDeliveryStatus;
 import univ.airconnect.moderation.domain.ReportReasonCode;
 import univ.airconnect.moderation.domain.ReportStatus;
 import univ.airconnect.user.domain.Gender;
+import univ.airconnect.user.domain.MilitaryStatus;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
@@ -66,15 +67,19 @@ public final class AdminDtos {
             String provider,
             String socialId,
             String email,
+            String socialEmail,
+            String verifiedSchoolEmail,
             String schoolName,
             String deptName,
             String nickname,
             String name,
             Integer studentNum,
+            LocalDateTime lastNicknameChangedAt,
             UserRole role,
             UserStatus status,
             OnboardingStatus onboardingStatus,
             Gender gender,
+            UserProfileDetail profile,
             Integer tickets,
             LocalDateTime createdAt,
             LocalDateTime lastActiveAt,
@@ -83,11 +88,28 @@ public final class AdminDtos {
             LocalDateTime restrictedAt,
             LocalDateTime restrictedUntil,
             String restrictedReason,
+            boolean matchingRestricted,
             long openReportCount,
             List<PurchaseHistoryItem> purchaseHistories,
             List<SentRequestHistoryItem> sentRequestHistories,
             List<TicketUsageHistoryItem> ticketUsageHistories,
             List<ApiUsageHistoryItem> apiUsageHistories
+    ) {
+    }
+
+    public record UserProfileDetail(
+            Integer height,
+            Integer age,
+            String mbti,
+            String smoking,
+            Gender gender,
+            MilitaryStatus military,
+            String religion,
+            String residence,
+            String intro,
+            String instagram,
+            String profileImagePath,
+            LocalDateTime updatedAt
     ) {
     }
 
