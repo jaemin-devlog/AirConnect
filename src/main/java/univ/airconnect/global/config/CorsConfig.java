@@ -15,7 +15,8 @@ public class CorsConfig implements WebMvcConfigurer {
 
     private static final List<String> DEFAULT_ALLOWED_ORIGIN_PATTERNS = List.of(
             "https://airconnect-admin.web.app",
-            "https://airconnect-6e6c5.web.app"
+            "https://airconnect-6e6c5.web.app",
+            "https://airconnect-admin-a7781.web.app"
     );
 
     @Value("${app.cors.allowed-origin-patterns:}")
