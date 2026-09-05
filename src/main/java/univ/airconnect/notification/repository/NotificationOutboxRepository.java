@@ -3,7 +3,9 @@ package univ.airconnect.notification.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 import univ.airconnect.notification.domain.NotificationDeliveryStatus;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 
@@ -12,6 +14,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 public interface NotificationOutboxRepository extends JpaRepository<NotificationOutbox, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM NotificationOutbox o WHERE o.id = :id")
+    Optional<NotificationOutbox> findByIdForUpdate(@Param("id") Long id);
 
     List<NotificationOutbox> findByIdInOrderByIdAsc(Collection<Long> ids);
 

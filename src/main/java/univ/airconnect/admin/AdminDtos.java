@@ -515,6 +515,33 @@ public final class AdminDtos {
     ) {
     }
 
+    public record IntegrityIssueItem(
+            String key,
+            String itemId,
+            String title,
+            String status,
+            String detail,
+            Long userId,
+            Long relatedUserId,
+            Long roomId,
+            Long matchingId,
+            Long outboxId,
+            Long notificationId,
+            Long ticketHistoryId,
+            String referenceValue,
+            LocalDateTime occurredAt
+    ) {
+    }
+
+    public record OutboxRetryResult(
+            Long outboxId,
+            NotificationDeliveryStatus status,
+            boolean queued,
+            String result,
+            LocalDateTime requestedAt
+    ) {
+    }
+
     public record AuditLogItem(
             Long auditLogId,
             Long actorUserId,

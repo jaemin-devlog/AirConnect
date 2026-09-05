@@ -611,7 +611,7 @@ class AdminReportHandlingSecurityTest {
         assertThat(linked.get(0).action()).isEqualTo("SUSPEND");
         assertThat(linked.get(0).until()).isEqualTo(until);
         var userFiltered = audits.search(adminId, AdminAuditAction.USER_ACTION_APPLIED,
-                "USER", PageRequest.of(0, 20));
+                "USER", null, PageRequest.of(0, 20));
         assertThat(userFiltered.getTotalElements()).isEqualTo(1);
         assertThat(audits.count()).isEqualTo(1);
         AdminAuditLog actionAudit = userFiltered.getContent().get(0);

@@ -283,6 +283,30 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok(adminOperationsService.getIntegrityReport(adminUserId), traceId));
     }
 
+    @GetMapping("/operations/integrity/{key}")
+    public ResponseEntity<ApiResponse<AdminDtos.PageResponse<AdminDtos.IntegrityIssueItem>>> getIntegrityIssues(
+            @CurrentUserId Long adminUserId,
+            @PathVariable String key,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(
+                adminOperationsService.getIntegrityIssues(adminUserId, key, page, size), traceId));
+    }
+
+    @PostMapping("/operations/outbox/{outboxId}/retry")
+    public ResponseEntity<ApiResponse<AdminDtos.OutboxRetryResult>> retryOutbox(
+            @CurrentUserId Long adminUserId,
+            @PathVariable Long outboxId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(
+                adminOperationsService.retryFailedOutbox(adminUserId, outboxId), traceId));
+    }
+
     @GetMapping("/audit-logs")
     public ResponseEntity<ApiResponse<AdminDtos.PageResponse<AdminDtos.AuditLogItem>>> getAuditLogs(
             @RequestParam(required = false) Integer page,
@@ -290,11 +314,12 @@ public class AdminController {
             @RequestParam(required = false) Long actorUserId,
             @RequestParam(required = false) AdminAuditAction action,
             @RequestParam(required = false) String targetType,
+            @RequestParam(required = false) String targetId,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         return ResponseEntity.ok(ApiResponse.ok(
-                adminAuditLogService.search(page, size, actorUserId, action, targetType),
+                adminAuditLogService.search(page, size, actorUserId, action, targetType, targetId),
                 traceId
         ));
     }

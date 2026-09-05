@@ -57,6 +57,31 @@ public class AdminAuditLogService {
                         "beforeTickets", before, "afterTickets", after))));
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordOutboxRetry(Long actorUserId, NotificationOutboxRetryAudit details) {
+        adminAuditLogRepository.save(AdminAuditLog.create(
+                actorUserId,
+                AdminAuditAction.OUTBOX_RETRY_QUEUED,
+                "NOTIFICATION_OUTBOX",
+                String.valueOf(details.outboxId()),
+                "실패한 알림 전송 작업을 다시 대기열에 넣었습니다.",
+                null,
+                toJson(Map.of(
+                        "notificationId", details.notificationId(),
+                        "userId", details.userId(),
+                        "previousAttemptCount", details.previousAttemptCount()
+                ))
+        ));
+    }
+
+    public record NotificationOutboxRetryAudit(
+            Long outboxId,
+            Long notificationId,
+            Long userId,
+            int previousAttemptCount
+    ) {
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordApiCall(Long actorUserId,
                               String method,
@@ -175,10 +200,11 @@ public class AdminAuditLogService {
                                                                  Integer size,
                                                                  Long actorUserId,
                                                                  AdminAuditAction action,
-                                                                 String targetType) {
+                                                                 String targetType,
+                                                                 String targetId) {
         Pageable pageable = PageRequest.of(safePage(page), safeSize(size));
         Page<AdminDtos.AuditLogItem> mapped = adminAuditLogRepository
-                .search(actorUserId, action, trimToNull(targetType), pageable)
+                .search(actorUserId, action, trimToNull(targetType), trimToNull(targetId), pageable)
                 .map(log -> new AdminDtos.AuditLogItem(
                         log.getId(),
                         log.getActorUserId(),

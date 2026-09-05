@@ -233,6 +233,23 @@ public class NotificationOutbox {
         touch();
     }
 
+    public boolean queueManualRetry(LocalDateTime requestedAt) {
+        if (this.status == NotificationDeliveryStatus.PENDING
+                || this.status == NotificationDeliveryStatus.PROCESSING) {
+            return false;
+        }
+        if (this.status != NotificationDeliveryStatus.FAILED) {
+            throw new IllegalStateException("최종 실패한 알림만 다시 시도할 수 있습니다.");
+        }
+        this.status = NotificationDeliveryStatus.PENDING;
+        this.nextAttemptAt = requestedAt;
+        this.claimedAt = null;
+        this.lastErrorCode = "ADMIN_RETRY_QUEUED";
+        this.lastErrorMessage = null;
+        touch();
+        return true;
+    }
+
     /**
      * 정책상 발송하지 않기로 한 작업을 SKIPPED 상태로 기록한다.
      */

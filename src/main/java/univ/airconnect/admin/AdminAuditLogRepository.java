@@ -19,11 +19,13 @@ public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog, Lo
         WHERE (:actorUserId IS NULL OR l.actorUserId = :actorUserId)
           AND (:action IS NULL OR l.action = :action)
           AND (:targetType IS NULL OR l.targetType = :targetType)
+          AND (:targetId IS NULL OR l.targetId = :targetId)
         ORDER BY l.createdAt DESC, l.id DESC
     """)
     Page<AdminAuditLog> search(@Param("actorUserId") Long actorUserId,
                                @Param("action") AdminAuditAction action,
                                @Param("targetType") String targetType,
+                               @Param("targetId") String targetId,
                                Pageable pageable);
 
     long countByAction(AdminAuditAction action);

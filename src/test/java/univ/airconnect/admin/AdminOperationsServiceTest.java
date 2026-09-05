@@ -24,17 +24,24 @@ import univ.airconnect.moderation.domain.ReportStatus;
 import univ.airconnect.moderation.repository.UserReportRepository;
 import univ.airconnect.notification.domain.NotificationDeliveryStatus;
 import univ.airconnect.notification.domain.PushProvider;
+import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
+import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.NotificationRepository;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
+import univ.airconnect.notification.repository.PushDeviceRepository;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.repository.UserRepository;
+import univ.airconnect.user.domain.UserRole;
+import univ.airconnect.user.domain.UserStatus;
+import univ.airconnect.user.domain.entity.User;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -47,6 +54,8 @@ class AdminOperationsServiceTest {
     private NotificationOutboxRepository notificationOutboxRepository;
     @Mock
     private NotificationRepository notificationRepository;
+    @Mock
+    private PushDeviceRepository pushDeviceRepository;
     @Mock
     private ApiRequestLogRepository apiRequestLogRepository;
     @Mock
@@ -81,6 +90,8 @@ class AdminOperationsServiceTest {
     private AdminAuditLogRepository adminAuditLogRepository;
     @Mock
     private AdminAuditLogService adminAuditLogService;
+    @Mock
+    private AdminIntegrityQueryRepository adminIntegrityQueryRepository;
 
     private AdminOperationsService adminOperationsService;
 
@@ -89,6 +100,7 @@ class AdminOperationsServiceTest {
         adminOperationsService = new AdminOperationsService(
                 notificationOutboxRepository,
                 notificationRepository,
+                pushDeviceRepository,
                 apiRequestLogRepository,
                 analyticsEventRepository,
                 matchingConnectionRepository,
@@ -105,7 +117,8 @@ class AdminOperationsServiceTest {
                 ticketLedgerRepository,
                 adminNoticeRepository,
                 adminAuditLogRepository,
-                adminAuditLogService
+                adminAuditLogService,
+                adminIntegrityQueryRepository
         );
     }
 
@@ -265,6 +278,67 @@ class AdminOperationsServiceTest {
                 .containsExactly(
                         "변경 전 잔액에 증감 수량을 더한 값이 변경 후 잔액과 다른 내역입니다.",
                         "같은 참조 유형과 참조 번호로 기록된 티켓 변동 내역이 여러 건 있습니다.");
+    }
+
+    @Test
+    void getIntegrityIssues_requiresCurrentAdminAndReturnsRequestedPage() {
+        User admin = User.builder().id(99L).role(UserRole.ADMIN).status(UserStatus.ACTIVE).build();
+        var expected = new AdminDtos.PageResponse<AdminDtos.IntegrityIssueItem>(
+                List.of(), 1, 20, 0, 0, false);
+        when(userRepository.findById(99L)).thenReturn(Optional.of(admin));
+        when(adminIntegrityQueryRepository.find("chat_rooms_without_members", 1, 20)).thenReturn(expected);
+
+        var result = adminOperationsService.getIntegrityIssues(
+                99L, "chat_rooms_without_members", 1, 20);
+
+        assertThat(result).isSameAs(expected);
+        verify(adminAuditLogService).record(eq(99L), eq(AdminAuditAction.INTEGRITY_ISSUES_VIEWED),
+                eq("INTEGRITY_CHECK"), eq("chat_rooms_without_members"), any(), any(), any());
+    }
+
+    @Test
+    void retryFailedOutbox_queuesOnlyForSameActiveDeviceAndAuditsInTransaction() {
+        User admin = User.builder().id(99L).role(UserRole.ADMIN).status(UserStatus.ACTIVE).build();
+        NotificationOutbox outbox = NotificationOutbox.create(
+                10L, 20L, 30L, PushProvider.FCM, "same-token", "title", "body", "{}", LocalDateTime.now());
+        ReflectionTestUtils.setField(outbox, "id", 40L);
+        outbox.markFailed("FCM_ERROR", "failed");
+        PushDevice device = PushDevice.register(
+                20L, "device", PushPlatform.ANDROID, PushProvider.FCM, "same-token", null,
+                true, "1", "1", "ko", "Asia/Seoul", LocalDateTime.now());
+        ReflectionTestUtils.setField(device, "id", 30L);
+        when(userRepository.findById(99L)).thenReturn(Optional.of(admin));
+        when(notificationOutboxRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(outbox));
+        when(notificationRepository.existsById(10L)).thenReturn(true);
+        when(pushDeviceRepository.findByIdAndUserId(30L, 20L)).thenReturn(Optional.of(device));
+
+        var result = adminOperationsService.retryFailedOutbox(99L, 40L);
+
+        assertThat(result.queued()).isTrue();
+        assertThat(result.status()).isEqualTo(NotificationDeliveryStatus.PENDING);
+        assertThat(outbox.getStatus()).isEqualTo(NotificationDeliveryStatus.PENDING);
+        verify(adminAuditLogService).recordOutboxRetry(eq(99L), any());
+    }
+
+    @Test
+    void retryFailedOutbox_rejectsChangedDeviceWithoutQueuing() {
+        User admin = User.builder().id(99L).role(UserRole.ADMIN).status(UserStatus.ACTIVE).build();
+        NotificationOutbox outbox = NotificationOutbox.create(
+                10L, 20L, 30L, PushProvider.FCM, "old-token", "title", "body", "{}", LocalDateTime.now());
+        ReflectionTestUtils.setField(outbox, "id", 40L);
+        outbox.markFailed("FCM_ERROR", "failed");
+        PushDevice device = PushDevice.register(
+                20L, "device", PushPlatform.ANDROID, PushProvider.FCM, "new-token", null,
+                true, "1", "1", "ko", "Asia/Seoul", LocalDateTime.now());
+        ReflectionTestUtils.setField(device, "id", 30L);
+        when(userRepository.findById(99L)).thenReturn(Optional.of(admin));
+        when(notificationOutboxRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(outbox));
+        when(notificationRepository.existsById(10L)).thenReturn(true);
+        when(pushDeviceRepository.findByIdAndUserId(30L, 20L)).thenReturn(Optional.of(device));
+
+        assertThatThrownBy(() -> adminOperationsService.retryFailedOutbox(99L, 40L))
+                .hasMessageContaining("활성 기기");
+        assertThat(outbox.getStatus()).isEqualTo(NotificationDeliveryStatus.FAILED);
     }
 
     private ApiRequestLogRepository.ApiRequestUsageProjection projection(
