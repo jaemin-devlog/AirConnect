@@ -36,6 +36,7 @@ import univ.airconnect.statistics.service.StatisticsService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
 
@@ -565,15 +566,19 @@ public class AdminService {
                 user.getProvider().name(),
                 user.getSocialId(),
                 user.getPrimaryEmail(),
+                user.getEmail(),
+                user.getVerifiedSchoolEmail(),
                 deriveSchoolName(user.getPrimaryEmail()),
                 user.getDeptName(),
                 user.getNickname(),
                 user.getName(),
                 user.getStudentNum(),
+                user.getLastNicknameChangedAt(),
                 user.getRole(),
                 user.getStatus(),
                 user.getOnboardingStatus(),
                 user.getUserProfile() != null ? user.getUserProfile().getGender() : null,
+                toUserProfileDetail(user.getUserProfile()),
                 user.getTickets(),
                 user.getCreatedAt(),
                 user.getLastActiveAt(),
@@ -582,11 +587,32 @@ public class AdminService {
                 user.getRestrictedAt(),
                 user.getRestrictedUntil(),
                 user.getRestrictedReason(),
+                user.isMatchingRestricted(),
                 userReportRepository.countByReportedUserIdAndStatus(user.getId(), ReportStatus.OPEN),
                 loadPurchaseHistories(user.getId()),
                 loadSentRequestHistories(user.getId()),
                 loadTicketUsageHistories(user.getId()),
                 loadApiUsageHistories(user.getId())
+        );
+    }
+
+    private AdminDtos.UserProfileDetail toUserProfileDetail(UserProfile profile) {
+        if (profile == null) {
+            return null;
+        }
+        return new AdminDtos.UserProfileDetail(
+                profile.getHeight(),
+                profile.getAge(),
+                profile.getMbti(),
+                profile.getSmoking(),
+                profile.getGender(),
+                profile.getMilitary(),
+                profile.getReligion(),
+                profile.getResidence(),
+                profile.getIntro(),
+                profile.getInstagram(),
+                profile.getProfileImagePath(),
+                profile.getUpdatedAt()
         );
     }
 
