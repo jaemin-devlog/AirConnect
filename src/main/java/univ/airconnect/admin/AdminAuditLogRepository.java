@@ -11,6 +11,8 @@ import java.util.List;
 
 public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog, Long> {
 
+    List<AdminAuditLog> findByActionAndReportIdOrderByCreatedAtDescIdDesc(AdminAuditAction action, Long reportId);
+
     @Query("""
         SELECT l
         FROM AdminAuditLog l
@@ -31,6 +33,8 @@ public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog, Lo
     long countByActionAndCreatedAtGreaterThanEqual(AdminAuditAction action, LocalDateTime since);
 
     long countByActionAndMetadataJsonContaining(AdminAuditAction action, String text);
+
+    long deleteByActionAndCreatedAtBefore(AdminAuditAction action, LocalDateTime cutoff);
 
     @Query("""
         SELECT COUNT(DISTINCT l.actorUserId)

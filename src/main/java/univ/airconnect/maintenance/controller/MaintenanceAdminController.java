@@ -13,7 +13,8 @@ import univ.airconnect.admin.AdminAuditAction;
 import univ.airconnect.admin.AdminAuditLogService;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
-import univ.airconnect.maintenance.dto.request.MaintenanceUpdateRequest;
+import univ.airconnect.maintenance.dto.request.MaintenanceContentUpdateRequest;
+import univ.airconnect.maintenance.dto.request.MaintenanceStateUpdateRequest;
 import univ.airconnect.maintenance.dto.response.MaintenanceStatusResponse;
 import univ.airconnect.maintenance.service.MaintenanceService;
 
@@ -33,35 +34,49 @@ public class MaintenanceAdminController {
     @GetMapping
     public ResponseEntity<ApiResponse<MaintenanceStatusResponse>> getStatus(HttpServletRequest request) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(maintenanceService.getStatus(), traceId));
+        return ResponseEntity.ok().header("Cache-Control", "no-store")
+                .body(ApiResponse.ok(maintenanceService.getStatus(), traceId));
     }
 
-    @PatchMapping
-    public ResponseEntity<ApiResponse<MaintenanceStatusResponse>> updateStatus(
+    @PatchMapping("/content")
+    public ResponseEntity<ApiResponse<MaintenanceStatusResponse>> updateContent(
             @CurrentUserId Long adminUserId,
-            @Valid @RequestBody MaintenanceUpdateRequest body,
+            @Valid @RequestBody MaintenanceContentUpdateRequest body,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        MaintenanceStatusResponse response = maintenanceService.updateStatus(
-                adminUserId,
-                body.enabled(),
-                body.title(),
-                body.message()
-        );
+        MaintenanceStatusResponse response = maintenanceService.updateContent(
+                adminUserId, body.expectedVersion(), body.title(), body.message());
+        recordChange(adminUserId, response, "CONTENT", "점검 안내 문구를 변경했습니다.");
+        return ResponseEntity.ok().header("Cache-Control", "no-store").body(ApiResponse.ok(response, traceId));
+    }
+
+    @PatchMapping("/state")
+    public ResponseEntity<ApiResponse<MaintenanceStatusResponse>> changeState(
+            @CurrentUserId Long adminUserId,
+            @Valid @RequestBody MaintenanceStateUpdateRequest body,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        MaintenanceStatusResponse response = maintenanceService.changeState(
+                adminUserId, body.expectedVersion(), body.enabled());
+        recordChange(adminUserId, response, "STATE", body.enabled() ? "점검을 시작했습니다." : "점검을 종료했습니다.");
+        return ResponseEntity.ok().header("Cache-Control", "no-store").body(ApiResponse.ok(response, traceId));
+    }
+
+    private void recordChange(Long adminUserId, MaintenanceStatusResponse response, String operation, String summary) {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("enabled", body.enabled());
-        metadata.put("title", body.title());
-        metadata.put("message", body.message());
+        metadata.put("operation", operation);
+        metadata.put("version", response.version());
+        metadata.put("enabled", response.enabled());
         adminAuditLogService.record(
                 adminUserId,
                 AdminAuditAction.MAINTENANCE_UPDATED,
                 "MAINTENANCE",
                 "global",
-                body.enabled() ? "점검 모드를 활성화했습니다." : "점검 모드를 비활성화했습니다.",
-                body.message(),
+                summary,
+                null,
                 metadata
         );
-        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 }

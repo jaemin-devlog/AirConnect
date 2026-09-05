@@ -417,15 +417,15 @@ public class AdminOperationsService {
                 ),
                 check(
                         "ticket_ledger_amount_mismatch",
-                        "티켓 원장 금액 불일치",
+                        "티켓 변동 내역 계산 불일치",
                         ticketLedgerRepository.countBrokenAmountRows(),
-                        "afterAmount가 beforeAmount + changeAmount와 다른 원장입니다."
+                        "변경 전 잔액에 증감 수량을 더한 값이 변경 후 잔액과 다른 내역입니다."
                 ),
                 check(
                         "ticket_ledger_duplicate_refs",
-                        "티켓 원장 참조 중복",
+                        "티켓 변동 내역 연결 정보 중복",
                         ticketLedgerRepository.countDuplicateRefRows(),
-                        "refType/refId 조합이 중복된 원장입니다."
+                        "같은 참조 유형과 참조 번호로 기록된 티켓 변동 내역이 여러 건 있습니다."
                 )
         );
 

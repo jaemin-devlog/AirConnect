@@ -18,7 +18,7 @@ import univ.airconnect.user.domain.entity.User;
 
 import jakarta.persistence.LockModeType;
 
-public interface UserRepository extends JpaRepository<User, Long> {
+public interface UserRepository extends JpaRepository<User, Long>, UserTicketLockRepository {
 
     Optional<User> findByProviderAndSocialId(SocialProvider provider, String socialId);
 

@@ -4,14 +4,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.iap.domain.LedgerRefType;
+import univ.airconnect.iap.domain.entity.TicketLedger;
+import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.domain.entity.UserMilestone;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.exception.UserErrorCode;
 import univ.airconnect.user.exception.UserException;
@@ -31,6 +36,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -43,11 +50,14 @@ class UserProfileImageServiceTest {
     private UserRepository userRepository;
     @Mock
     private UserMilestoneRepository userMilestoneRepository;
+    @Mock
+    private TicketLedgerRepository ticketLedgerRepository;
 
     @TempDir
     Path tempDir;
 
     private UserProfileImageService service;
+    private MilestoneRewardProperties rewardProperties;
 
     @BeforeEach
     void setUp() {
@@ -57,7 +67,7 @@ class UserProfileImageServiceTest {
         properties.setProfileImageMaxBytes(5L * 1024L * 1024L);
         properties.setProfileImageMaxPixels(25_000_000L);
         properties.setProfileImageAllowedFormats(List.of("jpg", "jpeg", "png"));
-        MilestoneRewardProperties rewardProperties = new MilestoneRewardProperties();
+        rewardProperties = new MilestoneRewardProperties();
         rewardProperties.setProfileImageUploadedTickets(1);
         rewardProperties.setEmailVerifiedTickets(1);
         service = new UserProfileImageService(
@@ -65,7 +75,8 @@ class UserProfileImageServiceTest {
                 userRepository,
                 userMilestoneRepository,
                 properties,
-                rewardProperties
+                rewardProperties,
+                ticketLedgerRepository
         );
     }
 
@@ -79,9 +90,11 @@ class UserProfileImageServiceTest {
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
-        when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.PROFILE_IMAGE_UPLOADED))
-                .thenReturn(true);
+        when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(user));
+        when(userMilestoneRepository.findByUserIdAndMilestoneTypeForUpdate(userId, MilestoneType.PROFILE_IMAGE_UPLOADED))
+                .thenReturn(Optional.of(UserMilestone.create(userId, MilestoneType.PROFILE_IMAGE_UPLOADED)));
 
+        int before = user.getTickets();
         MockMultipartFile file = new MockMultipartFile("file", "new-profile.jpg", "image/jpeg", createImageBytes("jpg"));
         String imageUrl = service.saveProfileImage(userId, file);
 
@@ -90,6 +103,9 @@ class UserProfileImageServiceTest {
         assertThat(Files.exists(tempDir.resolve(fileName))).isTrue();
         assertThat(Files.exists(tempDir.resolve("old-file.jpg"))).isFalse();
         assertThat(profile.getProfileImagePath()).isEqualTo(fileName);
+        assertThat(user.getTickets()).isEqualTo(before);
+        verify(userMilestoneRepository, never()).save(any());
+        verify(ticketLedgerRepository, never()).save(any(TicketLedger.class));
     }
 
     @Test
@@ -149,7 +165,8 @@ class UserProfileImageServiceTest {
                 userRepository,
                 userMilestoneRepository,
                 tinyLimit,
-                rewardProperties
+                rewardProperties,
+                ticketLedgerRepository
         );
 
         Long userId = 5L;
@@ -187,8 +204,9 @@ class UserProfileImageServiceTest {
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
-        when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.PROFILE_IMAGE_UPLOADED))
-                .thenReturn(false);
+        when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(user));
+        when(userMilestoneRepository.findByUserIdAndMilestoneTypeForUpdate(userId, MilestoneType.PROFILE_IMAGE_UPLOADED))
+                .thenReturn(Optional.empty());
 
         int before = user.getTickets();
         MockMultipartFile file = new MockMultipartFile("file", "profile.jpg", "image/jpeg", createImageBytes("jpg"));
@@ -197,6 +215,39 @@ class UserProfileImageServiceTest {
 
         assertThat(user.getTickets()).isEqualTo(before + 1);
         verify(userMilestoneRepository).save(org.mockito.ArgumentMatchers.any());
+        ArgumentCaptor<TicketLedger> history = ArgumentCaptor.forClass(TicketLedger.class);
+        verify(ticketLedgerRepository).save(history.capture());
+        assertThat(history.getValue().getUserId()).isEqualTo(userId);
+        assertThat(history.getValue().getBeforeAmount()).isEqualTo(before);
+        assertThat(history.getValue().getChangeAmount()).isEqualTo(1);
+        assertThat(history.getValue().getAfterAmount()).isEqualTo(before + 1);
+        assertThat(history.getValue().getRefType()).isEqualTo(LedgerRefType.MILESTONE_REWARD);
+        assertThat(history.getValue().getRefId()).isEqualTo("milestone:" + userId + ":PROFILE_IMAGE_UPLOADED");
+        assertThat(history.getValue().getReason()).isEqualTo(MilestoneType.PROFILE_IMAGE_UPLOADED.name());
+    }
+
+    @Test
+    void saveProfileImage_recordsMilestoneWithoutTicketHistoryWhenRewardIsZero() throws Exception {
+        rewardProperties.setProfileImageUploadedTickets(0);
+        Long userId = 8L;
+        User user = activeUser(userId);
+        UserProfile profile = profile(user);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
+        when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(user));
+        when(userMilestoneRepository.findByUserIdAndMilestoneTypeForUpdate(userId, MilestoneType.PROFILE_IMAGE_UPLOADED))
+                .thenReturn(Optional.empty());
+
+        int before = user.getTickets();
+        MockMultipartFile file = new MockMultipartFile("file", "profile.jpg", "image/jpeg", createImageBytes("jpg"));
+        String imageUrl = service.saveProfileImage(userId, file);
+
+        String fileName = imageUrl.substring(imageUrl.lastIndexOf('/') + 1);
+        assertThat(Files.exists(tempDir.resolve(fileName))).isTrue();
+        assertThat(profile.getProfileImagePath()).isEqualTo(fileName);
+        assertThat(user.getTickets()).isEqualTo(before);
+        verify(userMilestoneRepository).save(any(UserMilestone.class));
+        verify(ticketLedgerRepository, never()).save(any(TicketLedger.class));
     }
 
     private User activeUser(Long id) {

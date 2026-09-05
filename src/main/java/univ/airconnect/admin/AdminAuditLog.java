@@ -23,7 +23,8 @@ import java.time.LocalDateTime;
                 @Index(name = "idx_admin_audit_actor_created", columnList = "actor_user_id, created_at"),
                 @Index(name = "idx_admin_audit_action_created", columnList = "action, created_at"),
                 @Index(name = "idx_admin_audit_target_created", columnList = "target_type, target_id, created_at"),
-                @Index(name = "idx_admin_audit_api_created", columnList = "api_path, created_at")
+                @Index(name = "idx_admin_audit_api_created", columnList = "api_path, created_at"),
+                @Index(name = "idx_admin_audit_report_created", columnList = "report_id, created_at")
         }
 )
 @Getter
@@ -46,6 +47,9 @@ public class AdminAuditLog {
 
     @Column(name = "target_id", length = 120)
     private String targetId;
+
+    @Column(name = "report_id", updatable = false)
+    private Long reportId;
 
     @Column(nullable = false, length = 300)
     private String summary;
@@ -116,6 +120,13 @@ public class AdminAuditLog {
                 .reason(reason)
                 .metadataJson(metadataJson)
                 .build();
+    }
+
+    public void linkToReport(Long reportId) {
+        if (id != null || this.reportId != null || reportId == null || reportId <= 0) {
+            throw new IllegalStateException("Only a new audit record can be linked to a report");
+        }
+        this.reportId = reportId;
     }
 
     public static AdminAuditLog createApiCall(Long actorUserId,

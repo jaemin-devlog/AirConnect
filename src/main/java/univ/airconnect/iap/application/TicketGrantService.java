@@ -39,7 +39,7 @@ public class TicketGrantService {
             return new TicketGrantResult(existing.getBeforeAmount(), existing.getAfterAmount(), existing.ledgerExternalId());
         }
 
-        User user = userRepository.findByIdForUpdate(order.getUserId())
+        User user = userRepository.findByIdForTicketUpdate(order.getUserId())
                 .orElseThrow(() -> new IapException(IapErrorCode.IAP_UNAUTHORIZED));
 
         if (user.getStatus() == UserStatus.DELETED) {

@@ -83,7 +83,7 @@ class MatchingServiceRaceTest {
         User requester = testUser(userId, 10);
         User target = testUser(targetUserId, 10);
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(requester));
+        when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(requester));
         when(userRepository.findById(targetUserId)).thenReturn(Optional.of(target));
         when(userBlockPolicyService.hasBlockRelation(userId, targetUserId)).thenReturn(false);
         when(matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, targetUserId)).thenReturn(true);
@@ -112,7 +112,7 @@ class MatchingServiceRaceTest {
         ReflectionTestUtils.setField(accepted, "id", 55L);
         accepted.accept(99L);
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(requester));
+        when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(requester));
         when(userRepository.findById(targetUserId)).thenReturn(Optional.of(target));
         when(userBlockPolicyService.hasBlockRelation(userId, targetUserId)).thenReturn(false);
         when(matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, targetUserId)).thenReturn(true);

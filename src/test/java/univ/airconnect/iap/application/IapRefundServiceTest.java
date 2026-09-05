@@ -63,7 +63,7 @@ class IapRefundServiceTest {
         when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-1")).thenReturn(Optional.of(order));
         when(iapOrderRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(order));
         when(ticketLedgerRepository.findByRefTypeAndRefId(LedgerRefType.IAP_REFUND, "10")).thenReturn(Optional.empty());
-        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForTicketUpdate(1L)).thenReturn(Optional.of(user));
         when(ticketLedgerRepository.save(any(TicketLedger.class))).thenAnswer(invocation -> {
             TicketLedger ledger = invocation.getArgument(0);
             ReflectionTestUtils.setField(ledger, "id", 99L);

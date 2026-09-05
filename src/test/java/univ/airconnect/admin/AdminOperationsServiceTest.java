@@ -254,6 +254,16 @@ class AdminOperationsServiceTest {
         assertThat(response.checks())
                 .extracting(AdminDtos.IntegrityCheckItem::status)
                 .contains("PASS", "FAIL");
+        assertThat(response.checks())
+                .filteredOn(item -> item.key().startsWith("ticket_ledger_"))
+                .extracting(AdminDtos.IntegrityCheckItem::label)
+                .containsExactly("티켓 변동 내역 계산 불일치", "티켓 변동 내역 연결 정보 중복");
+        assertThat(response.checks())
+                .filteredOn(item -> item.key().startsWith("ticket_ledger_"))
+                .extracting(AdminDtos.IntegrityCheckItem::description)
+                .containsExactly(
+                        "변경 전 잔액에 증감 수량을 더한 값이 변경 후 잔액과 다른 내역입니다.",
+                        "같은 참조 유형과 참조 번호로 기록된 티켓 변동 내역이 여러 건 있습니다.");
     }
 
     private ApiRequestLogRepository.ApiRequestUsageProjection projection(

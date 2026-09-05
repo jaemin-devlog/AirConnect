@@ -4,8 +4,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.*;
+import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.global.response.ApiResponse;
+import univ.airconnect.global.response.ErrorBody;
 import univ.airconnect.global.security.resolver.CurrentUserId;
 import univ.airconnect.chat.domain.ChatRoomType;
 import univ.airconnect.matching.domain.ConnectionStatus;
@@ -23,6 +27,17 @@ public class AdminController {
     private final AdminOperationsService adminOperationsService;
     private final AdminAuditLogService adminAuditLogService;
     private final AdminUserPurgeService adminUserPurgeService;
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> invalidRequestBody(HttpServletRequest request) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        ErrorCode code = ErrorCode.INVALID_REQUEST;
+        // Do not echo submitted content or Jackson's rejected value in an admin response/log.
+        return ResponseEntity.badRequest().cacheControl(CacheControl.noStore()).body(ApiResponse.fail(
+                new ErrorBody(code.getCode(), "요청 형식과 열람 사유·시각을 확인하세요.", 400, traceId, null),
+                traceId
+        ));
+    }
 
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<AdminDtos.PageResponse<AdminDtos.UserSummary>>> getUsers(
@@ -90,17 +105,6 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok(adminService.getReports(page, size, status, reportedUserId), traceId));
     }
 
-    @PatchMapping("/reports/{reportId}")
-    public ResponseEntity<ApiResponse<AdminDtos.ReportRecord>> updateReportStatus(
-            @CurrentUserId Long adminUserId,
-            @PathVariable Long reportId,
-            @Valid @RequestBody AdminRequests.ReportStatusUpdateRequest body,
-            HttpServletRequest request
-    ) {
-        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(adminService.updateReportStatus(adminUserId, reportId, body), traceId));
-    }
-
     @GetMapping("/tickets/users/{userId}")
     public ResponseEntity<ApiResponse<AdminDtos.TicketBalance>> getTicketBalance(
             @PathVariable Long userId,
@@ -119,16 +123,6 @@ public class AdminController {
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         return ResponseEntity.ok(ApiResponse.ok(adminService.getTicketLedger(userId, page, size), traceId));
-    }
-
-    @PostMapping("/tickets/adjustments")
-    public ResponseEntity<ApiResponse<AdminDtos.TicketBalance>> adjustTickets(
-            @CurrentUserId Long adminUserId,
-            @Valid @RequestBody AdminRequests.TicketAdjustmentRequest body,
-            HttpServletRequest request
-    ) {
-        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(adminService.adjustTickets(adminUserId, body), traceId));
     }
 
     @GetMapping("/statistics/overview")
@@ -175,12 +169,23 @@ public class AdminController {
     @GetMapping("/chat-rooms/{roomId}")
     public ResponseEntity<ApiResponse<AdminDtos.ChatRoomDetail>> getChatRoomDetail(
             @PathVariable Long roomId,
-            @RequestParam(required = false) Integer messagePage,
-            @RequestParam(required = false) Integer messageSize,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        return ResponseEntity.ok(ApiResponse.ok(adminService.getChatRoomDetail(roomId, messagePage, messageSize), traceId));
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getChatRoomDetail(roomId), traceId));
+    }
+
+    @PostMapping("/chat-rooms/{roomId}/message-inspections")
+    public ResponseEntity<ApiResponse<AdminDtos.ChatMessageInspection>> inspectChatMessages(
+            @CurrentUserId Long adminUserId,
+            @PathVariable Long roomId,
+            @Valid @RequestBody AdminRequests.ChatMessageInspectionRequest body,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(ApiResponse.ok(adminService.inspectChatMessages(adminUserId, roomId, body, traceId), traceId));
     }
 
     @PostMapping("/notices/broadcast")

@@ -8,12 +8,14 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 
 @Entity
+@DynamicUpdate
 @Table(
         name = "users",
         uniqueConstraints = {

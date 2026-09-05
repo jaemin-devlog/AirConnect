@@ -14,6 +14,16 @@ import java.util.Optional;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
 
+    // Source validation deliberately avoids loading either current or legacy message content.
+    @Query("SELECT m.id AS id, m.roomId AS roomId, m.senderId AS senderId FROM ChatMessage m WHERE m.id = :id")
+    Optional<ReportMessageSource> findReportSourceById(@Param("id") Long id);
+
+    interface ReportMessageSource {
+        Long getId();
+        Long getRoomId();
+        Long getSenderId();
+    }
+
     List<ChatMessage> findByRoomIdOrderByCreatedAtAsc(Long roomId);
 
     @Query("SELECT m FROM ChatMessage m " +
@@ -50,6 +60,11 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     long countByRoomId(Long roomId);
 
     Page<ChatMessage> findByRoomIdOrderByCreatedAtDesc(Long roomId, Pageable pageable);
+
+    Page<ChatMessage> findByRoomIdAndCreatedAtBetween(Long roomId,
+                                                      LocalDateTime from,
+                                                      LocalDateTime to,
+                                                      Pageable pageable);
 
     @Query("SELECT m FROM ChatMessage m, ChatRoomMember crm " +
             "WHERE m.roomId = :roomId " +

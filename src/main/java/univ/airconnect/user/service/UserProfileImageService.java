@@ -2,12 +2,13 @@ package univ.airconnect.user.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
+import univ.airconnect.iap.domain.entity.TicketLedger;
+import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.UserMilestone;
@@ -50,6 +51,7 @@ public class UserProfileImageService {
     private final UserMilestoneRepository userMilestoneRepository;
     private final ProfileImageProperties profileImageProperties;
     private final MilestoneRewardProperties milestoneRewardProperties;
+    private final TicketLedgerRepository ticketLedgerRepository;
 
     /**
      * 사용자 프로필 이미지를 저장하고 이미지 URL을 반환합니다.
@@ -375,22 +377,21 @@ public class UserProfileImageService {
     }
 
     private void grantMilestoneIfNotAlreadyGranted(Long userId, MilestoneType milestoneType) {
-        // 이미 이 마일리스톤이 부여되었고 granted = true인지 확인
-        boolean alreadyGranted = userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, milestoneType);
+        var user = userRepository.findByIdForTicketUpdate(userId)
+                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+        boolean alreadyGranted = userMilestoneRepository
+                .findByUserIdAndMilestoneTypeForUpdate(userId, milestoneType)
+                .map(milestone -> Boolean.TRUE.equals(milestone.getGranted()))
+                .orElse(false);
 
         if (alreadyGranted) {
             log.info("ℹ️ 이미 지급된 마일리스톤 (중복 부여 방지): userId={}, milestoneType={}", userId, milestoneType);
             return;
         }
 
-        // 마일리스톤 기록 추가 (동시 요청 레이스로 unique 충돌 가능)
+        // 사용자 잠금을 보유한 채 지급 여부 확인과 보상 저장을 함께 처리한다.
         UserMilestone milestone = UserMilestone.create(userId, milestoneType);
-        try {
-            userMilestoneRepository.save(milestone);
-        } catch (DataIntegrityViolationException e) {
-            log.info("ℹ️ 동시 요청으로 이미 지급 처리됨: userId={}, milestoneType={}", userId, milestoneType);
-            return;
-        }
+        userMilestoneRepository.save(milestone);
 
         int rewardTickets = resolveRewardTickets(milestoneType);
         if (rewardTickets <= 0) {
@@ -399,9 +400,10 @@ public class UserProfileImageService {
         }
 
         // 사용자 티켓 추가
-        var user = userRepository.findById(userId)
-                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+        int beforeTickets = user.getTickets();
         user.addTickets(rewardTickets);
+        ticketLedgerRepository.save(TicketLedger.grantForMilestone(userId, rewardTickets,
+                beforeTickets, user.getTickets(), milestoneType));
 
         log.info("🎫 마일리스톤 지급 완료: userId={}, milestoneType={}, 부여 티켓={}, 총 티켓={}",
                 userId, milestoneType, rewardTickets, user.getTickets());

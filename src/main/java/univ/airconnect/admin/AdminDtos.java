@@ -145,8 +145,6 @@ public final class AdminDtos {
             Integer grantedTickets,
             Integer beforeTickets,
             Integer afterTickets,
-            String transactionId,
-            String orderKey,
             LocalDateTime processedAt,
             LocalDateTime createdAt
     ) {
@@ -274,7 +272,6 @@ public final class AdminDtos {
             String user1Nickname,
             Long user2Id,
             String user2Nickname,
-            String lastMessage,
             LocalDateTime lastMessageAt,
             long memberCount,
             long messageCount,
@@ -285,8 +282,7 @@ public final class AdminDtos {
 
     public record ChatRoomDetail(
             ChatRoomSummary room,
-            List<ChatRoomMemberItem> members,
-            PageResponse<ChatMessageItem> messages
+            List<ChatRoomMemberItem> members
     ) {
     }
 
@@ -294,11 +290,57 @@ public final class AdminDtos {
             Long memberId,
             Long userId,
             String nickname,
-            String email,
             LocalDateTime joinedAt,
-            Long lastReadMessageId,
-            LocalDateTime hiddenAt,
-            String hiddenReason
+            boolean hidden
+    ) {
+    }
+
+    public record ReportDetail(
+            ReportRecord record,
+            Long version,
+            String internalMemo,
+            String reporterReply,
+            Long handledByUserId,
+            ReportEvidence evidence,
+            List<ReportAction> actions
+    ) {
+    }
+
+    public record ReportEvidence(
+            String status,
+            univ.airconnect.moderation.domain.ReportSourceType sourceType,
+            Long userId,
+            Long roomId,
+            Long connectionId,
+            Long messageId
+    ) {
+    }
+
+    public record ReportAction(Long id, Long actorUserId, Long userId, String action,
+                               String reason, LocalDateTime until, LocalDateTime createdAt) {
+    }
+
+    public record TicketAdjustmentResult(
+            String operationId,
+            String status,
+            Long userId,
+            int amount,
+            Integer beforeTickets,
+            Integer afterTickets,
+            Long ledgerId,
+            LocalDateTime completedAt,
+            String rejectionCode,
+            String rejectionMessage
+    ) {
+    }
+
+    public record ChatMessageInspection(
+            Long roomId,
+            AdminRequests.ChatInspectionReason reason,
+            LocalDateTime from,
+            LocalDateTime to,
+            LocalDateTime inspectedAt,
+            PageResponse<ChatMessageItem> messages
     ) {
     }
 

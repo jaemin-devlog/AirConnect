@@ -48,7 +48,8 @@ class MaintenanceModeFilterTest {
                 "지금은 접속할 수 없습니다.",
                 LocalDateTime.of(2026, 4, 26, 12, 0),
                 999L,
-                LocalDateTime.of(2026, 4, 26, 12, 1)
+                LocalDateTime.of(2026, 4, 26, 12, 1),
+                0L
         ));
 
         maintenanceModeFilter.doFilter(request, response, new MockFilterChain());

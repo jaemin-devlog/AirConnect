@@ -414,7 +414,7 @@ class ChatServiceTest {
     }
 
     @Test
-    void joinRoom_initializesLastReadToCurrentLatestMessage() {
+    void addMembersToRoom_initializesLastReadToCurrentLatestMessage() {
         ChatService service = createService();
         Long roomId = 1000L;
         Long userId = 5L;
@@ -426,16 +426,18 @@ class ChatServiceTest {
         ReflectionTestUtils.setField(latestMessage, "id", 120L);
 
         when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)).thenReturn(false);
+        when(userRepository.findAllById(Set.of(userId))).thenReturn(List.of(user));
+        when(chatRoomMemberRepository.findByChatRoomId(roomId)).thenReturn(List.of());
         when(chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)).thenReturn(Optional.of(latestMessage));
 
-        ArgumentCaptor<ChatRoomMember> memberCaptor = ArgumentCaptor.forClass(ChatRoomMember.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChatRoomMember>> memberCaptor = ArgumentCaptor.forClass(List.class);
 
-        service.joinRoom(roomId, userId);
+        service.addMembersToRoom(roomId, List.of(userId));
 
-        verify(chatRoomMemberRepository).save(memberCaptor.capture());
-        assertThat(memberCaptor.getValue().getLastReadMessageId()).isEqualTo(120L);
+        verify(chatRoomMemberRepository).saveAll(memberCaptor.capture());
+        assertThat(memberCaptor.getValue()).hasSize(1);
+        assertThat(memberCaptor.getValue().get(0).getLastReadMessageId()).isEqualTo(120L);
     }
 
     @Test

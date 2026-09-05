@@ -10,6 +10,9 @@ public enum ErrorCode {
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "COMMON-405", "허용되지 않은 요청 메서드입니다."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "COMMON-404", "리소스를 찾을 수 없습니다."),
     MAINTENANCE_MODE(HttpStatus.SERVICE_UNAVAILABLE, "COMMON-503", "서버 점검 중입니다."),
+    MAINTENANCE_CONFLICT(HttpStatus.CONFLICT, "MAINT-409", "점검 설정이 변경되었습니다. 최신 상태를 확인한 뒤 다시 결정해 주세요."),
+    TICKET_ADJUSTMENT_CONFLICT(HttpStatus.CONFLICT, "ADMIN-TICKET-409", "같은 작업번호에 다른 요청 내용이 사용되었습니다. 기존 작업 결과를 확인해 주세요."),
+    REPORT_CONFLICT(HttpStatus.CONFLICT, "ADMIN-REPORT-409", "신고가 변경되었습니다. 최신 내용을 확인한 뒤 다시 저장해 주세요."),
 
     TEAM_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "GMATCH-001", "임시 팀방을 찾을 수 없습니다."),
     TEAM_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "GMATCH-002", "임시 팀방 멤버를 찾을 수 없습니다."),

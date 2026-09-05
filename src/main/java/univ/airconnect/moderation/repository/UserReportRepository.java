@@ -3,6 +3,8 @@ package univ.airconnect.moderation.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import univ.airconnect.moderation.domain.ReportReasonCode;
@@ -13,8 +15,13 @@ import univ.airconnect.moderation.domain.entity.UserReport;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface UserReportRepository extends JpaRepository<UserReport, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM UserReport r WHERE r.id = :id")
+    Optional<UserReport> findByIdForUpdate(@Param("id") Long id);
 
     List<UserReport> findTop50ByReporterUserIdOrderByCreatedAtDesc(Long reporterUserId);
 
@@ -36,7 +43,7 @@ public interface UserReportRepository extends JpaRepository<UserReport, Long> {
     long countByReportedUserIdAndStatus(Long reportedUserId, ReportStatus status);
 
     @Query(value = """
-        SELECT COALESCE(AVG(TIMESTAMPDIFF(SECOND, created_at, updated_at)), 0)
+        SELECT COALESCE(AVG(TIMESTAMPDIFF(SECOND, created_at, COALESCE(completed_at, updated_at))), 0)
         FROM user_reports
         WHERE status IN ('RESOLVED', 'REJECTED')
     """, nativeQuery = true)

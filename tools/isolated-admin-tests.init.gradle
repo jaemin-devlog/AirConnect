@@ -1,0 +1,18 @@
+// Opt-in test launcher only; does not change application or production packaging.
+// Use with the explicitly selected mock/H2 suites listed in the verification report.
+allprojects {
+    // Fresh, dedicated output prevents previously copied local settings from being packaged.
+    if (project.hasProperty('adminReleaseVerification')) {
+        layout.buildDirectory.set(layout.projectDirectory.dir('build/admin-release-verification'))
+    }
+    tasks.withType(ProcessResources).configureEach {
+        exclude 'application*.yml', 'application*.yaml', 'application*.properties',
+                'key/**', '**/*.pem', '**/*.p12', '**/*service-account*.json'
+    }
+    tasks.withType(Test).configureEach {
+        // Excluding a Copy input does not remove stale build output. Also disable
+        // Spring Boot's default config discovery so old copied files cannot load.
+        systemProperty 'spring.config.location',
+                'optional:classpath:/airconnect-isolated-test-no-config.properties'
+    }
+}
