@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import univ.airconnect.iap.domain.LedgerRefType;
+import univ.airconnect.user.domain.MilestoneType;
 
 import java.time.LocalDateTime;
 
@@ -147,6 +148,38 @@ public class TicketLedger {
                 .reason("MATCH_CONNECT")
                 .refType(LedgerRefType.MATCHING_CONNECT)
                 .refId(refId)
+                .build();
+    }
+
+    public static TicketLedger consumeForGroupMatching(Long userId,
+                                                       int amount,
+                                                       int beforeAmount,
+                                                       int afterAmount,
+                                                       Long matchResultId) {
+        return TicketLedger.builder()
+                .userId(userId)
+                .changeAmount(-amount)
+                .beforeAmount(beforeAmount)
+                .afterAmount(afterAmount)
+                .reason("GROUP_MATCH")
+                .refType(LedgerRefType.GROUP_MATCHING)
+                .refId("group-match:" + matchResultId + ":user:" + userId)
+                .build();
+    }
+
+    public static TicketLedger grantForMilestone(Long userId,
+                                                 int amount,
+                                                 int beforeAmount,
+                                                 int afterAmount,
+                                                 MilestoneType milestoneType) {
+        return TicketLedger.builder()
+                .userId(userId)
+                .changeAmount(amount)
+                .beforeAmount(beforeAmount)
+                .afterAmount(afterAmount)
+                .reason(milestoneType.name())
+                .refType(LedgerRefType.MILESTONE_REWARD)
+                .refId("milestone:" + userId + ":" + milestoneType.name())
                 .build();
     }
 

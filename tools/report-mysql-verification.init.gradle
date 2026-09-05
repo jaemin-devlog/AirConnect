@@ -1,0 +1,18 @@
+// Opt-in only. Never package this test server in bootJar or load application config.
+apply from: 'isolated-admin-tests.init.gradle'
+allprojects {
+    tasks.withType(Test).configureEach {
+        systemProperty 'airconnect.isolated.mysql', 'true'
+        systemProperty 'user.timezone', 'UTC'
+        jvmArgs '-Dsun.io.useCanonCaches=false'
+    }
+    afterEvaluate {
+        tasks.register('reportVerificationServer', JavaExec) {
+            dependsOn testClasses
+            classpath = sourceSets.test.runtimeClasspath
+            mainClass = 'univ.airconnect.admin.IsolatedReportMySqlServer'
+            systemProperty 'airconnect.isolated.mysql', 'true'
+            jvmArgs '-Duser.timezone=UTC', '-Dsun.io.useCanonCaches=false'
+        }
+    }
+}

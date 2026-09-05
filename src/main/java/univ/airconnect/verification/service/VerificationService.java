@@ -2,10 +2,11 @@ package univ.airconnect.verification.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import univ.airconnect.iap.domain.entity.TicketLedger;
+import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.entity.UserMilestone;
@@ -41,6 +42,7 @@ public class VerificationService {
     private final VerifiedSchoolEmailRepository verifiedSchoolEmailRepository;
     private final MilestoneRewardProperties milestoneRewardProperties;
     private final AttemptThrottleService attemptThrottleService;
+    private final TicketLedgerRepository ticketLedgerRepository;
 
     private static final String VERIFICATION_PREFIX = "email_verification:";
     private static final String COOLDOWN_PREFIX = "email_verification_cooldown:";
@@ -351,29 +353,27 @@ public class VerificationService {
             return;
         }
 
-        var user = userRepository.findById(userId)
+        var user = userRepository.findByIdForTicketUpdate(userId)
                 .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
 
-        boolean alreadyGranted = userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(
-                userId,
-                MilestoneType.EMAIL_VERIFIED
-        );
+        boolean alreadyGranted = userMilestoneRepository
+                .findByUserIdAndMilestoneTypeForUpdate(userId, MilestoneType.EMAIL_VERIFIED)
+                .map(milestone -> Boolean.TRUE.equals(milestone.getGranted()))
+                .orElse(false);
         if (alreadyGranted) {
             log.info("Milestone already granted. userId={}, milestoneType=EMAIL_VERIFIED", userId);
             return;
         }
 
         UserMilestone milestone = UserMilestone.create(userId, MilestoneType.EMAIL_VERIFIED);
-        try {
-            userMilestoneRepository.save(milestone);
-        } catch (DataIntegrityViolationException e) {
-            log.info("Milestone already granted by concurrent request. userId={}, milestoneType=EMAIL_VERIFIED", userId);
-            return;
-        }
+        userMilestoneRepository.save(milestone);
 
         int rewardTickets = Math.max(0, milestoneRewardProperties.getEmailVerifiedTickets());
         if (rewardTickets > 0) {
+            int beforeTickets = user.getTickets();
             user.addTickets(rewardTickets);
+            ticketLedgerRepository.save(TicketLedger.grantForMilestone(userId, rewardTickets,
+                    beforeTickets, user.getTickets(), MilestoneType.EMAIL_VERIFIED));
         }
         log.info(
                 "Milestone granted. userId={}, verifiedEmail={}, milestoneType=EMAIL_VERIFIED, rewardedTickets={}, totalTickets={}",

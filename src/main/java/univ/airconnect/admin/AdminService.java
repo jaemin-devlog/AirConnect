@@ -14,6 +14,7 @@ import univ.airconnect.analytics.repository.AnalyticsEventRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.global.error.BusinessException;
@@ -33,12 +34,14 @@ import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
 import univ.airconnect.statistics.service.StatisticsService;
 import univ.airconnect.user.domain.UserStatus;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
 
 import java.time.format.DateTimeFormatter;
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.*;
 
 @Service
@@ -129,7 +132,7 @@ public class AdminService {
         return AdminDtos.PageResponse.from(mapped);
     }
 
-    public AdminDtos.ChatRoomDetail getChatRoomDetail(Long roomId, Integer messagePage, Integer messageSize) {
+    public AdminDtos.ChatRoomDetail getChatRoomDetail(Long roomId) {
         ChatRoom room = chatRoomRepository.findById(roomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "채팅방을 찾을 수 없습니다."));
 
@@ -146,17 +149,109 @@ public class AdminService {
         }
         Map<Long, User> users = loadUsers(userIds);
 
-        Pageable pageable = PageRequest.of(safePage(messagePage), safeSize(messageSize));
-        Page<AdminDtos.ChatMessageItem> messages = chatMessageRepository
-                .findByRoomIdOrderByCreatedAtDesc(roomId, pageable)
-                .map(this::toChatMessageItem);
-
         return new AdminDtos.ChatRoomDetail(
                 toChatRoomSummary(room, users),
                 members.stream()
                         .sorted(Comparator.comparing(ChatRoomMember::getJoinedAt))
                         .map(this::toChatRoomMemberItem)
-                        .toList(),
+                        .toList()
+        );
+    }
+
+    /** Read-only cursor history. Authorization is rechecked on every page, including deleted text. */
+    public AdminDtos.ChatHistory readChatHistory(Long adminUserId, Long roomId,
+                                                AdminRequests.ChatHistoryRequest request, String traceId) {
+        if (adminUserId == null) throw new BusinessException(ErrorCode.FORBIDDEN);
+        User admin = getRequiredUser(adminUserId);
+        if (admin.getRole() != UserRole.ADMIN || admin.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "활성 관리자만 대화를 열람할 수 있습니다.");
+        }
+        if (request == null || roomId == null || roomId <= 0
+                || (request.beforeId() != null && request.beforeId() <= 0)
+                || (request.size() != null && (request.size() < 1 || request.size() > 100))) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "조회 범위를 확인하세요.");
+        }
+        chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "채팅방을 찾을 수 없습니다."));
+        if (request.beforeId() != null) {
+            var source = chatMessageRepository.findReportSourceById(request.beforeId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "이전 메시지를 찾을 수 없습니다."));
+            if (!Objects.equals(source.getRoomId(), roomId)) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST, "이 방의 메시지 번호가 아닙니다.");
+            }
+        }
+        int size = request.size() == null ? 50 : request.size();
+        // Reuse the user's existing ID cursor order, without membership/read-receipt mutations.
+        var rows = chatMessageRepository.findMessagesCursor(roomId, request.beforeId(), PageRequest.of(0, size + 1));
+        boolean hasMore = rows.size() > size;
+        var items = rows.stream().limit(size).map(this::toChatMessageItem).toList();
+        LocalDateTime inspectedAt = adminAuditLogService.recordChatHistory(
+                adminUserId, roomId, request.beforeId(), size, items, traceId);
+        return new AdminDtos.ChatHistory(roomId, items,
+                hasMore ? items.get(items.size() - 1).messageId() : null, hasMore, inspectedAt);
+    }
+
+    public AdminDtos.ChatMessageInspection inspectChatMessages(
+            Long adminUserId,
+            Long roomId,
+            AdminRequests.ChatMessageInspectionRequest request,
+            String traceId
+    ) {
+        if (adminUserId == null) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "활성 관리자만 대화를 열람할 수 있습니다.");
+        }
+        User admin = getRequiredUser(adminUserId);
+        if (admin.getRole() != UserRole.ADMIN || admin.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "활성 관리자만 대화를 열람할 수 있습니다.");
+        }
+        if (request == null || request.reason() == null
+                || (request.page() != null && request.page() < 0)
+                || (request.size() != null && (request.size() < 1 || request.size() > 100))) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "열람 사유와 페이지 범위를 확인하세요.");
+        }
+        chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "채팅방을 찾을 수 없습니다."));
+        LocalDateTime now = LocalDateTime.now(java.time.Clock.systemUTC());
+        LocalDateTime to = request.to() == null ? now : request.to();
+        LocalDateTime from = request.from() == null ? to.minusHours(24) : request.from();
+        if (from.isAfter(to) || Duration.between(from, to).compareTo(Duration.ofDays(7)) > 0) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "대화 조회 기간은 7일 이내여야 합니다.");
+        }
+        if (to.isAfter(now.plusMinutes(1))) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "미래 시각의 대화는 조회할 수 없습니다.");
+        }
+        int page = safePage(request.page());
+        int size = request.size() == null ? 50 : request.size();
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
+        );
+        Page<AdminDtos.ChatMessageItem> messages = chatMessageRepository
+                .findByRoomIdAndCreatedAtBetween(roomId, from, to, pageable)
+                .map(this::toChatMessageItem);
+        List<Long> messageIds = messages.getContent().stream()
+                .map(AdminDtos.ChatMessageItem::messageId)
+                .toList();
+        int deletedCount = (int) messages.getContent().stream()
+                .filter(AdminDtos.ChatMessageItem::deleted)
+                .count();
+        LocalDateTime inspectedAt = adminAuditLogService.recordChatMessageInspection(
+                adminUserId,
+                roomId,
+                new AdminRequests.ChatMessageInspectionRequest(request.reason(), from, to, page, size),
+                messageIds,
+                deletedCount,
+                from,
+                to,
+                traceId
+        );
+        return new AdminDtos.ChatMessageInspection(
+                roomId,
+                request.reason(),
+                from,
+                to,
+                inspectedAt,
                 AdminDtos.PageResponse.from(messages)
         );
     }
@@ -168,6 +263,20 @@ public class AdminService {
 
     @Transactional
     public AdminDtos.UserDetail applyUserAction(Long adminUserId, Long userId, AdminRequests.UserActionRequest request) {
+        if (request == null || request.action() == null) throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        if (request.reportId() != null) {
+            if (request.reportId() <= 0) throw new BusinessException(ErrorCode.INVALID_REQUEST);
+            if (adminUserId == null) throw new BusinessException(ErrorCode.FORBIDDEN);
+            User actor = getRequiredUser(adminUserId);
+            if (actor.getRole() != UserRole.ADMIN || actor.getStatus() != UserStatus.ACTIVE) {
+                throw new BusinessException(ErrorCode.FORBIDDEN);
+            }
+            UserReport sourceReport = userReportRepository.findByIdForUpdate(request.reportId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "신고를 찾을 수 없습니다."));
+            if (!Objects.equals(sourceReport.getReportedUserId(), userId)) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST, "신고 대상과 조치 대상이 일치하지 않습니다.");
+            }
+        }
         User user = getRequiredUser(userId);
         String reason = trimToNull(request.reason());
         switch (request.action()) {
@@ -191,7 +300,19 @@ public class AdminService {
                 );
             }
             case DELETE -> userService.deleteAccount(userId, null, null);
-            case REACTIVATE -> user.reactivate();
+            case REACTIVATE -> {
+                if (user.getStatus() == UserStatus.DELETED) {
+                    if (user.isEmailProvider()) {
+                        throw new BusinessException(
+                                ErrorCode.INVALID_REQUEST,
+                                "이메일 로그인 탈퇴 계정은 비밀번호가 삭제되어 복구할 수 없습니다."
+                        );
+                    }
+                    user.restoreDeletedSocialAccount();
+                } else {
+                    user.reactivate();
+                }
+            }
             case RESTRICT_MATCHING -> {
                 user.restrictMatching(request.until(), reason);
                 sendAdminAnnouncementToUser(
@@ -214,6 +335,12 @@ public class AdminService {
             case CLEAR_MATCHING_RESTRICTION -> user.clearMatchingRestriction();
         }
         AdminDtos.UserDetail detail = toUserDetail(getRequiredUser(userId));
+        if (request.reportId() != null) {
+            // This action commits independently of a later report edit, but its own
+            // linked receipt must commit or roll back together with the user action.
+            adminAuditLogService.recordReportUserAction(adminUserId, request.reportId(), userId, request, reason);
+            return detail;
+        }
         adminAuditLogService.record(
                 adminUserId,
                 AdminAuditAction.USER_ACTION_APPLIED,
@@ -287,45 +414,6 @@ public class AdminService {
         return AdminDtos.PageResponse.from(mapped);
     }
 
-    @Transactional
-    public AdminDtos.ReportRecord updateReportStatus(Long adminUserId, Long reportId, AdminRequests.ReportStatusUpdateRequest request) {
-        UserReport report = userReportRepository.findById(reportId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "신고를 찾을 수 없습니다."));
-        validateReportStatusUpdateRequest(request);
-        report.updateStatus(request.status());
-        notifyReporterForReportStatus(adminUserId, report, request);
-        adminAuditLogService.record(
-                adminUserId,
-                AdminAuditAction.REPORT_STATUS_UPDATED,
-                "REPORT",
-                reportId,
-                "신고 #" + reportId + " 상태를 " + request.status().name() + "로 변경했습니다.",
-                trimToNull(request.reason()),
-                Map.of(
-                        "status", request.status().name(),
-                        "reporterUserId", report.getReporterUserId(),
-                        "reportedUserId", report.getReportedUserId()
-                )
-        );
-
-        Set<Long> userIds = new LinkedHashSet<>();
-        userIds.add(report.getReporterUserId());
-        userIds.add(report.getReportedUserId());
-        Map<Long, User> users = loadUsers(userIds);
-        return new AdminDtos.ReportRecord(
-                report.getId(),
-                report.getReporterUserId(),
-                getNickname(users.get(report.getReporterUserId())),
-                report.getReportedUserId(),
-                getNickname(users.get(report.getReportedUserId())),
-                report.getReason(),
-                report.getDetail(),
-                report.getStatus(),
-                report.getCreatedAt(),
-                report.getUpdatedAt()
-        );
-    }
-
     public AdminDtos.TicketBalance getTicketBalance(Long userId) {
         User user = getRequiredUser(userId);
         return new AdminDtos.TicketBalance(user.getId(), user.getTickets());
@@ -345,62 +433,6 @@ public class AdminService {
                         ledger.getCreatedAt()
                 ));
         return AdminDtos.PageResponse.from(mapped);
-    }
-
-    @Transactional
-    public AdminDtos.TicketBalance adjustTickets(Long adminUserId, AdminRequests.TicketAdjustmentRequest request) {
-        if (request.amount() == 0) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "티켓 변경량은 0일 수 없습니다.");
-        }
-
-        User user = userRepository.findByIdForUpdate(request.userId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없습니다."));
-        int before = user.getTickets();
-        try {
-            user.adjustTickets(request.amount());
-        } catch (IllegalArgumentException e) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, e.getMessage());
-        }
-        int after = user.getTickets();
-
-        ticketLedgerRepository.save(
-                TicketLedger.adjustByAdmin(
-                        user.getId(),
-                        request.amount(),
-                        before,
-                        after,
-                        "ADMIN:" + request.reason().trim(),
-                        "admin-adjustment:" + UUID.randomUUID()
-                )
-        );
-
-        sendAdminAnnouncementToUser(
-                user.getId(),
-                adminUserId,
-                buildTicketAdjustmentMessage(request.amount(), request.reason()),
-                Map.of(
-                        "kind", "ADMIN_TICKET_ADJUSTMENT",
-                        "amount", request.amount(),
-                        "reason", request.reason().trim(),
-                        "beforeTickets", before,
-                        "afterTickets", after
-                )
-        );
-        adminAuditLogService.record(
-                adminUserId,
-                AdminAuditAction.TICKET_ADJUSTED,
-                "USER",
-                user.getId(),
-                "사용자 #" + user.getId() + " 티켓을 " + request.amount() + "만큼 조정했습니다.",
-                request.reason().trim(),
-                Map.of(
-                        "amount", request.amount(),
-                        "beforeTickets", before,
-                        "afterTickets", after
-                )
-        );
-
-        return new AdminDtos.TicketBalance(user.getId(), user.getTickets());
     }
 
     public AdminDtos.StatisticsOverview getStatisticsOverview() {
@@ -568,7 +600,6 @@ public class AdminService {
                 getNickname(users.get(room.getUser1Id())),
                 room.getUser2Id(),
                 getNickname(users.get(room.getUser2Id())),
-                room.getLastMessage(),
                 room.getLastMessageAt(),
                 chatRoomMemberRepository.countByChatRoomId(room.getId()),
                 chatMessageRepository.countByRoomId(room.getId()),
@@ -583,11 +614,8 @@ public class AdminService {
                 member.getId(),
                 user.getId(),
                 getNickname(user),
-                user.getPrimaryEmail(),
                 member.getJoinedAt(),
-                member.getLastReadMessageId(),
-                member.getHiddenAt(),
-                member.getHiddenReason()
+                member.getHiddenAt() != null
         );
     }
 
@@ -632,8 +660,6 @@ public class AdminService {
                         order.getGrantedTickets(),
                         order.getBeforeTickets(),
                         order.getAfterTickets(),
-                        order.getTransactionId(),
-                        firstNonBlank(order.getOrderId(), order.getPurchaseToken()),
                         order.getProcessedAt(),
                         order.getCreatedAt()
                 ))
@@ -698,13 +724,6 @@ public class AdminService {
         return Objects.equals(connection.getUser1Id(), userId) ? connection.getUser2Id() : connection.getUser1Id();
     }
 
-    private String firstNonBlank(String first, String second) {
-        if (first != null && !first.isBlank()) {
-            return first;
-        }
-        return second;
-    }
-
     private String getNickname(User user) {
         if (user == null) {
             return null;
@@ -734,44 +753,6 @@ public class AdminService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    private void validateReportStatusUpdateRequest(AdminRequests.ReportStatusUpdateRequest request) {
-        String reason = trimToNull(request.reason());
-        if ((request.status() == ReportStatus.RESOLVED || request.status() == ReportStatus.REJECTED) && reason == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "해당 신고 상태에는 처리 사유가 필요합니다.");
-        }
-    }
-
-    private void notifyReporterForReportStatus(
-            Long adminUserId,
-            UserReport report,
-            AdminRequests.ReportStatusUpdateRequest request
-    ) {
-        String reason = trimToNull(request.reason());
-        String message = switch (request.status()) {
-            case IN_REVIEW -> "신고가 검토중입니다. 빠른 시일 내에 처리됩니다.";
-            case RESOLVED -> "신고가 처리되었습니다. " + reason;
-            case REJECTED -> "신고가 기각되었습니다. 사유: " + reason;
-            default -> null;
-        };
-
-        if (message == null) {
-            return;
-        }
-
-        sendAdminAnnouncementToUser(
-                report.getReporterUserId(),
-                adminUserId,
-                message,
-                Map.of(
-                        "kind", "ADMIN_REPORT_STATUS_UPDATE",
-                        "reportId", report.getId(),
-                        "status", request.status().name(),
-                        "reason", nullablePayloadValue(reason),
-                        "reportedUserId", report.getReportedUserId()
-                )
-        );
     }
 
     private void sendAdminAnnouncementToUser(
@@ -830,19 +811,6 @@ public class AdminService {
             builder.append(" ").append(untilLabel).append(": ").append(formattedUntil).append(".");
         }
         return builder.toString().trim();
-    }
-
-    private String buildTicketAdjustmentMessage(int amount, String reason) {
-        String trimmedReason = requestSafeReason(reason);
-        if (amount > 0) {
-            return "티켓 " + amount + "개가 지급되었습니다. 사유: " + trimmedReason + ".";
-        }
-        return "티켓 " + Math.abs(amount) + "개가 차감되었습니다. 사유: " + trimmedReason + ".";
-    }
-
-    private String requestSafeReason(String reason) {
-        String trimmed = trimToNull(reason);
-        return trimmed != null ? trimmed : "운영 정책에 따른 조치";
     }
 
     private String formatDateTime(LocalDateTime value) {

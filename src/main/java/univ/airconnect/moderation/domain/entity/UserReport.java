@@ -58,6 +58,22 @@ public class UserReport {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
+    @Column(name = "internal_memo", length = 1000)
+    private String internalMemo;
+
+    @Column(name = "reporter_reply", length = 300)
+    private String reporterReply;
+
+    @Column(name = "handled_by_user_id")
+    private Long handledByUserId;
+
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
     @Builder
     private UserReport(Long reporterUserId,
                        Long reportedUserId,
@@ -95,7 +111,23 @@ public class UserReport {
     }
 
     public void updateStatus(ReportStatus nextStatus) {
+        updateHandling(nextStatus, internalMemo, reporterReply, handledByUserId);
+    }
+
+    public void updateHandling(ReportStatus nextStatus, String internalMemo, String reporterReply, Long handlerId) {
+        LocalDateTime now = LocalDateTime.now();
+        boolean terminal = nextStatus == ReportStatus.RESOLVED || nextStatus == ReportStatus.REJECTED;
+        if (this.status != nextStatus) {
+            this.completedAt = terminal ? now : null;
+        } else if (terminal && this.completedAt == null) {
+            // Legacy rows only recorded updatedAt. Preserve that observed timestamp,
+            // rather than inventing a historical completion time when editing a note.
+            this.completedAt = this.updatedAt;
+        }
         this.status = nextStatus;
-        this.updatedAt = LocalDateTime.now();
+        this.internalMemo = internalMemo;
+        this.reporterReply = reporterReply;
+        this.handledByUserId = handlerId;
+        this.updatedAt = now;
     }
 }

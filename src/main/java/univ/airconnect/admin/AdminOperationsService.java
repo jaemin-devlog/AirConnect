@@ -23,8 +23,13 @@ import univ.airconnect.notification.domain.NotificationDeliveryStatus;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 import univ.airconnect.notification.repository.NotificationRepository;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
+import univ.airconnect.notification.repository.PushDeviceRepository;
 import univ.airconnect.user.domain.OnboardingStatus;
+import univ.airconnect.user.domain.UserRole;
+import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.repository.UserRepository;
+import univ.airconnect.global.error.BusinessException;
+import univ.airconnect.global.error.ErrorCode;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -42,6 +47,7 @@ public class AdminOperationsService {
 
     private final NotificationOutboxRepository notificationOutboxRepository;
     private final NotificationRepository notificationRepository;
+    private final PushDeviceRepository pushDeviceRepository;
     private final ApiRequestLogRepository apiRequestLogRepository;
     private final AnalyticsEventRepository analyticsEventRepository;
     private final MatchingConnectionRepository matchingConnectionRepository;
@@ -59,6 +65,7 @@ public class AdminOperationsService {
     private final AdminNoticeRepository adminNoticeRepository;
     private final AdminAuditLogRepository adminAuditLogRepository;
     private final AdminAuditLogService adminAuditLogService;
+    private final AdminIntegrityQueryRepository adminIntegrityQueryRepository;
 
     public AdminDtos.OperationsSummary getOperationsSummary(Long adminUserId) {
         LocalDateTime now = LocalDateTime.now();
@@ -385,17 +392,17 @@ public class AdminOperationsService {
 
     public AdminDtos.IntegrityReport getIntegrityReport(Long adminUserId) {
         List<AdminDtos.IntegrityCheckItem> checks = List.of(
-                check(
+                observation(
                         "chat_rooms_without_members",
-                        "고아 채팅방",
+                        "표시 중인 참여자가 없는 방",
                         chatRoomRepository.countRoomsWithoutVisibleMembers(),
-                        "참여 중인 멤버가 없는 채팅방입니다."
+                        "종료된 임시방, 전체 퇴장, 방 숨김도 포함합니다. 이 수치만으로 장애나 멤버 누락을 판단할 수 없습니다."
                 ),
-                check(
+                observation(
                         "personal_rooms_invalid_member_count",
-                        "개인 채팅방 멤버 수 불일치",
+                        "표시 중인 참여자가 2명이 아닌 1:1 방",
                         chatRoomMemberRepository.countPersonalRoomsWithInvalidVisibleMemberCount(),
-                        "개인 채팅방인데 보이는 멤버 수가 2명이 아닌 방입니다."
+                        "퇴장·차단에 따른 방 숨김도 포함합니다. 원래 참여자와 참여·퇴장 기록을 확인해야 하며 자동 복구 대상이 아닙니다."
                 ),
                 check(
                         "accepted_matching_without_chat_room",
@@ -417,22 +424,22 @@ public class AdminOperationsService {
                 ),
                 check(
                         "ticket_ledger_amount_mismatch",
-                        "티켓 원장 금액 불일치",
+                        "티켓 변동 내역 계산 불일치",
                         ticketLedgerRepository.countBrokenAmountRows(),
-                        "afterAmount가 beforeAmount + changeAmount와 다른 원장입니다."
+                        "변경 전 잔액에 증감 수량을 더한 값이 변경 후 잔액과 다른 내역입니다."
                 ),
                 check(
                         "ticket_ledger_duplicate_refs",
-                        "티켓 원장 참조 중복",
+                        "티켓 변동 내역 연결 정보 중복",
                         ticketLedgerRepository.countDuplicateRefRows(),
-                        "refType/refId 조합이 중복된 원장입니다."
+                        "같은 참조 유형과 참조 번호로 기록된 티켓 변동 내역이 여러 건 있습니다."
                 )
         );
 
         long failureCount = checks.stream().filter(item -> "FAIL".equals(item.status())).count();
         AdminDtos.IntegrityReport response = new AdminDtos.IntegrityReport(
                 checks,
-                0,
+                checks.stream().filter(item -> "WARN".equals(item.status())).count(),
                 failureCount,
                 LocalDateTime.now()
         );
@@ -447,6 +454,72 @@ public class AdminOperationsService {
                 Map.of("failureCount", failureCount)
         );
         return response;
+    }
+
+    public AdminDtos.PageResponse<AdminDtos.IntegrityIssueItem> getIntegrityIssues(
+            Long adminUserId, String key, Integer requestedPage, Integer requestedSize) {
+        requireAdmin(adminUserId);
+        int page = requestedPage == null ? 0 : Math.max(0, requestedPage);
+        int size = requestedSize == null ? 20 : Math.max(1, Math.min(100, requestedSize));
+        AdminDtos.PageResponse<AdminDtos.IntegrityIssueItem> response;
+        try {
+            response = adminIntegrityQueryRepository.find(key, page, size);
+        } catch (IllegalArgumentException unsupported) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, unsupported.getMessage());
+        }
+        adminAuditLogService.record(
+                adminUserId,
+                AdminAuditAction.INTEGRITY_ISSUES_VIEWED,
+                "INTEGRITY_CHECK",
+                key,
+                "데이터 점검 대상 목록을 조회했습니다.",
+                null,
+                Map.of("page", page, "size", size, "returnedCount", response.items().size())
+        );
+        return response;
+    }
+
+    @Transactional
+    public AdminDtos.OutboxRetryResult retryFailedOutbox(Long adminUserId, Long outboxId) {
+        requireAdmin(adminUserId);
+        if (outboxId == null || outboxId < 1) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "알림 작업 번호를 확인해 주세요.");
+        }
+        NotificationOutbox outbox = notificationOutboxRepository.findByIdForUpdate(outboxId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "알림 전송 작업을 찾을 수 없습니다."));
+
+        if (outbox.getStatus() == NotificationDeliveryStatus.PENDING
+                || outbox.getStatus() == NotificationDeliveryStatus.PROCESSING) {
+            return new AdminDtos.OutboxRetryResult(
+                    outboxId, outbox.getStatus(), false, "ALREADY_QUEUED", LocalDateTime.now());
+        }
+        if (outbox.getStatus() != NotificationDeliveryStatus.FAILED) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "최종 실패한 알림만 다시 시도할 수 있습니다.");
+        }
+        if (!notificationRepository.existsById(outbox.getNotificationId())) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "원본 알림이 없어 다시 보낼 수 없습니다.");
+        }
+        var device = pushDeviceRepository.findByIdAndUserId(outbox.getPushDeviceId(), outbox.getUserId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "대상 기기를 찾을 수 없어 다시 보낼 수 없습니다."));
+        if (!Boolean.TRUE.equals(device.getActive())
+                || !Boolean.TRUE.equals(device.getNotificationPermissionGranted())
+                || device.getProvider() != outbox.getProvider()
+                || !device.getPushToken().equals(outbox.getTargetToken())) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "현재 활성 기기와 실패 당시 대상이 달라 다시 보낼 수 없습니다. 회원이 앱에서 알림 설정을 갱신해야 합니다.");
+        }
+
+        LocalDateTime requestedAt = LocalDateTime.now();
+        outbox.queueManualRetry(requestedAt);
+        adminAuditLogService.recordOutboxRetry(adminUserId,
+                new AdminAuditLogService.NotificationOutboxRetryAudit(
+                        outboxId,
+                        outbox.getNotificationId(),
+                        outbox.getUserId(),
+                        outbox.getAttemptCount()
+                ));
+        return new AdminDtos.OutboxRetryResult(
+                outboxId, NotificationDeliveryStatus.PENDING, true, "QUEUED", requestedAt);
     }
 
     private AdminDtos.OutboxFailureItem toOutboxFailureItem(NotificationOutbox outbox) {
@@ -481,6 +554,10 @@ public class AdminOperationsService {
                 .orElse(0L);
     }
 
+    private AdminDtos.IntegrityCheckItem observation(String key, String label, long count, String description) {
+        return new AdminDtos.IntegrityCheckItem(key, label, count > 0 ? "WARN" : "PASS", count, description);
+    }
+
     private AdminDtos.IntegrityCheckItem check(String key, String label, long count, String description) {
         return new AdminDtos.IntegrityCheckItem(
                 key,
@@ -507,5 +584,13 @@ public class AdminOperationsService {
             return DEFAULT_FUNNEL_DAYS;
         }
         return Math.min(requestedDays, MAX_FUNNEL_DAYS);
+    }
+
+    private void requireAdmin(Long adminUserId) {
+        var admin = userRepository.findById(adminUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
+        if (admin.getRole() != UserRole.ADMIN || admin.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
     }
 }

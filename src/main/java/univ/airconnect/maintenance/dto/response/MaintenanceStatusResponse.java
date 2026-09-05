@@ -10,7 +10,8 @@ public record MaintenanceStatusResponse(
         String message,
         LocalDateTime startedAt,
         Long updatedByUserId,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        long version
 ) {
     public static MaintenanceStatusResponse from(MaintenanceSetting setting) {
         return new MaintenanceStatusResponse(
@@ -19,7 +20,8 @@ public record MaintenanceStatusResponse(
                 setting.getMessage(),
                 setting.getStartedAt(),
                 setting.getUpdatedByUserId(),
-                setting.getUpdatedAt()
+                setting.getUpdatedAt(),
+                setting.getVersion() == null ? -1L : setting.getVersion()
         );
     }
 }

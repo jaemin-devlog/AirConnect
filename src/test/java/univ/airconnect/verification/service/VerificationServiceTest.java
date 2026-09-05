@@ -2,6 +2,7 @@ package univ.airconnect.verification.service;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -9,6 +10,9 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.global.security.AttemptThrottleService;
+import univ.airconnect.iap.domain.LedgerRefType;
+import univ.airconnect.iap.domain.entity.TicketLedger;
+import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.verification.domain.VerificationNextAction;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.entity.User;
@@ -49,6 +53,8 @@ class VerificationServiceTest {
     private ValueOperations<String, String> valueOperations;
     @Mock
     private AttemptThrottleService attemptThrottleService;
+    @Mock
+    private TicketLedgerRepository ticketLedgerRepository;
 
     @Test
     void verifyCode_grantsOneTicket_whenEmailRewardUsesDefaultValue() {
@@ -61,7 +67,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         Long userId = 1L;
@@ -75,8 +82,9 @@ class VerificationServiceTest {
         when(valueOperations.get(anyString())).thenReturn(null);
         when(valueOperations.get("email_verification:" + email)).thenReturn(code);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.EMAIL_VERIFIED))
-                .thenReturn(false);
+        when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(user));
+        when(userMilestoneRepository.findByUserIdAndMilestoneTypeForUpdate(userId, MilestoneType.EMAIL_VERIFIED))
+                .thenReturn(Optional.empty());
         when(verifiedSchoolEmailRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.empty());
 
         int before = user.getTickets();
@@ -86,6 +94,15 @@ class VerificationServiceTest {
         assertThat(session.verificationToken()).isNotBlank();
         assertThat(user.getTickets()).isEqualTo(before + 1);
         verify(userMilestoneRepository).save(any());
+        ArgumentCaptor<TicketLedger> history = ArgumentCaptor.forClass(TicketLedger.class);
+        verify(ticketLedgerRepository).save(history.capture());
+        assertThat(history.getValue().getUserId()).isEqualTo(userId);
+        assertThat(history.getValue().getBeforeAmount()).isEqualTo(before);
+        assertThat(history.getValue().getChangeAmount()).isEqualTo(1);
+        assertThat(history.getValue().getAfterAmount()).isEqualTo(before + 1);
+        assertThat(history.getValue().getRefType()).isEqualTo(LedgerRefType.MILESTONE_REWARD);
+        assertThat(history.getValue().getRefId()).isEqualTo("milestone:" + userId + ":EMAIL_VERIFIED");
+        assertThat(history.getValue().getReason()).isEqualTo(MilestoneType.EMAIL_VERIFIED.name());
     }
 
     @Test
@@ -101,7 +118,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         Long userId = 1L;
@@ -115,8 +133,9 @@ class VerificationServiceTest {
         when(valueOperations.get(anyString())).thenReturn(null);
         when(valueOperations.get("email_verification:" + email)).thenReturn(code);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.EMAIL_VERIFIED))
-                .thenReturn(false);
+        when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(user));
+        when(userMilestoneRepository.findByUserIdAndMilestoneTypeForUpdate(userId, MilestoneType.EMAIL_VERIFIED))
+                .thenReturn(Optional.empty());
         when(verifiedSchoolEmailRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.empty());
 
         int before = user.getTickets();
@@ -128,6 +147,7 @@ class VerificationServiceTest {
         assertThat(session.nextAction()).isEqualTo(VerificationNextAction.SIGN_UP);
         assertThat(user.getTickets()).isEqualTo(before);
         verify(userMilestoneRepository).save(any());
+        verify(ticketLedgerRepository, never()).save(any(TicketLedger.class));
         verify(redisTemplate).delete(eq("email_verification:" + email));
         verify(redisTemplate).delete(eq("email_verification_cooldown:" + email));
     }
@@ -142,7 +162,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         String email = "student@office.hanseo.ac.kr";
@@ -168,7 +189,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         String email = "student@office.hanseo.ac.kr";
@@ -193,7 +215,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         String email = "student@office.hanseo.ac.kr";
@@ -216,7 +239,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         String email = "student@office.hanseo.ac.kr";
@@ -241,7 +265,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         Long userId = 10L;
@@ -254,14 +279,16 @@ class VerificationServiceTest {
         when(valueOperations.get(anyString())).thenReturn(null);
         when(valueOperations.get("email_verification:" + email)).thenReturn(code);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(userMilestoneRepository.existsByUserIdAndMilestoneTypeAndGrantedTrue(userId, MilestoneType.EMAIL_VERIFIED))
-                .thenReturn(false);
+        when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(user));
+        when(userMilestoneRepository.findByUserIdAndMilestoneTypeForUpdate(userId, MilestoneType.EMAIL_VERIFIED))
+                .thenReturn(Optional.empty());
         when(verifiedSchoolEmailRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.empty());
 
         service.verifyCode(userId, email, code, VerificationPurpose.SIGN_UP);
 
         assertThat(user.getEmail()).isEqualTo("relay@privaterelay.appleid.com");
         assertThat(user.getPrimaryEmail()).isEqualTo(email);
+        verify(ticketLedgerRepository, never()).save(any(TicketLedger.class));
     }
 
     @Test
@@ -276,7 +303,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         String email = "student@office.hanseo.ac.kr";
@@ -290,6 +318,8 @@ class VerificationServiceTest {
         service.verifyCode(null, email, code, VerificationPurpose.SIGN_UP);
 
         verify(verifiedSchoolEmailRepository).save(any(VerifiedSchoolEmail.class));
+        verify(userRepository, never()).findByIdForTicketUpdate(any());
+        verify(ticketLedgerRepository, never()).save(any(TicketLedger.class));
     }
 
     @Test
@@ -302,7 +332,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         String email = "student@office.hanseo.ac.kr";
@@ -334,7 +365,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         String email = "student@office.hanseo.ac.kr";
@@ -357,7 +389,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         String email = "student@office.hanseo.ac.kr";
@@ -382,7 +415,8 @@ class VerificationServiceTest {
                 userMilestoneRepository,
                 verifiedSchoolEmailRepository,
                 rewardProperties,
-                attemptThrottleService
+                attemptThrottleService,
+                ticketLedgerRepository
         );
 
         String email = "student@office.hanseo.ac.kr";

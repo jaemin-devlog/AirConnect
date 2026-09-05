@@ -8,12 +8,14 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 
 @Entity
+@DynamicUpdate
 @Table(
         name = "users",
         uniqueConstraints = {
@@ -340,6 +342,23 @@ public class User {
         }
         this.status = UserStatus.ACTIVE;
         this.suspendedUntil = null;
+    }
+
+    /**
+     * Restores only the retained account identity after privacy deletion.
+     * Personal/profile fields stay anonymized and onboarding must be completed again.
+     */
+    public void restoreDeletedSocialAccount() {
+        if (this.status != UserStatus.DELETED) {
+            return;
+        }
+        if (isEmailProvider()) {
+            throw new IllegalStateException("Email accounts cannot be restored after password deletion.");
+        }
+        this.status = UserStatus.ACTIVE;
+        this.deletedAt = null;
+        this.suspendedUntil = null;
+        this.lastActiveAt = null;
     }
 
     public void restrictMatching(LocalDateTime until, String reason) {

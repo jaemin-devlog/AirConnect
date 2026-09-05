@@ -72,13 +72,12 @@ public class MatchingService {
     }
 
     private MatchingRecommendationResponse recommendByGenderMode(Long userId, boolean sameGenderOnly) {
-        validateActiveUser(userId);
+        User user = userRepository.findByIdForTicketUpdate(userId)
+                .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
+        validateActiveUser(user);
         requireProfileGender(userId);
 
         // 티켓 검증 (차감은 나중에)
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
-        
         if (user.getTickets() < 1) {
             log.warn("⚠️ 티켓 부족: userId={}, 현재 티켓={}", userId, user.getTickets());
             throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
@@ -194,7 +193,9 @@ public class MatchingService {
             throw new MatchingException(MatchingErrorCode.INVALID_TARGET);
         }
 
-        validateActiveUser(userId);
+        User user = userRepository.findByIdForTicketUpdate(userId)
+                .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
+        validateActiveUser(user);
         validateActiveUser(targetUserId);
         validateNotBlockedForMatching(userId, targetUserId);
 
@@ -204,9 +205,6 @@ public class MatchingService {
         }
 
         // 티켓 검증 (차감은 나중에)
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
-        
         if (user.getTickets() < 2) {
             log.warn("⚠️ 티켓 부족: userId={}, 현재 티켓={}", userId, user.getTickets());
             throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
@@ -691,7 +689,10 @@ public class MatchingService {
     private void validateActiveUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
+        validateActiveUser(user);
+    }
 
+    private void validateActiveUser(User user) {
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new MatchingException(MatchingErrorCode.INVALID_TARGET);
         }

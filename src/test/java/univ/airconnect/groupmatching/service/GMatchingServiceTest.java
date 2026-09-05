@@ -15,6 +15,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.chat.domain.ChatRoomType;
@@ -93,6 +96,10 @@ class GMatchingServiceTest {
     private ListOperations<String, Object> listOperations;
     @Mock
     private AnalyticsService analyticsService;
+    @Mock
+    private TicketLedgerRepository ticketLedgerRepository;
+    @Mock
+    private PlatformTransactionManager transactionManager;
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -259,8 +266,9 @@ class GMatchingServiceTest {
                 700L,
                 800L
         );
-        when(matchResultRepository.findByStatus(univ.airconnect.groupmatching.domain.GMatchResultStatus.MATCHED))
-                .thenReturn(List.of(matchResult));
+        when(matchResultRepository.findPendingFinalizationIds(any(LocalDateTime.class)))
+                .thenReturn(List.of(matchResult.getId()));
+        when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         when(matchResultRepository.findByIdForUpdate(9900L)).thenReturn(Optional.of(matchResult));
         when(temporaryTeamRoomRepository.findByIdForUpdate(firstRoom.getId())).thenReturn(Optional.of(firstRoom));
         when(temporaryTeamRoomRepository.findByIdForUpdate(secondRoom.getId())).thenReturn(Optional.of(secondRoom));
@@ -486,7 +494,7 @@ class GMatchingServiceTest {
         lenient().when(userRepository.findAllById(any(Collection.class))).thenReturn(users);
 
         for (User user : users) {
-            lenient().when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+            lenient().when(userRepository.findByIdForTicketUpdate(user.getId())).thenReturn(Optional.of(user));
         }
 
         lenient().when(matchResultRepository.save(any(GMatchResult.class))).thenAnswer(invocation -> {

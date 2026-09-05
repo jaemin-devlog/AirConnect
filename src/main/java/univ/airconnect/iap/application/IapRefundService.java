@@ -98,7 +98,7 @@ public class IapRefundService {
             return RefundResult.alreadyHandled(existingRefund.ledgerExternalId());
         }
 
-        User user = userRepository.findByIdForUpdate(locked.getUserId())
+        User user = userRepository.findByIdForTicketUpdate(locked.getUserId())
                 .orElseThrow(() -> new IapException(IapErrorCode.IAP_UNAUTHORIZED));
         int refundAmount = locked.getGrantedTickets() == null ? 0 : locked.getGrantedTickets();
         int before = user.getTickets();

@@ -14,6 +14,7 @@ import univ.airconnect.global.error.ErrorCode;
 import java.util.Map;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +45,41 @@ public class AdminAuditLogService {
                 reason,
                 toJson(metadata)
         ));
+    }
+
+    /** Ticket completion audit commits or rolls back with its receipt, balance and history. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordTicketAdjustment(Long actorUserId, Long userId, String operationId,
+                                       int amount, int before, int after, String reason) {
+        adminAuditLogRepository.save(AdminAuditLog.create(actorUserId, AdminAuditAction.TICKET_ADJUSTED,
+                "USER", String.valueOf(userId), "사용자 #" + userId + " 티켓을 " + amount + "만큼 조정했습니다.",
+                reason, toJson(Map.of("operationId", operationId, "amount", amount,
+                        "beforeTickets", before, "afterTickets", after))));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordOutboxRetry(Long actorUserId, NotificationOutboxRetryAudit details) {
+        adminAuditLogRepository.save(AdminAuditLog.create(
+                actorUserId,
+                AdminAuditAction.OUTBOX_RETRY_QUEUED,
+                "NOTIFICATION_OUTBOX",
+                String.valueOf(details.outboxId()),
+                "실패한 알림 전송 작업을 다시 대기열에 넣었습니다.",
+                null,
+                toJson(Map.of(
+                        "notificationId", details.notificationId(),
+                        "userId", details.userId(),
+                        "previousAttemptCount", details.previousAttemptCount()
+                ))
+        ));
+    }
+
+    public record NotificationOutboxRetryAudit(
+            Long outboxId,
+            Long notificationId,
+            Long userId,
+            int previousAttemptCount
+    ) {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -77,15 +113,98 @@ public class AdminAuditLogService {
         ));
     }
 
+    /** Only change flags are recorded: internal notes never enter the general audit feed. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordReportUpdate(Long actorId, Long reportId, String beforeStatus, String afterStatus,
+                                   boolean memoChanged, boolean replyChanged, Long previousVersion) {
+        adminAuditLogRepository.save(AdminAuditLog.create(actorId, AdminAuditAction.REPORT_STATUS_UPDATED,
+                "REPORT", String.valueOf(reportId), "신고 #" + reportId + " 처리 정보를 저장했습니다.", null,
+                toJson(Map.of("beforeStatus", beforeStatus, "status", afterStatus,
+                        "internalMemoChanged", memoChanged, "reporterReplyChanged", replyChanged,
+                        "previousVersion", previousVersion))));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordReportUserAction(Long actorId, Long reportId, Long userId,
+                                      AdminRequests.UserActionRequest request, String reason) {
+        AdminAuditLog entry = AdminAuditLog.create(actorId, AdminAuditAction.USER_ACTION_APPLIED,
+                "USER", String.valueOf(userId), "신고 #" + reportId + " 대상 사용자 #" + userId
+                        + "에게 " + request.action().name() + " 조치를 적용했습니다.", reason,
+                toJson(Map.of("userId", userId, "action", request.action().name(),
+                        "until", request.until() == null ? "" : request.until().toString())));
+        entry.linkToReport(reportId);
+        adminAuditLogRepository.save(entry);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public LocalDateTime recordChatMessageInspection(Long actorUserId,
+                                                     Long roomId,
+                                                     AdminRequests.ChatMessageInspectionRequest request,
+                                                     List<Long> messageIds,
+                                                     int deletedCount,
+                                                     LocalDateTime from,
+                                                     LocalDateTime to,
+                                                     String traceId) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("from", from);
+        metadata.put("to", to);
+        metadata.put("page", request.page());
+        metadata.put("size", request.size());
+        metadata.put("returnedMessageIds", messageIds);
+        metadata.put("returnedCount", messageIds.size());
+        metadata.put("deletedCount", deletedCount);
+        metadata.put("result", "CONTENT_ACCESS_GRANTED");
+        metadata.put("traceId", traceId);
+        AdminAuditLog log = AdminAuditLog.create(
+                actorUserId,
+                AdminAuditAction.CHAT_MESSAGES_INSPECTED,
+                "CHAT_ROOM",
+                String.valueOf(roomId),
+                "관리자 대화 본문 제공 승인 (클라이언트 수신 여부는 확인하지 않음)",
+                request.reason().name(),
+                toJson(metadata)
+        );
+        adminAuditLogRepository.saveAndFlush(log);
+        // API message/range timestamps use UTC, independently of the legacy audit table clock.
+        return LocalDateTime.now(java.time.Clock.systemUTC());
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public LocalDateTime recordChatHistory(Long actorId, Long roomId, Long beforeId, int size,
+                                           List<AdminDtos.ChatMessageItem> items, String traceId) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("beforeId", beforeId);
+        metadata.put("size", size);
+        metadata.put("returnedMessageIds", items.stream().map(AdminDtos.ChatMessageItem::messageId).toList());
+        metadata.put("returnedCount", items.size());
+        metadata.put("deletedCount", items.stream().filter(AdminDtos.ChatMessageItem::deleted).count());
+        metadata.put("result", "CONTENT_ACCESS_GRANTED");
+        metadata.put("traceId", traceId);
+        adminAuditLogRepository.saveAndFlush(AdminAuditLog.create(actorId,
+                AdminAuditAction.CHAT_MESSAGES_INSPECTED, "CHAT_ROOM", String.valueOf(roomId),
+                "관리자 대화 본문 제공 승인 (클라이언트 수신 여부는 확인하지 않음)",
+                "ADMIN_OPERATIONS", toJson(metadata)));
+        return LocalDateTime.now(java.time.Clock.systemUTC());
+    }
+
+    @Transactional
+    public long deleteExpiredChatInspectionLogs(LocalDateTime cutoff) {
+        return adminAuditLogRepository.deleteByActionAndCreatedAtBefore(
+                AdminAuditAction.CHAT_MESSAGES_INSPECTED,
+                cutoff
+        );
+    }
+
     @Transactional(readOnly = true)
     public AdminDtos.PageResponse<AdminDtos.AuditLogItem> search(Integer page,
                                                                  Integer size,
                                                                  Long actorUserId,
                                                                  AdminAuditAction action,
-                                                                 String targetType) {
+                                                                 String targetType,
+                                                                 String targetId) {
         Pageable pageable = PageRequest.of(safePage(page), safeSize(size));
         Page<AdminDtos.AuditLogItem> mapped = adminAuditLogRepository
-                .search(actorUserId, action, trimToNull(targetType), pageable)
+                .search(actorUserId, action, trimToNull(targetType), trimToNull(targetId), pageable)
                 .map(log -> new AdminDtos.AuditLogItem(
                         log.getId(),
                         log.getActorUserId(),

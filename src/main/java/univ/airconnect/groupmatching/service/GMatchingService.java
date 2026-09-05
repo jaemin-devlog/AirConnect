@@ -8,8 +8,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.exception.AuthErrorCode;
@@ -38,6 +43,8 @@ import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
 import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
+import univ.airconnect.iap.domain.entity.TicketLedger;
+import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.Gender;
@@ -82,6 +89,13 @@ public class GMatchingService {
 
     private static final int FULL_QUEUE_SCAN = -1;
     private static final Duration MATCH_PROCESS_LOCK_TTL = Duration.ofSeconds(5);
+    private static final DefaultRedisScript<Long> RELEASE_PROCESS_LOCK_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('get', KEYS[1]) == ARGV[1] then
+                return redis.call('del', KEYS[1])
+            else
+                return 0
+            end
+            """, Long.class);
     private static final Duration MATCH_FINALIZATION_DELAY = Duration.ofSeconds(1);
     private static final Duration QUEUE_TOKEN_TTL = Duration.ofHours(12);
     private static final int PROCESS_LOCK_RETRY_COUNT = 20;
@@ -110,6 +124,8 @@ public class GMatchingService {
     private final ObjectMapper objectMapper;
     private final RedisTemplate<String, Object> redisTemplate;
     private final AnalyticsService analyticsService;
+    private final TicketLedgerRepository ticketLedgerRepository;
+    private final PlatformTransactionManager transactionManager;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -844,6 +860,7 @@ public class GMatchingService {
         finalMemberIds.addAll(extractUserIds(firstMembers));
         finalMemberIds.addAll(extractUserIds(secondMembers));
 
+        List<User> ticketUsers = lockAndValidateGroupMatchTickets(first.getTeamSize(), finalMemberIds);
         ChatRoom finalChatRoom = chatService.createGroupRoomWithMembers(
                 buildFinalRoomName(first.getTeamSize()),
                 finalMemberIds
@@ -859,7 +876,7 @@ public class GMatchingService {
                 )
         );
 
-        consumeGroupMatchTicketsAfterFinalRoomCreated(first.getTeamSize(), finalMemberIds);
+        consumeGroupMatchTicketsAfterFinalRoomCreated(first.getTeamSize(), ticketUsers, matchResult.getId());
         matchResult.completeFinalRoomCreation(finalGroupChatRoom.getId());
         QueueSnapshot firstMatchedSnapshot = QueueSnapshot.matched(first.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
         QueueSnapshot secondMatchedSnapshot = QueueSnapshot.matched(second.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
@@ -1221,27 +1238,23 @@ public class GMatchingService {
         }
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public int finalizePendingMatches() {
-        List<GMatchResult> matchedResults = matchResultRepository.findByStatus(GMatchResultStatus.MATCHED);
-        if (matchedResults.isEmpty()) {
-            return 0;
-        }
-
         LocalDateTime threshold = LocalDateTime.now().minus(MATCH_FINALIZATION_DELAY);
+        List<Long> matchedResultIds = matchResultRepository.findPendingFinalizationIds(threshold);
+        TransactionTemplate finalization = new TransactionTemplate(transactionManager);
+        finalization.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         int finalizedCount = 0;
 
-        for (GMatchResult matchResult : matchedResults) {
-            if (matchResult.getMatchedAt() == null || matchResult.getMatchedAt().isAfter(threshold)) {
-                continue;
-            }
-
+        for (Long matchResultId : matchedResultIds) {
             try {
-                if (finalizeMatchedResult(matchResult.getId())) {
+                // Catch outside this boundary: a failed result rolls back its room,
+                // memberships, balances and history without affecting other results.
+                if (Boolean.TRUE.equals(finalization.execute(status -> finalizeMatchedResult(matchResultId)))) {
                     finalizedCount++;
                 }
             } catch (RuntimeException e) {
-                log.error("Failed to finalize delayed group match. matchResultId={}", matchResult.getId(), e);
+                log.error("Failed to finalize delayed group match. matchResultId={}", matchResultId, e);
             }
         }
 
@@ -1284,6 +1297,7 @@ public class GMatchingService {
         finalMemberIds.addAll(extractUserIds(firstMembers));
         finalMemberIds.addAll(extractUserIds(secondMembers));
 
+        List<User> ticketUsers = lockAndValidateGroupMatchTickets(first.getTeamSize(), finalMemberIds);
         ChatRoom finalChatRoom = chatService.createGroupRoomWithMembers(
                 buildFinalRoomName(first.getTeamSize()),
                 finalMemberIds
@@ -1299,7 +1313,7 @@ public class GMatchingService {
                 )
         );
 
-        consumeGroupMatchTicketsAfterFinalRoomCreated(first.getTeamSize(), finalMemberIds);
+        consumeGroupMatchTicketsAfterFinalRoomCreated(first.getTeamSize(), ticketUsers, matchResult.getId());
         matchResult.completeFinalRoomCreation(finalGroupChatRoom.getId());
 
         QueueSnapshot firstMatchedSnapshot = QueueSnapshot.matched(first.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
@@ -1578,11 +1592,22 @@ public class GMatchingService {
         return teamSize.getValue();
     }
 
-    private void consumeGroupMatchTicketsAfterFinalRoomCreated(GTeamSize teamSize, Collection<Long> userIds) {
+    private List<User> lockAndValidateGroupMatchTickets(GTeamSize teamSize, Collection<Long> userIds) {
         int requiredTickets = requiredTicketsFor(teamSize);
-        for (User user : findUsersForUpdateInOrder(userIds)) {
+        List<User> users = findUsersForUpdateInOrder(userIds);
+        for (User user : users) {
             ensureUserHasEnoughGroupMatchTickets(user, requiredTickets, "과팅 매칭 완료 처리 실패");
+        }
+        return users;
+    }
+
+    private void consumeGroupMatchTicketsAfterFinalRoomCreated(GTeamSize teamSize, List<User> users, Long matchResultId) {
+        int requiredTickets = requiredTicketsFor(teamSize);
+        for (User user : users) {
+            int beforeAmount = user.getTickets();
             user.consumeTickets(requiredTickets);
+            ticketLedgerRepository.save(TicketLedger.consumeForGroupMatching(
+                    user.getId(), requiredTickets, beforeAmount, user.getTickets(), matchResultId));
             log.info(
                     "과팅 매칭 티켓 차감 완료: userId={}, 차감 티켓={}, 남은 티켓={}",
                     user.getId(),
@@ -1617,11 +1642,12 @@ public class GMatchingService {
 
         LinkedHashSet<Long> uniqueUserIds = userIds.stream()
                 .filter(Objects::nonNull)
+                .sorted()
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
         List<User> users = new ArrayList<>(uniqueUserIds.size());
         for (Long userId : uniqueUserIds) {
-            User user = userRepository.findByIdForUpdate(userId)
+            User user = userRepository.findByIdForTicketUpdate(userId)
                     .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
             users.add(user);
         }
@@ -1904,10 +1930,8 @@ public class GMatchingService {
     }
 
     private void safelyReleaseProcessLock(String lockKey, String lockValue) {
-        Object current = redisTemplate.opsForValue().get(lockKey);
-        if (current != null && Objects.equals(String.valueOf(current), lockValue)) {
-            redisTemplate.delete(lockKey);
-        }
+        // 소유권 비교와 삭제를 원자화해 TTL 만료 후 재획득한 다른 worker의 lock을 보호한다.
+        redisTemplate.execute(RELEASE_PROCESS_LOCK_SCRIPT, List.of(lockKey), lockValue);
     }
 
     public record QueueSnapshot(

@@ -199,7 +199,8 @@ public class ChatService {
     }
 
     /**
-     * 이미 존재하는 GROUP 채팅방에 멤버를 일괄 추가한다.
+     * 입장 조건을 검증한 그룹매칭 서버 로직 전용: GROUP 채팅방에 멤버를 일괄 추가한다.
+     * 클라이언트가 전달한 채팅방 ID만으로 이 메서드를 호출해서는 안 된다.
      * 중복 멤버는 자동으로 제외한다.
      */
     @Transactional
@@ -264,7 +265,8 @@ public class ChatService {
     }
 
     /**
-     * 채팅방 참여
+     * 일반 사용자의 채팅방 직접 참여는 허용하지 않는다.
+     * 그룹매칭 채팅방의 멤버 구성은 내부 생성/추가 메서드에서만 처리한다.
      */
     @Transactional
     public void joinRoom(Long roomId, Long userId) {
@@ -274,11 +276,7 @@ public class ChatService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "1:1 채팅방은 별도 참여가 불가능합니다.");
         }
 
-        User user = findUserOrThrow(userId);
-
-        if (!chatRoomMemberRepository.existsByChatRoomIdAndUserId(roomId, userId)) {
-            chatRoomMemberRepository.save(ChatRoomMember.create(room, user, resolveLatestMessageId(roomId)));
-        }
+        throw new BusinessException(ErrorCode.FORBIDDEN, "그룹 채팅방은 직접 참여할 수 없습니다.");
     }
 
     /**
@@ -668,7 +666,7 @@ public class ChatService {
     }
 
     private ChatMessageResponse sendMessageInternal(Long userId, Long roomId, String content, MessageType messageType) {
-        User user = findActiveUserOrThrow(userId);
+        User user = findChatSenderOrThrow(userId);
         validateRoomAccess(roomId, userId);
 
         validateMessagePayload(content, messageType);
@@ -1046,10 +1044,21 @@ public class ChatService {
                 .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
     }
 
-    private User findActiveUserOrThrow(Long userId) {
+    /**
+     * REST/STOMP 공통 SEND 경계. 기존 세션의 인증 정보 대신 전송 시점의 DB 상태를 확인한다.
+     * CONNECT/SUBSCRIBE와 동일하게 DELETED/SUSPENDED/RESTRICTED를 거절한다.
+     * 매칭 전용 제한 필드(isMatchingRestricted)는 채팅 제한으로 취급하지 않는다.
+     */
+    private User findChatSenderOrThrow(Long userId) {
         User user = findUserOrThrow(userId);
         if (user.getStatus() == UserStatus.DELETED) {
             throw new AuthException(AuthErrorCode.USER_DELETED);
+        }
+        if (user.getStatus() == UserStatus.SUSPENDED) {
+            throw new AuthException(AuthErrorCode.USER_SUSPENDED);
+        }
+        if (user.getStatus() == UserStatus.RESTRICTED) {
+            throw new AuthException(AuthErrorCode.USER_RESTRICTED);
         }
         return user;
     }

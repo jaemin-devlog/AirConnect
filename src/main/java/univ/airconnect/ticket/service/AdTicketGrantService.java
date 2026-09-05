@@ -36,7 +36,7 @@ public class AdTicketGrantService {
             return GrantResult.alreadyGranted(existing.getBeforeAmount(), existing.getAfterAmount(), existing.ledgerExternalId());
         }
 
-        User user = userRepository.findByIdForUpdate(userId)
+        User user = userRepository.findByIdForTicketUpdate(userId)
                 .orElseThrow(() -> new AdsException(AdsErrorCode.AD_REWARD_INVALID_SESSION));
 
         if (user.getStatus() == UserStatus.DELETED) {

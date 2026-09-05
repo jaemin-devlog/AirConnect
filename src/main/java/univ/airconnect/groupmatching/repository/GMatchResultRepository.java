@@ -29,6 +29,14 @@ public interface GMatchResultRepository extends JpaRepository<GMatchResult, Long
 
     List<GMatchResult> findByStatus(GMatchResultStatus status);
 
+    @Query("""
+            select mr.id from GMatchResult mr
+            where mr.status = univ.airconnect.groupmatching.domain.GMatchResultStatus.MATCHED
+              and mr.matchedAt <= :threshold
+            order by mr.id
+            """)
+    List<Long> findPendingFinalizationIds(@Param("threshold") LocalDateTime threshold);
+
     List<GMatchResult> findByStatusIn(Collection<GMatchResultStatus> statuses);
 
     long countByMatchedAtGreaterThanEqual(LocalDateTime since);

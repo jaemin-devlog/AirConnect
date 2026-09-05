@@ -8,6 +8,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.domain.entity.AnalyticsEvent;
 import univ.airconnect.analytics.repository.AnalyticsEventRepository;
@@ -42,10 +44,13 @@ import univ.airconnect.user.service.UserService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -109,11 +114,22 @@ class AdminServiceTest {
         User user = user(1L, 10);
         User admin = adminUser(999L, "운영팀");
         when(userRepository.findById(999L)).thenReturn(Optional.of(admin));
-        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
-
-        AdminDtos.TicketBalance response = adminService.adjustTickets(
+        when(userRepository.findByIdForTicketUpdate(1L)).thenReturn(Optional.of(user));
+        var operations = mock(AdminTicketAdjustmentRepository.class);
+        var transactionManager = mock(PlatformTransactionManager.class);
+        when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+        when(operations.saveAndFlush(any(AdminTicketAdjustment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ticketLedgerRepository.save(any(TicketLedger.class))).thenAnswer(invocation -> {
+            TicketLedger entry = invocation.getArgument(0);
+            ReflectionTestUtils.setField(entry, "id", 100L);
+            return entry;
+        });
+        var adjustmentService = new AdminTicketAdjustmentService(operations, userRepository,
+                ticketLedgerRepository, notificationService, adminAuditLogService, new ObjectMapper(), transactionManager);
+        String operationId = UUID.randomUUID().toString();
+        AdminDtos.TicketAdjustmentResult response = adjustmentService.adjust(
                 999L,
-                new AdminRequests.TicketAdjustmentRequest(1L, 5, "bug compensation")
+                new AdminRequests.TicketAdjustmentRequest(operationId, 1L, 5, "bug compensation")
         );
 
         ArgumentCaptor<TicketLedger> captor = ArgumentCaptor.forClass(TicketLedger.class);
@@ -121,10 +137,14 @@ class AdminServiceTest {
                 ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
         verify(ticketLedgerRepository).save(captor.capture());
         verify(notificationService).createAndEnqueue(notificationCaptor.capture());
-        assertThat(response.currentTickets()).isEqualTo(15);
+        assertThat(response.status()).isEqualTo("COMPLETED");
+        assertThat(response.operationId()).isEqualTo(operationId);
+        assertThat(response.afterTickets()).isEqualTo(15);
+        assertThat(response.ledgerId()).isEqualTo(100L);
         assertThat(captor.getValue().getChangeAmount()).isEqualTo(5);
         assertThat(captor.getValue().getAfterAmount()).isEqualTo(15);
         assertThat(captor.getValue().getReason()).isEqualTo("ADMIN:bug compensation");
+        assertThat(captor.getValue().getRefId()).isEqualTo("admin-adjustment:" + operationId);
         assertThat(notificationCaptor.getValue().userId()).isEqualTo(1L);
         assertThat(notificationCaptor.getValue().type()).isEqualTo(NotificationType.SYSTEM_ANNOUNCEMENT);
         assertThat(notificationCaptor.getValue().title()).isEqualTo("운영팀");
@@ -169,21 +189,23 @@ class AdminServiceTest {
         User reported = user(20L, 10);
         ReflectionTestUtils.setField(reported, "nickname", "피신고자");
         UserReport report = report(10L, 20L);
+        ReflectionTestUtils.setField(report, "version", 0L);
 
         when(userRepository.findById(999L)).thenReturn(Optional.of(admin));
-        when(userReportRepository.findById(1L)).thenReturn(Optional.of(report));
-        when(userRepository.findAllByIdWithProfile(java.util.Set.of(10L, 20L))).thenReturn(List.of(reporter, reported));
+        when(userReportRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(report));
+        when(userRepository.findById(10L)).thenReturn(Optional.of(reporter));
+        when(userRepository.findById(20L)).thenReturn(Optional.of(reported));
 
-        AdminDtos.ReportRecord response = adminService.updateReportStatus(
+        AdminDtos.ReportDetail response = reportService().update(
                 999L,
                 1L,
-                new AdminRequests.ReportStatusUpdateRequest(ReportStatus.IN_REVIEW, null)
+                new AdminRequests.ReportStatusUpdateRequest(0L, ReportStatus.IN_REVIEW, null, null)
         );
 
         ArgumentCaptor<NotificationService.CreateCommand> notificationCaptor =
                 ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
         verify(notificationService).createAndEnqueue(notificationCaptor.capture());
-        assertThat(response.status()).isEqualTo(ReportStatus.IN_REVIEW);
+        assertThat(response.record().status()).isEqualTo(ReportStatus.IN_REVIEW);
         assertThat(notificationCaptor.getValue().userId()).isEqualTo(10L);
         assertThat(notificationCaptor.getValue().title()).isEqualTo("운영팀");
         assertThat(notificationCaptor.getValue().body()).isEqualTo("신고가 검토중입니다. 빠른 시일 내에 처리됩니다.");
@@ -195,15 +217,18 @@ class AdminServiceTest {
         User reporter = user(10L, 10);
         User reported = user(20L, 10);
         UserReport report = report(10L, 20L);
+        ReflectionTestUtils.setField(report, "version", 0L);
 
         when(userRepository.findById(999L)).thenReturn(Optional.of(admin));
-        when(userReportRepository.findById(2L)).thenReturn(Optional.of(report));
-        when(userRepository.findAllByIdWithProfile(java.util.Set.of(10L, 20L))).thenReturn(List.of(reporter, reported));
+        when(userReportRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(report));
+        when(userRepository.findById(10L)).thenReturn(Optional.of(reporter));
+        when(userRepository.findById(20L)).thenReturn(Optional.of(reported));
 
-        adminService.updateReportStatus(
+        reportService().update(
                 999L,
                 2L,
-                new AdminRequests.ReportStatusUpdateRequest(ReportStatus.RESOLVED, "대상이 30일 정지 처리되었습니다.")
+                new AdminRequests.ReportStatusUpdateRequest(0L, ReportStatus.RESOLVED,
+                        "internal-only fixture", "대상이 30일 정지 처리되었습니다.")
         );
 
         ArgumentCaptor<NotificationService.CreateCommand> notificationCaptor =
@@ -211,6 +236,65 @@ class AdminServiceTest {
         verify(notificationService).createAndEnqueue(notificationCaptor.capture());
         assertThat(notificationCaptor.getValue().body())
                 .isEqualTo("신고가 처리되었습니다. 대상이 30일 정지 처리되었습니다.");
+        assertThat(notificationCaptor.getValue().payloadJson()).doesNotContain("internal-only fixture");
+    }
+
+    @Test
+    void applyUserAction_reactivateDeletedSocialAccount_restoresOnlyLoginIdentity() {
+        User user = user(3L, 7);
+        String retainedSocialId = user.getSocialId();
+        user.anonymizeForDeletion();
+        user.markDeleted();
+        when(userRepository.findById(3L)).thenReturn(Optional.of(user));
+
+        AdminDtos.UserDetail response = adminService.applyUserAction(
+                999L,
+                3L,
+                new AdminRequests.UserActionRequest(
+                        AdminRequests.UserActionType.REACTIVATE,
+                        "본인 요청 확인 후 계정 재사용 허용",
+                        null
+                )
+        );
+
+        assertThat(response.status()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(response.onboardingStatus()).isEqualTo(OnboardingStatus.BASIC);
+        assertThat(response.deletedAt()).isNull();
+        assertThat(response.email()).isNull();
+        assertThat(response.nickname()).isNull();
+        assertThat(user.getSocialId()).isEqualTo(retainedSocialId);
+        assertThat(user.getTickets()).isEqualTo(7);
+    }
+
+    @Test
+    void applyUserAction_reactivateDeletedEmailAccount_isRejectedBecausePasswordWasDeleted() {
+        User user = User.createEmailUser("withdrawn@example.test", "password-hash");
+        ReflectionTestUtils.setField(user, "id", 4L);
+        user.anonymizeForDeletion();
+        user.markDeleted();
+        when(userRepository.findById(4L)).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> adminService.applyUserAction(
+                999L,
+                4L,
+                new AdminRequests.UserActionRequest(
+                        AdminRequests.UserActionType.REACTIVATE,
+                        "복구 요청",
+                        null
+                )
+        ))
+                .isInstanceOf(univ.airconnect.global.error.BusinessException.class)
+                .hasMessageContaining("비밀번호가 삭제되어 복구할 수 없습니다");
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.DELETED);
+        assertThat(user.getDeletedAt()).isNotNull();
+    }
+
+    private AdminReportService reportService() {
+        return new AdminReportService(userReportRepository, userRepository, chatMessageRepository,
+                chatRoomRepository, chatRoomMemberRepository, matchingConnectionRepository,
+                mock(AdminAuditLogRepository.class), adminAuditLogService, notificationService,
+                new ObjectMapper(), adminService);
     }
 
     @Test

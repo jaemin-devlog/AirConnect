@@ -6,6 +6,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import univ.airconnect.groupmatching.domain.GTeamSize;
 
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,6 +16,26 @@ class GMatchingQueueWorkerTest {
 
     @Mock
     private GMatchingService matchingService;
+
+    @Test
+    void startup_reconcilesAndDrainsBothSizesBeforeFinalizingRooms() {
+        for (GTeamSize size : GTeamSize.values()) {
+            when(matchingService.reconcileQueue(size))
+                    .thenReturn(new GMatchingService.QueueReconcileResult(size, false, false, true, 2, 2));
+            when(matchingService.processQueueUntilStable(size)).thenReturn(1);
+        }
+        when(matchingService.finalizePendingMatches()).thenReturn(2);
+
+        new GMatchingQueueWorker(matchingService).recoverAndDrainOnStartup();
+
+        var order = inOrder(matchingService);
+        order.verify(matchingService).reconcileQueue(GTeamSize.TWO);
+        order.verify(matchingService).processQueueUntilStable(GTeamSize.TWO);
+        order.verify(matchingService).reconcileQueue(GTeamSize.THREE);
+        order.verify(matchingService).processQueueUntilStable(GTeamSize.THREE);
+        order.verify(matchingService).finalizePendingMatches();
+        order.verifyNoMoreInteractions();
+    }
 
     @Test
     void drainQueues_stopsEachQueueWhenNoMoreMatches() {

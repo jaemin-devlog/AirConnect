@@ -53,7 +53,7 @@ public class ChatRoomController {
     }
 
     /**
-     * 채팅방 참여
+     * 직접 참여를 거절하는 기존 호환 경로. 그룹매칭 입장은 그룹매칭 API를 사용한다.
      */
     @PostMapping("/rooms/{roomId}/join")
     public ResponseEntity<ApiResponse<Void>> joinRoom(
