@@ -250,7 +250,8 @@ class AdminOperationsServiceTest {
         AdminDtos.IntegrityReport response = adminOperationsService.getIntegrityReport(999L);
 
         assertThat(response.checks()).hasSize(7);
-        assertThat(response.failureCount()).isEqualTo(2L);
+        assertThat(response.failureCount()).isEqualTo(1L);
+        assertThat(response.warningCount()).isEqualTo(1L);
         assertThat(response.checks())
                 .extracting(AdminDtos.IntegrityCheckItem::status)
                 .contains("PASS", "FAIL");

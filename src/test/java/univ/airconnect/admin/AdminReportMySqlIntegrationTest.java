@@ -41,6 +41,41 @@ class AdminReportMySqlIntegrationTest {
     }
     @AfterAll void stop() throws Exception { if (server != null) server.close(); }
 
+    @Test void automaticHistoryHasNoDateGateUsesCursorAndPreservesConversation() throws Exception {
+        var before = conversationState();
+        String path = "/api/v1/admin/chat-rooms/" + server.roomId + "/message-history";
+        assertThat(call("POST", path, null, Map.of()).statusCode()).isEqualTo(401);
+        String ordinary = server.context.getBean(JwtProvider.class).createAccessToken(IsolatedReportMySqlServer.REPORTER);
+        assertThat(call("POST", path, ordinary, Map.of()).statusCode()).isEqualTo(403);
+        var first = call("POST", path, token, Map.of("size", 2));
+        assertThat(first.statusCode()).isEqualTo(200);
+        assertThat(first.headers().firstValue("Cache-Control")).hasValue("no-store");
+        JsonNode data = json.readTree(first.body()).path("data");
+        assertThat(data.path("items").size()).isEqualTo(2);
+        assertThat(data.path("hasMore").asBoolean()).isTrue();
+        long cursor = data.path("nextBeforeId").asLong();
+        var next = call("POST", path, token, Map.of("beforeId", cursor, "size", 2));
+        assertThat(next.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(next.body()).path("data").path("hasMore").asBoolean()).isFalse();
+        assertThat(first.body() + next.body()).contains("삭제 원문", "alert(");
+        assertThat(call("POST", PREFIX + server.reportId + "/evidence-history", token,
+                Map.of("roomId", server.otherRoomId)).statusCode()).isEqualTo(403);
+        assertThat(call("POST", PREFIX + server.reportId + "/evidence-history", token,
+                Map.of("roomId", server.roomId)).statusCode()).isEqualTo(200);
+        assertThat(conversationState()).isEqualTo(before);
+    }
+
+    @Test void automaticHistoryAuditFailureReturnsNoContent() throws Exception {
+        var before = conversationState();
+        server.jdbc.execute("CREATE TRIGGER reject_history_fixture BEFORE INSERT ON admin_audit_logs FOR EACH ROW BEGIN IF NEW.action = 'CHAT_MESSAGES_INSPECTED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic history audit failure'; END IF; END");
+        try {
+            var result = call("POST", "/api/v1/admin/chat-rooms/" + server.roomId + "/message-history", token, Map.of());
+            assertThat(result.statusCode()).isEqualTo(500);
+            assertThat(result.body()).doesNotContain("삭제 원문", "alert(");
+            assertThat(conversationState()).isEqualTo(before);
+        } finally { server.jdbc.execute("DROP TRIGGER reject_history_fixture"); }
+    }
+
     @Test void migrationPreservesLegacyRowsAndBackfillsOnlyTerminalRows() {
         assertThat(server.jdbc.queryForObject("SELECT VERSION()", String.class)).startsWith("8.0.");
         assertThat(server.jdbc.queryForObject("SELECT @@transaction_isolation", String.class)).isEqualTo("REPEATABLE-READ");

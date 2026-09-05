@@ -212,6 +212,98 @@ class AdminChatInspectionSecurityTest {
     }
 
     @Test
+    void automaticHistoryNeedsNoReasonOrDateAndReturnsDeletedOriginalWithAudit() throws Exception {
+        ConversationState before = conversationState();
+        authenticate(adminId, UserRole.ADMIN);
+        mvc.perform(post("/api/v1/admin/chat-rooms/{roomId}/message-history", roomId)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.data.items[0].content").value(DELETED_BODY))
+                .andExpect(jsonPath("$.data.items[0].deleted").value(true))
+                .andExpect(jsonPath("$.data.hasMore").value(false));
+        assertThat(conversationState()).isEqualTo(before);
+        var log = onlyInspectionLog();
+        assertThat(log.getReason()).isEqualTo("ADMIN_OPERATIONS");
+        assertThat(log.getMetadataJson()).doesNotContain(DELETED_BODY, ORIGINAL_BODY, OUTSIDE_ROOM_BODY);
+        assertThat(auditMetadata(log).path("returnedCount").asInt()).isEqualTo(2);
+        verifyNoInteractions(notifications, userService);
+    }
+
+    @Test
+    void cursorHistoryIncludesOldMessagesAndDoesNotShiftWhenNewMessagesArrive() {
+        var first = adminService.readChatHistory(adminId, roomId,
+                new AdminRequests.ChatHistoryRequest(null, 1), TRACE_ID);
+        assertThat(first.items()).extracting(AdminDtos.ChatMessageItem::messageId).containsExactly(deletedMessageId);
+        assertThat(first.nextBeforeId()).isEqualTo(deletedMessageId);
+        transaction.executeWithoutResult(tx -> {
+            saveMessage(roomId, "new message during paging", now(), false);
+            ReflectionTestUtils.setField(messages.findById(originalMessageId).orElseThrow(), "createdAt", now().minusYears(1));
+        });
+        var next = adminService.readChatHistory(adminId, roomId,
+                new AdminRequests.ChatHistoryRequest(first.nextBeforeId(), 1), TRACE_ID);
+        assertThat(next.items()).extracting(AdminDtos.ChatMessageItem::messageId).containsExactly(originalMessageId);
+        assertThat(next.hasMore()).isFalse();
+        assertThat(next.nextBeforeId()).isNull();
+        assertThat(audits.countByAction(AdminAuditAction.CHAT_MESSAGES_INSPECTED)).isEqualTo(2);
+    }
+
+    @Test
+    void cursorHistoryValidatesRoomCursorSizeAndAdminBeforeReturningContent() throws Exception {
+        for (int size : List.of(0, -1, 101)) {
+            assertThatThrownBy(() -> adminService.readChatHistory(adminId, roomId,
+                    new AdminRequests.ChatHistoryRequest(null, size), TRACE_ID)).isInstanceOf(BusinessException.class);
+        }
+        assertThatThrownBy(() -> adminService.readChatHistory(adminId, otherRoomId,
+                new AdminRequests.ChatHistoryRequest(originalMessageId, 50), TRACE_ID)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> adminService.readChatHistory(adminId, roomId,
+                new AdminRequests.ChatHistoryRequest(Long.MAX_VALUE, 50), TRACE_ID)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> adminService.readChatHistory(senderId, roomId,
+                new AdminRequests.ChatHistoryRequest(null, 50), TRACE_ID)).isInstanceOf(BusinessException.class);
+        mvc.perform(post("/api/v1/admin/chat-rooms/{roomId}/message-history", roomId)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isUnauthorized());
+        authenticate(senderId, UserRole.USER);
+        mvc.perform(post("/api/v1/admin/chat-rooms/{roomId}/message-history", roomId)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isForbidden());
+        assertThat(audits.count()).isZero();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = UserStatus.class, names = {"SUSPENDED", "RESTRICTED", "DELETED"})
+    void cursorHistoryChecksCurrentAdminStatusOnNextPage(UserStatus status) {
+        var first = adminService.readChatHistory(adminId, roomId, new AdminRequests.ChatHistoryRequest(null, 1), TRACE_ID);
+        transaction.executeWithoutResult(tx -> ReflectionTestUtils.setField(users.findById(adminId).orElseThrow(), "status", status));
+        assertThatThrownBy(() -> adminService.readChatHistory(adminId, roomId,
+                new AdminRequests.ChatHistoryRequest(first.nextBeforeId(), 1), TRACE_ID))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+        assertThat(audits.countByAction(AdminAuditAction.CHAT_MESSAGES_INSPECTED)).isEqualTo(1);
+    }
+
+    @Test
+    void cursorHistoryAuditCommitFailureDoesNotReturnBodyOrMutateConversation() throws Exception {
+        var before = conversationState();
+        authenticate(adminId, UserRole.ADMIN);
+        transactionManager.failNextWriteCommit();
+        var response = mvc.perform(post("/api/v1/admin/chat-rooms/{roomId}/message-history", roomId)
+                .contentType("application/json").content("{}")).andReturn().getResponse();
+        assertClosedFailure(response);
+        assertThat(audits.count()).isZero();
+        assertThat(conversationState()).isEqualTo(before);
+    }
+
+    @Test
+    void visibleMemberAnomalyDoesNotProveMissingMembership() {
+        assertThat(members.countByChatRoomId(roomId)).isEqualTo(2);
+        assertThat(members.countPersonalRoomsWithInvalidVisibleMemberCount()).isEqualTo(1);
+        // Hiding one existing membership triggers the old diagnostic, without a missing member.
+        assertThat(members.existsByChatRoomIdAndUserId(roomId, recipientId)).isTrue();
+        var before = conversationState();
+        rooms.countRoomsWithoutVisibleMembers();
+        assertThat(conversationState()).isEqualTo(before);
+    }
+
+    @Test
     void metadataOnlyGetEndpoints_doNotExposeBodiesOrAcceptLegacyMessagePageBypass() throws Exception {
         authenticate(adminId, UserRole.ADMIN);
         ConversationState before = conversationState();

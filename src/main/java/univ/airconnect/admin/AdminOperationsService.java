@@ -385,17 +385,17 @@ public class AdminOperationsService {
 
     public AdminDtos.IntegrityReport getIntegrityReport(Long adminUserId) {
         List<AdminDtos.IntegrityCheckItem> checks = List.of(
-                check(
+                observation(
                         "chat_rooms_without_members",
-                        "고아 채팅방",
+                        "표시 중인 참여자가 없는 방",
                         chatRoomRepository.countRoomsWithoutVisibleMembers(),
-                        "참여 중인 멤버가 없는 채팅방입니다."
+                        "종료된 임시방, 전체 퇴장, 방 숨김도 포함합니다. 이 수치만으로 장애나 멤버 누락을 판단할 수 없습니다."
                 ),
-                check(
+                observation(
                         "personal_rooms_invalid_member_count",
-                        "개인 채팅방 멤버 수 불일치",
+                        "표시 중인 참여자가 2명이 아닌 1:1 방",
                         chatRoomMemberRepository.countPersonalRoomsWithInvalidVisibleMemberCount(),
-                        "개인 채팅방인데 보이는 멤버 수가 2명이 아닌 방입니다."
+                        "퇴장·차단에 따른 방 숨김도 포함합니다. 원래 참여자와 참여·퇴장 기록을 확인해야 하며 자동 복구 대상이 아닙니다."
                 ),
                 check(
                         "accepted_matching_without_chat_room",
@@ -432,7 +432,7 @@ public class AdminOperationsService {
         long failureCount = checks.stream().filter(item -> "FAIL".equals(item.status())).count();
         AdminDtos.IntegrityReport response = new AdminDtos.IntegrityReport(
                 checks,
-                0,
+                checks.stream().filter(item -> "WARN".equals(item.status())).count(),
                 failureCount,
                 LocalDateTime.now()
         );
@@ -479,6 +479,10 @@ public class AdminOperationsService {
                 .mapToLong(AdminDtos.OutboxStatusCount::count)
                 .findFirst()
                 .orElse(0L);
+    }
+
+    private AdminDtos.IntegrityCheckItem observation(String key, String label, long count, String description) {
+        return new AdminDtos.IntegrityCheckItem(key, label, count > 0 ? "WARN" : "PASS", count, description);
     }
 
     private AdminDtos.IntegrityCheckItem check(String key, String label, long count, String description) {

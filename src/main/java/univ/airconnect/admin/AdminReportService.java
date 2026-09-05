@@ -92,6 +92,20 @@ public class AdminReportService {
                         request.page(), request.size()), traceId);
     }
 
+    public AdminDtos.ChatHistory readEvidenceHistory(Long adminId, Long reportId,
+                                                     AdminRequests.ReportHistoryRequest request, String traceId) {
+        requireAdmin(adminId);
+        if (request == null || request.roomId() == null || request.roomId() <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+        var source = evidence(requiredReport(reportId));
+        if (!"AVAILABLE".equals(source.status()) || !Objects.equals(source.roomId(), request.roomId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "이 신고와 연결된 대화 증거를 확인할 수 없습니다.");
+        }
+        return adminService.readChatHistory(adminId, request.roomId(),
+                new AdminRequests.ChatHistoryRequest(request.beforeId(), request.size()), traceId);
+    }
+
     private AdminDtos.ReportDetail detail(UserReport report) {
         String reporterName = users.findById(report.getReporterUserId()).map(this::nickname).orElse(null);
         String reportedName = users.findById(report.getReportedUserId()).map(this::nickname).orElse(null);

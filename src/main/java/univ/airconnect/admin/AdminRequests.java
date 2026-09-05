@@ -84,6 +84,12 @@ public final class AdminRequests {
     ) {
     }
 
+    public record ChatHistoryRequest(Long beforeId, Integer size) {
+    }
+
+    public record ReportHistoryRequest(@NotNull Long roomId, Long beforeId, Integer size) {
+    }
+
     public enum ChatInspectionReason {
         REPORT_REVIEW,
         USER_SUPPORT,

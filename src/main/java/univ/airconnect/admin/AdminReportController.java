@@ -35,6 +35,14 @@ public class AdminReportController {
                 service.update(adminId, reportId, body), traceId(request)));
     }
 
+    @PostMapping("/{reportId}/evidence-history")
+    public ResponseEntity<ApiResponse<AdminDtos.ChatHistory>> history(@CurrentUserId Long adminId,
+            @PathVariable Long reportId, @Valid @RequestBody AdminRequests.ReportHistoryRequest body,
+            HttpServletRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.ok(
+                service.readEvidenceHistory(adminId, reportId, body, traceId(request)), traceId(request)));
+    }
+
     @PostMapping("/{reportId}/evidence-inspections")
     public ResponseEntity<ApiResponse<AdminDtos.ChatMessageInspection>> inspect(@CurrentUserId Long adminId,
             @PathVariable Long reportId, @Valid @RequestBody AdminRequests.ReportEvidenceInspectionRequest body,

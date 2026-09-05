@@ -512,6 +512,22 @@ class AdminReportHandlingSecurityTest {
     }
 
     @Test
+    void automaticEvidenceHistoryRevalidatesReportRoomOnEveryPage() throws Exception {
+        Long target = createReport(subjectId, ReportSourceType.CHAT_MESSAGE, messageId.toString());
+        var before = conversationState();
+        authenticate(adminId, UserRole.ADMIN);
+        mvc.perform(post(ENDPOINT + "/{id}/evidence-history", target).contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AdminRequests.ReportHistoryRequest(roomId, null, 1))))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"));
+        assertThat(conversationState()).isEqualTo(before);
+        assertError(() -> service.readEvidenceHistory(adminId, target,
+                new AdminRequests.ReportHistoryRequest(otherRoomId, null, 1), "fixture"), ErrorCode.FORBIDDEN);
+        removeMembership(reporterId);
+        assertError(() -> service.readEvidenceHistory(adminId, target,
+                new AdminRequests.ReportHistoryRequest(roomId, messageId, 1), "fixture"), ErrorCode.FORBIDDEN);
+    }
+
+    @Test
     void explicitEvidenceInspectionReturnsDeletedOriginalOnlyAfterAuditAndDoesNotMarkRead() throws Exception {
         Long targetReport = createReport(subjectId, ReportSourceType.CHAT_MESSAGE, messageId.toString());
         var before = conversationState();

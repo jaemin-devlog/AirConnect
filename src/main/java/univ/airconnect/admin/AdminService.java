@@ -158,6 +158,39 @@ public class AdminService {
         );
     }
 
+    /** Read-only cursor history. Authorization is rechecked on every page, including deleted text. */
+    public AdminDtos.ChatHistory readChatHistory(Long adminUserId, Long roomId,
+                                                AdminRequests.ChatHistoryRequest request, String traceId) {
+        if (adminUserId == null) throw new BusinessException(ErrorCode.FORBIDDEN);
+        User admin = getRequiredUser(adminUserId);
+        if (admin.getRole() != UserRole.ADMIN || admin.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "활성 관리자만 대화를 열람할 수 있습니다.");
+        }
+        if (request == null || roomId == null || roomId <= 0
+                || (request.beforeId() != null && request.beforeId() <= 0)
+                || (request.size() != null && (request.size() < 1 || request.size() > 100))) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "조회 범위를 확인하세요.");
+        }
+        chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "채팅방을 찾을 수 없습니다."));
+        if (request.beforeId() != null) {
+            var source = chatMessageRepository.findReportSourceById(request.beforeId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "이전 메시지를 찾을 수 없습니다."));
+            if (!Objects.equals(source.getRoomId(), roomId)) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST, "이 방의 메시지 번호가 아닙니다.");
+            }
+        }
+        int size = request.size() == null ? 50 : request.size();
+        // Reuse the user's existing ID cursor order, without membership/read-receipt mutations.
+        var rows = chatMessageRepository.findMessagesCursor(roomId, request.beforeId(), PageRequest.of(0, size + 1));
+        boolean hasMore = rows.size() > size;
+        var items = rows.stream().limit(size).map(this::toChatMessageItem).toList();
+        LocalDateTime inspectedAt = adminAuditLogService.recordChatHistory(
+                adminUserId, roomId, request.beforeId(), size, items, traceId);
+        return new AdminDtos.ChatHistory(roomId, items,
+                hasMore ? items.get(items.size() - 1).messageId() : null, hasMore, inspectedAt);
+    }
+
     public AdminDtos.ChatMessageInspection inspectChatMessages(
             Long adminUserId,
             Long roomId,

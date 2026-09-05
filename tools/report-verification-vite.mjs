@@ -3,10 +3,11 @@
 // explicit verification server, and enforce same-origin networking as a second guard.
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-const root = path.resolve('C:/Users/정재민/Project/airconnect-admin');
+const root = path.resolve(process.argv[2] || 'C:/Users/정재민/Project/airconnect-admin');
 const { createServer } = await import(pathToFileURL(path.join(root, 'node_modules/vite/dist/node/index.js')));
 const server = await createServer({
-  root, configFile: path.join(root, 'vite.config.ts'), envDir: false,
+  root, configFile: path.join(root, 'vite.config.ts'), configLoader: 'runner', envDir: false,
+  cacheDir: path.resolve('build/report-vite-cache'),
   plugins: [{
     name: 'isolated-report-transport', enforce: 'pre',
     transform(code, id) {

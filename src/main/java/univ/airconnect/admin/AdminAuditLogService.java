@@ -144,6 +144,24 @@ public class AdminAuditLogService {
         return LocalDateTime.now(java.time.Clock.systemUTC());
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public LocalDateTime recordChatHistory(Long actorId, Long roomId, Long beforeId, int size,
+                                           List<AdminDtos.ChatMessageItem> items, String traceId) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("beforeId", beforeId);
+        metadata.put("size", size);
+        metadata.put("returnedMessageIds", items.stream().map(AdminDtos.ChatMessageItem::messageId).toList());
+        metadata.put("returnedCount", items.size());
+        metadata.put("deletedCount", items.stream().filter(AdminDtos.ChatMessageItem::deleted).count());
+        metadata.put("result", "CONTENT_ACCESS_GRANTED");
+        metadata.put("traceId", traceId);
+        adminAuditLogRepository.saveAndFlush(AdminAuditLog.create(actorId,
+                AdminAuditAction.CHAT_MESSAGES_INSPECTED, "CHAT_ROOM", String.valueOf(roomId),
+                "관리자 대화 본문 제공 승인 (클라이언트 수신 여부는 확인하지 않음)",
+                "ADMIN_OPERATIONS", toJson(metadata)));
+        return LocalDateTime.now(java.time.Clock.systemUTC());
+    }
+
     @Transactional
     public long deleteExpiredChatInspectionLogs(LocalDateTime cutoff) {
         return adminAuditLogRepository.deleteByActionAndCreatedAtBefore(

@@ -175,6 +175,15 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok(adminService.getChatRoomDetail(roomId), traceId));
     }
 
+    @PostMapping("/chat-rooms/{roomId}/message-history")
+    public ResponseEntity<ApiResponse<AdminDtos.ChatHistory>> readChatHistory(
+            @CurrentUserId Long adminUserId, @PathVariable Long roomId,
+            @RequestBody AdminRequests.ChatHistoryRequest body, HttpServletRequest request) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.ok(
+                adminService.readChatHistory(adminUserId, roomId, body, traceId), traceId));
+    }
+
     @PostMapping("/chat-rooms/{roomId}/message-inspections")
     public ResponseEntity<ApiResponse<AdminDtos.ChatMessageInspection>> inspectChatMessages(
             @CurrentUserId Long adminUserId,

@@ -334,6 +334,10 @@ public final class AdminDtos {
     ) {
     }
 
+    public record ChatHistory(Long roomId, List<ChatMessageItem> items, Long nextBeforeId,
+                              boolean hasMore, LocalDateTime inspectedAt) {
+    }
+
     public record ChatMessageInspection(
             Long roomId,
             AdminRequests.ChatInspectionReason reason,
