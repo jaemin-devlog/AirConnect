@@ -175,7 +175,8 @@ class GMatchingTicketConsistencyTest {
             assertThat(messages.count()).isEqualTo(3);
         });
         verify(matchingEvents, times(2)).publishMatched(any());
-        verify(matchingPush, times(1)).notifyMatched(any(), any(), any());
+        verify(notifications, times(size.getValue() * 2)).createAndEnqueue(any());
+        verify(matchingPush, never()).notifyMatched(any(), any(), any());
     }
 
     @Test

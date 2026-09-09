@@ -39,6 +39,7 @@ import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
 import univ.airconnect.notification.service.NotificationService;
+import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserStatus;
@@ -115,6 +116,39 @@ class GMatchingServiceTest {
         );
         lenient().when(redisTemplate.opsForList()).thenReturn(listOperations);
         lenient().when(chatRoomMemberRepository.findByChatRoomIdAndUserId(anyLong(), anyLong())).thenReturn(Optional.empty());
+    }
+
+    @Test
+    void groupMatchedNotificationUsesDeduplicatedOutboxPathForEachRecipient() {
+        ReflectionTestUtils.invokeMethod(
+                matchingService,
+                "notifyGroupMatched",
+                List.of(11L, 12L, 12L),
+                101L,
+                102L,
+                201L,
+                301L
+        );
+
+        ArgumentCaptor<NotificationService.CreateCommand> commandCaptor =
+                ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
+        verify(notificationService, org.mockito.Mockito.times(2)).createAndEnqueue(commandCaptor.capture());
+        verify(notificationService, never()).create(any());
+        verify(matchingPushService, never()).notifyMatched(anyCollection(), anyLong(), anyLong());
+
+        assertThat(commandCaptor.getAllValues()).allSatisfy(command -> {
+            assertThat(command.type()).isEqualTo(NotificationType.GROUP_MATCHED);
+            assertThat(command.dedupeKey()).isEqualTo("group-matched:201");
+            assertThat(command.deeplink()).isEqualTo("airconnect://group-chat/final/201");
+            assertThat(command.payloadJson())
+                    .contains("\"team1RoomId\":101")
+                    .contains("\"team2RoomId\":102")
+                    .contains("\"finalGroupRoomId\":201")
+                    .contains("\"finalChatRoomId\":301")
+                    .contains("\"memberCount\":3");
+        });
+        assertThat(commandCaptor.getAllValues()).extracting(NotificationService.CreateCommand::userId)
+                .containsExactly(11L, 12L);
     }
 
     @Test

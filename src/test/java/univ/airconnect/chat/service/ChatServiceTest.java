@@ -728,7 +728,7 @@ class ChatServiceTest {
     }
 
     @Test
-    void sendMessage_immediatelyReflectsReadWhenCounterpartIsViewingRoom() throws Exception {
+    void staleStompSubscriptionDoesNotMarkReadOrSuppressPush() throws Exception {
         ChatService service = createService();
         Long roomId = 703L;
         Long senderId = 1L;
@@ -756,8 +756,9 @@ class ChatServiceTest {
         when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(Optional.of(senderMember));
         when(chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId))
                 .thenReturn(List.of(senderMember, readerMember));
-        when(setOperations.members("chat:room-sessions:" + roomId)).thenReturn(Set.of("session-reader"));
-        when(valueOperations.get("chat:session:session-reader")).thenReturn(String.valueOf(readerId));
+        lenient().when(setOperations.members("chat:room-sessions:" + roomId)).thenReturn(Set.of("session-reader"));
+        lenient().when(valueOperations.get("chat:session:session-reader")).thenReturn(String.valueOf(readerId));
+        when(objectMapper.createObjectNode()).thenReturn(new ObjectMapper().createObjectNode());
         when(objectMapper.writeValueAsString(any())).thenReturn("{}");
         when(chatMessageRepository.save(any(ChatMessage.class))).thenAnswer(invocation -> {
             ChatMessage message = invocation.getArgument(0);
@@ -781,11 +782,12 @@ class ChatServiceTest {
                 .findFirst()
                 .orElseThrow();
 
-        assertThat(messageEvent.getUnreadCount()).isEqualTo(0);
+        assertThat(messageEvent.getUnreadCount()).isEqualTo(1);
         assertThat(publishedPayloads.stream().noneMatch(payload -> "READ_RECEIPT".equals(payload.getEventType()))).isTrue();
-        assertThat(readerMember.getLastReadMessageId()).isEqualTo(81L);
+        assertThat(readerMember.getLastReadMessageId()).isEqualTo(80L);
         assertThat(savedMessage[0]).isNotNull();
-        assertThat(savedMessage[0].getReadAt()).isNotNull();
+        assertThat(savedMessage[0].getReadAt()).isNull();
+        verify(notificationService).createAndEnqueue(any());
     }
 
     @Test

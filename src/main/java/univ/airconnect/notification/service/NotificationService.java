@@ -33,6 +33,7 @@ import java.util.Optional;
 public class NotificationService {
 
     private static final Duration ANDROID_CHAT_COALESCING_WINDOW = Duration.ofSeconds(2);
+    static final Duration ANDROID_CHAT_MAX_COALESCING_DELAY = Duration.ofSeconds(5);
 
     private final NotificationRepository notificationRepository;
     private final NotificationOutboxRepository notificationOutboxRepository;
@@ -87,13 +88,17 @@ public class NotificationService {
                         notificationOutboxRepository.findPendingChatOutboxForUpdate(pushDevice.getId(), chatRoomId);
 
                 if (existingOutbox.isPresent()) {
+                    LocalDateTime boundedNextAttemptAt = boundChatNextAttemptAt(
+                            existingOutbox.get(),
+                            nextAttemptAt
+                    );
                     existingOutbox.get().coalesceToLatest(
                             notification.getId(),
                             pushDevice.getPushToken(),
                             notification.getTitle(),
                             notification.getBody(),
                             outboxPayloadJson,
-                            nextAttemptAt
+                            boundedNextAttemptAt
                     );
                     continue;
                 }
@@ -278,6 +283,18 @@ public class NotificationService {
                 && notificationType == NotificationType.CHAT_MESSAGE_RECEIVED
                 && chatRoomId != null
                 && !chatRoomId.isBlank();
+    }
+
+    private LocalDateTime boundChatNextAttemptAt(NotificationOutbox existingOutbox,
+                                                 LocalDateTime proposedNextAttemptAt) {
+        if (existingOutbox.getCreatedAt() == null) {
+            return proposedNextAttemptAt;
+        }
+        LocalDateTime maximumNextAttemptAt = existingOutbox.getCreatedAt()
+                .plus(ANDROID_CHAT_MAX_COALESCING_DELAY);
+        return proposedNextAttemptAt.isAfter(maximumNextAttemptAt)
+                ? maximumNextAttemptAt
+                : proposedNextAttemptAt;
     }
 
     private String extractChatRoomId(String payloadJson) {

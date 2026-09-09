@@ -26,6 +26,7 @@ import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
 import univ.airconnect.global.security.jwt.JwtProvider;
+import univ.airconnect.notification.service.PushDeviceService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.dto.response.UserMeResponse;
@@ -59,6 +60,7 @@ public class AuthService {
     private final AnalyticsService analyticsService;
     private final AttemptThrottleService attemptThrottleService;
     private final PasswordEncoder passwordEncoder;
+    private final PushDeviceService pushDeviceService;
 
     @Transactional
     public LoginResponse socialLogin(SocialLoginRequest request) {
@@ -180,6 +182,7 @@ public class AuthService {
         }
 
         refreshTokenRepository.deleteById(buildRefreshTokenKey(userId, deviceId));
+        pushDeviceService.deactivateIfPresent(userId, deviceId);
         log.info("Logout completed: userId={}", userId);
     }
 

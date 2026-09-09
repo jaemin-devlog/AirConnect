@@ -31,11 +31,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -48,7 +46,6 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -70,18 +67,16 @@ class ChatServiceReadTrackingTest {
 
     private ObjectMapper objectMapper;
     private ChatService chatService;
-    private Set<Long> viewingUserIds;
     private List<ChatMessageResponse> publishedEvents;
     private AtomicLong messageIdSequence;
 
     @BeforeEach
     void setUp() throws Exception {
         objectMapper = new ObjectMapper().findAndRegisterModules();
-        viewingUserIds = new HashSet<>();
         publishedEvents = new ArrayList<>();
         messageIdSequence = new AtomicLong(1000L);
 
-        ChatService rawService = new ChatService(
+        chatService = new ChatService(
                 chatRoomRepository,
                 chatMessageRepository,
                 chatRoomMemberRepository,
@@ -94,12 +89,6 @@ class ChatServiceReadTrackingTest {
                 notificationService,
                 userBlockPolicyService
         );
-        chatService = spy(rawService);
-
-        doAnswer(invocation -> viewingUserIds.contains(invocation.getArgument(0)))
-                .when(chatService)
-                .isUserViewingRoom(anyLong(), anyLong());
-
         doAnswer(invocation -> {
             String payload = invocation.getArgument(1, String.class);
             publishedEvents.add(objectMapper.readValue(payload, ChatMessageResponse.class));
@@ -110,7 +99,7 @@ class ChatServiceReadTrackingTest {
     }
 
     @Test
-    void personalRoomSubscribeImmediatelyClearsExistingUnread() {
+    void explicitRoomViewedSignalClearsExistingUnread() {
         Long roomId = 10L;
         Long senderId = 1L;
         Long readerId = 2L;
@@ -136,7 +125,7 @@ class ChatServiceReadTrackingTest {
     }
 
     @Test
-    void personalRoomMessageIsImmediatelyReadWhenCounterpartIsViewing() {
+    void incomingPersonalMessageRemainsUnreadUntilExplicitReadSignal() {
         Long roomId = 11L;
         Long senderId = 1L;
         Long counterpartId = 2L;
@@ -146,19 +135,19 @@ class ChatServiceReadTrackingTest {
         ChatRoomMember counterpartMember = member(room, counterpartId, utcNow().minusMinutes(10));
         List<ChatMessage> roomMessages = new ArrayList<>();
 
-        viewingUserIds.add(counterpartId);
         stubRoom(room, roomMessages, Map.of(senderId, senderMember, counterpartId, counterpartMember));
         stubSender(senderId, "sender");
 
         ChatMessageResponse response = chatService.sendMessage(senderId, roomId, sendRequest("hello", MessageType.TEXT));
 
-        assertEquals(0, response.getUnreadCount());
-        assertNotNull(response.getReadAt());
+        assertEquals(1, response.getUnreadCount());
+        assertNull(response.getReadAt());
         assertEquals(response.getMessageId(), senderMember.getLastReadMessageId());
-        assertEquals(response.getMessageId(), counterpartMember.getLastReadMessageId());
+        assertNull(counterpartMember.getLastReadMessageId());
         assertEquals(1, publishedEvents.size());
         assertEquals("MESSAGE", publishedEvents.get(0).getEventType());
-        assertEquals(0, publishedEvents.get(0).getUnreadCount());
+        assertEquals(1, publishedEvents.get(0).getUnreadCount());
+        verify(notificationService).createAndEnqueue(any());
     }
 
     @Test

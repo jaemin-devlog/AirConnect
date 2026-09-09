@@ -25,6 +25,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -45,7 +46,7 @@ class StompHandlerTest {
     private MessageChannel messageChannel;
 
     @Test
-    void subscribeToChatRoom_mapsSessionAndSyncsReadState() {
+    void subscribeToChatRoomMapsSessionWithoutMarkingMessagesRead() {
         Long userId = 1L;
         Long roomId = 77L;
         String sessionId = "session-1";
@@ -69,7 +70,7 @@ class StompHandlerTest {
 
         verify(chatService).enterChatRoom(String.valueOf(roomId));
         verify(chatService).registerSessionRoomSubscription(sessionId, subscriptionId, String.valueOf(roomId));
-        verify(chatService).syncReadStateOnRoomViewed(roomId, userId);
+        verify(chatService, never()).syncReadStateOnRoomViewed(roomId, userId);
     }
 
     @Test

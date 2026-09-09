@@ -370,11 +370,11 @@ public class ChatService {
 
         if (previousRoomIdValue != null && !Objects.equals(String.valueOf(previousRoomIdValue), roomId)) {
             List<Object> activeRooms = hashOperations.values(subscriptionKey);
-            boolean stillViewingPreviousRoom = activeRooms != null && activeRooms.stream()
+            boolean stillSubscribedToPreviousRoom = activeRooms != null && activeRooms.stream()
                     .map(String::valueOf)
                     .anyMatch(previousRoom -> Objects.equals(previousRoom, String.valueOf(previousRoomIdValue)));
 
-            if (!stillViewingPreviousRoom) {
+            if (!stillSubscribedToPreviousRoom) {
                 cleanupRoomTopicIfUnused(sessionId, previousRoomIdValue);
             }
         }
@@ -396,55 +396,17 @@ public class ChatService {
         hashOperations.delete(subscriptionKey, subscriptionId);
 
         List<Object> remainingRooms = hashOperations.values(subscriptionKey);
-        boolean stillViewingRoom = remainingRooms != null && remainingRooms.stream()
+        boolean stillSubscribedToRoom = remainingRooms != null && remainingRooms.stream()
                 .map(String::valueOf)
                 .anyMatch(roomId -> Objects.equals(roomId, String.valueOf(roomIdValue)));
 
-        if (!stillViewingRoom) {
+        if (!stillSubscribedToRoom) {
             cleanupRoomTopicIfUnused(sessionId, roomIdValue);
         }
 
         Long remainingSubscriptions = hashOperations.size(subscriptionKey);
         if (remainingSubscriptions != null && remainingSubscriptions == 0L) {
             redisTemplate.delete(subscriptionKey);
-        }
-    }
-
-    /**
-     * 사용자가 현재 특정 채팅방을 보고 있는지 Redis 세션 정보를 기준으로 확인한다.
-     */
-    public boolean isUserViewingRoom(Long userId, Long roomId) {
-        if (userId == null || roomId == null) {
-            return false;
-        }
-
-        String roomSessionSetKey = ROOM_SESSION_SET_KEY + roomId;
-        try {
-            Set<Object> sessionIds = redisTemplate.opsForSet().members(roomSessionSetKey);
-            if (sessionIds == null || sessionIds.isEmpty()) {
-                return false;
-            }
-
-            for (Object sessionIdValue : sessionIds) {
-                if (sessionIdValue == null) {
-                    continue;
-                }
-
-                String sessionId = String.valueOf(sessionIdValue);
-                Object mappedUserId = redisTemplate.opsForValue().get(CHAT_SESSION_KEY + sessionId);
-                if (mappedUserId == null) {
-                    redisTemplate.opsForSet().remove(roomSessionSetKey, sessionId);
-                    continue;
-                }
-
-                if (Objects.equals(String.valueOf(userId), String.valueOf(mappedUserId))) {
-                    return true;
-                }
-            }
-            return false;
-        } catch (RuntimeException e) {
-            log.warn("채팅방 열람 상태 확인에 실패했습니다. userId={}, roomId={}", userId, roomId, e);
-            return false;
         }
     }
 
@@ -485,8 +447,8 @@ public class ChatService {
     }
 
     /**
-     * STOMP subscribe, PATCH /read, HTTP 메시지 조회 진입이 모두 동일한 room-viewed 진입점으로 읽음 상태를 동기화한다.
-     * PATCH는 websocket 구독이 늦거나 끊긴 상황에서의 fallback 역할을 맡는다.
+     * 메시지 조회 또는 PATCH /read처럼 사용자가 실제 내용을 확인했다는 명시적 요청에서 읽음 상태를 동기화한다.
+     * STOMP subscription은 실시간 전달 준비 상태일 뿐이므로 이 메서드를 호출하지 않는다.
      */
     @Transactional
     public void syncReadStateOnRoomViewed(Long roomId, Long userId) {
@@ -685,7 +647,6 @@ public class ChatService {
 
         List<ChatMessage> readReceiptMessages = new ArrayList<>(markSenderReadThroughNewMessage(roomId, sender.getId(), chatMessage.getId()));
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
-        readReceiptMessages.addAll(applyImmediateReadForViewingMembers(room, sender.getId(), chatMessage, roomMembers));
 
         LocalDateTime actionTime = LocalDateTime.now(java.time.Clock.systemUTC());
         if (room.getType() == ChatRoomType.PERSONAL) {
@@ -1187,12 +1148,6 @@ public class ChatService {
             if (Objects.equals(recipientUserId, sender.getId())) {
                 continue;
             }
-            if (isUserViewingRoom(recipientUserId, roomId)) {
-                log.debug("같은 채팅방을 보고 있어 OS push를 생략합니다. roomId={}, recipientUserId={}",
-                        roomId, recipientUserId);
-                continue;
-            }
-
             try {
                 var payload = objectMapper.createObjectNode();
                 payload.put("chatRoomId", roomId);
@@ -1283,61 +1238,6 @@ public class ChatService {
     private List<ChatRoomMember> loadVisibleRoomMembers(Long roomId) {
         List<ChatRoomMember> members = chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId);
         return members != null ? members : Collections.emptyList();
-    }
-
-    private List<ChatMessage> applyImmediateReadForViewingMembers(ChatRoom room,
-                                                                  Long senderId,
-                                                                  ChatMessage chatMessage,
-                                                                  List<ChatRoomMember> roomMembers) {
-        if (chatMessage == null || roomMembers == null || roomMembers.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        if (room.getType() == ChatRoomType.PERSONAL) {
-            return applyImmediateReadForPersonalRoom(room, senderId, chatMessage, roomMembers);
-        }
-
-        return applyImmediateReadForGroupRoom(room, senderId, chatMessage, roomMembers);
-    }
-
-    private List<ChatMessage> applyImmediateReadForPersonalRoom(ChatRoom room,
-                                                                Long senderId,
-                                                                ChatMessage message,
-                                                                List<ChatRoomMember> roomMembers) {
-        List<ChatMessage> readReceiptMessages = roomMembers.stream()
-                .filter(member -> isUnreadRecipient(member, message))
-                .filter(member -> isUserViewingRoom(member.getUser().getId(), room.getId()))
-                .findFirst()
-                .map(member -> markMemberReadThroughMessage(room.getId(), member, message.getId(), message.getId()))
-                .orElseGet(Collections::emptyList);
-
-        markMessageAsFullyReadIfNeeded(room, message, roomMembers, LocalDateTime.now(java.time.Clock.systemUTC()));
-        return readReceiptMessages;
-    }
-
-    private List<ChatMessage> applyImmediateReadForGroupRoom(ChatRoom room,
-                                                             Long senderId,
-                                                             ChatMessage message,
-                                                             List<ChatRoomMember> roomMembers) {
-        List<ChatMessage> readReceiptMessages = new ArrayList<>();
-
-        for (ChatRoomMember member : roomMembers) {
-            Long memberUserId = member.getUser().getId();
-            if (Objects.equals(memberUserId, senderId)) {
-                continue;
-            }
-            if (!isUnreadRecipient(member, message)) {
-                continue;
-            }
-            if (!isUserViewingRoom(memberUserId, room.getId())) {
-                continue;
-            }
-
-            readReceiptMessages.addAll(markMemberReadThroughMessage(room.getId(), member, message.getId(), message.getId()));
-        }
-
-        markMessageAsFullyReadIfNeeded(room, message, roomMembers, LocalDateTime.now(java.time.Clock.systemUTC()));
-        return readReceiptMessages;
     }
 
     private Integer resolveMessageUnreadCount(ChatRoom room, ChatMessage message, List<ChatRoomMember> roomMembers) {
