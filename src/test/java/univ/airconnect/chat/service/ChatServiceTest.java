@@ -433,6 +433,39 @@ class ChatServiceTest {
     }
 
     @Test
+    void deleteMessageRestoresPreviousMessageInRoomList() {
+        ChatService service = createService();
+        Long roomId = 101L;
+        Long userId = 1L;
+        User user = createUser(userId, "sender");
+        ChatRoom room = ChatRoom.create("room-101", ChatRoomType.PERSONAL);
+        ReflectionTestUtils.setField(room, "id", roomId);
+        ChatMessage deletedMessage = ChatMessage.create(
+                roomId, userId, "sender", "latest", univ.airconnect.chat.domain.MessageType.TEXT);
+        ReflectionTestUtils.setField(deletedMessage, "id", 102L);
+        ChatMessage previousMessage = ChatMessage.create(
+                roomId, userId, "sender", "previous", univ.airconnect.chat.domain.MessageType.TEXT);
+        ReflectionTestUtils.setField(previousMessage, "id", 100L);
+        room.updateLastMessage("latest", deletedMessage.getCreatedAt());
+        ChatRoomMember senderMember = ChatRoomMember.create(room, user);
+
+        when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId))
+                .thenReturn(Optional.of(senderMember));
+        when(chatMessageRepository.findById(102L)).thenReturn(Optional.of(deletedMessage));
+        when(chatMessageRepository.findTopByRoomIdAndDeletedFalseOrderByIdDesc(roomId))
+                .thenReturn(Optional.of(previousMessage));
+        when(chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId))
+                .thenReturn(List.of(senderMember));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        service.deleteMessage(userId, roomId, 102L);
+
+        assertThat(room.getLastMessage()).isEqualTo("previous");
+        assertThat(room.getLastMessageAt()).isEqualTo(previousMessage.getCreatedAt());
+    }
+
+    @Test
     void addMembersToRoom_initializesLastReadToCurrentLatestMessage() {
         ChatService service = createService();
         Long roomId = 1000L;

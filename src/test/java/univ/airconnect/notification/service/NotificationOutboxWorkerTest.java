@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,5 +46,39 @@ class NotificationOutboxWorkerTest {
         worker.drain();
 
         verify(notificationOutboxDispatchService).dispatch(4L);
+    }
+
+    @Test
+    void drainContinuesAfterOneDispatchEscapesWithRuntimeException() {
+        NotificationOutbox first = outbox(4L);
+        NotificationOutbox second = outbox(5L);
+        when(notificationOutboxService.claimNextBatch(100)).thenReturn(List.of(first, second));
+        doThrow(new IllegalStateException("database unavailable"))
+                .when(notificationOutboxDispatchService).dispatch(4L);
+        NotificationOutboxWorker worker = new NotificationOutboxWorker(
+                notificationOutboxService,
+                notificationOutboxDispatchService
+        );
+
+        worker.drain();
+
+        verify(notificationOutboxDispatchService).dispatch(4L);
+        verify(notificationOutboxDispatchService).dispatch(5L);
+    }
+
+    private NotificationOutbox outbox(Long id) {
+        NotificationOutbox outbox = NotificationOutbox.create(
+                id,
+                2L,
+                id,
+                PushProvider.FCM,
+                "token-" + id,
+                "title",
+                "body",
+                "{}",
+                LocalDateTime.now()
+        );
+        ReflectionTestUtils.setField(outbox, "id", id);
+        return outbox;
     }
 }

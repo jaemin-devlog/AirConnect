@@ -607,6 +607,7 @@ public class ChatService {
         }
 
         message.softDelete();
+        refreshRoomLastMessage(room);
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
         ChatMessageResponse response = ChatMessageResponse.from(
                 message,
@@ -614,6 +615,9 @@ public class ChatService {
                 resolveMessageUnreadCount(room, message, roomMembers)
         );
         publishToRedisSilently(roomId, response);
+        publishRoomListUpdates(room, roomMembers.stream()
+                .map(member -> member.getUser().getId())
+                .collect(Collectors.toSet()));
         return response;
     }
 
@@ -1172,6 +1176,22 @@ public class ChatService {
         AfterCommitExecutor.execute(
                 "chat-room-list",
                 () -> messagingTemplate.convertAndSend("/sub/chat/list/" + userId, payload)
+        );
+    }
+
+    private void refreshRoomLastMessage(ChatRoom room) {
+        Optional<ChatMessage> latestMessage = chatMessageRepository.findTopByRoomIdAndDeletedFalseOrderByIdDesc(
+                room.getId()
+        );
+        if (latestMessage.isEmpty()) {
+            room.updateLastMessage(null, null);
+            return;
+        }
+
+        ChatMessage latest = latestMessage.get();
+        room.updateLastMessage(
+                summarizeForRoomList(latest.getDisplayContent(), latest.getType()),
+                latest.getCreatedAt()
         );
     }
 

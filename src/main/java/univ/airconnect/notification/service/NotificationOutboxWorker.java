@@ -1,6 +1,7 @@
 package univ.airconnect.notification.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,7 @@ import java.util.List;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 @ConditionalOnProperty(value = "notification.outbox.worker.enabled", havingValue = "true", matchIfMissing = false)
 public class NotificationOutboxWorker {
 
@@ -34,7 +36,11 @@ public class NotificationOutboxWorker {
         }
 
         for (NotificationOutbox outbox : batch) {
-            notificationOutboxDispatchService.dispatch(outbox.getId());
+            try {
+                notificationOutboxDispatchService.dispatch(outbox.getId());
+            } catch (RuntimeException e) {
+                log.error("Notification outbox dispatch escaped item boundary: outboxId={}", outbox.getId(), e);
+            }
         }
     }
 
