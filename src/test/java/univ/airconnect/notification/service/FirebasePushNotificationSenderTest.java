@@ -26,6 +26,13 @@ class FirebasePushNotificationSenderTest {
     private FirebaseMessaging firebaseMessaging;
 
     @Test
+    void invalidArgumentPayloadFailureDoesNotInvalidateToken() {
+        assertThat(FirebasePushNotificationSender.isInvalidTokenFailure("INVALID_ARGUMENT")).isFalse();
+        assertThat(FirebasePushNotificationSender.isInvalidTokenFailure("UNREGISTERED")).isTrue();
+        assertThat(FirebasePushNotificationSender.isInvalidTokenFailure("SENDER_ID_MISMATCH")).isTrue();
+    }
+
+    @Test
     void send_appliesChatAndroidNotificationOptionsOnlyForChatMessageReceived() throws Exception {
         when(firebaseMessaging.send(any(Message.class))).thenReturn("provider-message-id");
         FirebasePushNotificationSender sender = new FirebasePushNotificationSender(firebaseMessaging, new ObjectMapper());

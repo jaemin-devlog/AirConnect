@@ -175,9 +175,8 @@ public class StompHandler implements ChannelInterceptor {
                     accessor.getSubscriptionId(),
                     roomId.toString()
             );
-            chatService.syncReadStateOnRoomViewed(roomId, userId);
         } catch (RuntimeException ex) {
-            stompOpsMonitor.recordSideEffectFailure("SUBSCRIBE_SYNC", ex);
+            stompOpsMonitor.recordSideEffectFailure("SUBSCRIBE_REGISTRATION", ex);
             log.warn("STOMP SUBSCRIBE SIDE-EFFECT FAIL: sessionId={}, userId={}, roomId={}, type={}, message={}",
                     accessor.getSessionId(),
                     userId,

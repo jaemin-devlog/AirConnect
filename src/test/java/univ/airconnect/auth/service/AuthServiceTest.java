@@ -27,6 +27,7 @@ import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
 import univ.airconnect.global.security.jwt.JwtProvider;
+import univ.airconnect.notification.service.PushDeviceService;
 import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
@@ -76,6 +77,8 @@ class AuthServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private SocialAuthClient socialAuthClient;
+    @Mock
+    private PushDeviceService pushDeviceService;
 
     @InjectMocks
     private AuthService authService;
@@ -83,6 +86,14 @@ class AuthServiceTest {
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
         lenient().when(socialLoginDeviceBindingRepository.findByDeviceId(anyString())).thenReturn(Optional.empty());
+    }
+
+    @Test
+    void logout_revokesRefreshTokenAndDeactivatesCurrentUsersDevice() {
+        authService.logout(41L, "device-logout");
+
+        verify(refreshTokenRepository).deleteById("41:device-logout");
+        verify(pushDeviceService).deactivateIfPresent(41L, "device-logout");
     }
 
     @Test

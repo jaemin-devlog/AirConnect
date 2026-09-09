@@ -119,7 +119,6 @@ public class GMatchingService {
     private final UserProfileRepository userProfileRepository;
     private final ChatService chatService;
     private final GMatchingEventPublisher matchingEventPublisher;
-    private final GMatchingPushService matchingPushService;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
     private final RedisTemplate<String, Object> redisTemplate;
@@ -883,7 +882,6 @@ public class GMatchingService {
         matchingEventPublisher.publishMatched(firstMatchedSnapshot);
         matchingEventPublisher.publishMatched(secondMatchedSnapshot);
         notifyGroupMatched(finalMemberIds, first.getId(), second.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
-        matchingPushService.notifyMatched(finalMemberIds, finalGroupChatRoom.getId(), finalChatRoom.getId());
 
         publishFinalGroupChatSystemMessages(first, second, finalChatRoom.getId());
 
@@ -1172,7 +1170,7 @@ public class GMatchingService {
                     null,
                     payload.toString(),
                     dedupeKey,
-                    false
+                    true
             );
         }
     }
@@ -1321,7 +1319,6 @@ public class GMatchingService {
         matchingEventPublisher.publishMatched(firstMatchedSnapshot);
         matchingEventPublisher.publishMatched(secondMatchedSnapshot);
         notifyGroupMatched(finalMemberIds, first.getId(), second.getId(), finalGroupChatRoom.getId(), finalChatRoom.getId());
-        matchingPushService.notifyMatched(finalMemberIds, finalGroupChatRoom.getId(), finalChatRoom.getId());
 
         publishFinalGroupChatSystemMessages(first, second, finalChatRoom.getId());
 

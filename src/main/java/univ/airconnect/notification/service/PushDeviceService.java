@@ -39,7 +39,8 @@ public class PushDeviceService {
         String normalizedLocale = trimToLength(command.locale(), 20);
         String normalizedTimezone = trimToLength(command.timezone(), 50);
 
-        Optional<PushDevice> existing = pushDeviceRepository.findByUserIdAndDeviceId(command.userId(), command.deviceId());
+        Optional<PushDevice> existing = pushDeviceRepository.findByUserIdAndDeviceIdForUpdate(
+                command.userId(), command.deviceId());
         if (existing.isPresent()) {
             PushDevice pushDevice = existing.get();
             pushDevice.refreshToken(
@@ -89,11 +90,24 @@ public class PushDeviceService {
     }
 
     /**
+     * 로그아웃 시 등록 행이 이미 없더라도 성공하도록 해당 사용자의 디바이스를 비활성화한다.
+     */
+    @Transactional
+    public void deactivateIfPresent(Long userId, String deviceId) {
+        pushDeviceRepository.findByUserIdAndDeviceIdForUpdate(userId, deviceId)
+                .ifPresent(pushDevice -> {
+                    pushDevice.deactivate();
+                    log.info("Push device deactivated on logout: userId={}, deviceIdMasked={}",
+                            userId, maskDeviceId(deviceId));
+                });
+    }
+
+    /**
      * FCM이 토큰을 무효라고 보고하면 해당 토큰을 비활성화한다.
      */
     @Transactional
     public void deactivateInvalidToken(PushProvider provider, String pushToken) {
-        pushDeviceRepository.findByProviderAndPushToken(provider, pushToken)
+        pushDeviceRepository.findByProviderAndPushTokenForUpdate(provider, pushToken)
                 .ifPresent(pushDevice -> {
                     pushDevice.releaseTokenOwnership();
                     log.warn("Push token released after provider failure: deviceIdMasked={}, provider={}",
@@ -129,7 +143,7 @@ public class PushDeviceService {
     }
 
     private void reassignTokenOwnerIfNecessary(UpsertCommand command) {
-        pushDeviceRepository.findByProviderAndPushToken(command.provider(), command.pushToken())
+        pushDeviceRepository.findByProviderAndPushTokenForUpdate(command.provider(), command.pushToken())
                 .ifPresent(existingTokenOwner -> {
                     boolean sameOwner = existingTokenOwner.getUserId().equals(command.userId())
                             && existingTokenOwner.getDeviceId().equals(command.deviceId());
@@ -144,7 +158,7 @@ public class PushDeviceService {
     }
 
     private PushDevice getRequiredDevice(Long userId, String deviceId) {
-        return pushDeviceRepository.findByUserIdAndDeviceId(userId, deviceId)
+        return pushDeviceRepository.findByUserIdAndDeviceIdForUpdate(userId, deviceId)
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.NOT_FOUND,
                         "등록된 푸시 디바이스를 찾을 수 없습니다."

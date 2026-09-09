@@ -20,9 +20,11 @@ import univ.airconnect.notification.repository.NotificationRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -104,6 +106,94 @@ class NotificationServiceTest {
         ArgumentCaptor<List<NotificationOutbox>> outboxesCaptor = ArgumentCaptor.forClass(List.class);
         verify(notificationOutboxRepository).saveAll(outboxesCaptor.capture());
         assertThat(outboxesCaptor.getValue()).isEmpty();
+    }
+
+    @Test
+    void createAndEnqueueCapsContinuousAndroidChatCoalescingAtFiveSecondsFromFirstOutbox() {
+        PushDevice androidDevice = pushDevice(PushPlatform.ANDROID);
+        NotificationOutbox existingOutbox = NotificationOutbox.create(
+                4001L,
+                9L,
+                17L,
+                PushProvider.FCM,
+                "old-token",
+                "old-title",
+                "old-body",
+                "{\"notificationType\":\"CHAT_MESSAGE_RECEIVED\",\"chatRoomId\":\"88\"}",
+                LocalDateTime.now().plusSeconds(2)
+        );
+        LocalDateTime firstOutboxCreatedAt = LocalDateTime.now().minusSeconds(4);
+        ReflectionTestUtils.setField(existingOutbox, "createdAt", firstOutboxCreatedAt);
+        AtomicLong notificationId = new AtomicLong(5000L);
+
+        when(notificationPreferenceService.getDeliveryPolicy(9L, NotificationType.CHAT_MESSAGE_RECEIVED))
+                .thenReturn(new NotificationPreferenceService.DeliveryPolicy(true, true));
+        when(notificationRepository.findByUserIdAndDedupeKey(eq(9L), anyString()))
+                .thenReturn(Optional.empty());
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            ReflectionTestUtils.setField(notification, "id", notificationId.incrementAndGet());
+            return notification;
+        });
+        when(pushDeviceService.findPushableDevices(9L)).thenReturn(List.of(androidDevice));
+        when(notificationOutboxRepository.findPendingChatOutboxForUpdate(17L, "88"))
+                .thenReturn(Optional.of(existingOutbox));
+
+        for (int sequence = 1; sequence <= 30; sequence++) {
+            service.createAndEnqueue(new NotificationService.CreateCommand(
+                    9L,
+                    NotificationType.CHAT_MESSAGE_RECEIVED,
+                    "Minsu",
+                    "Message " + sequence,
+                    "airconnect://chat/rooms/88",
+                    22L,
+                    null,
+                    "{\"chatRoomId\":\"88\",\"messageId\":\"" + sequence + "\"}",
+                    "chat-message-" + sequence
+            ));
+        }
+
+        assertThat(existingOutbox.getNextAttemptAt())
+                .isBeforeOrEqualTo(firstOutboxCreatedAt.plus(NotificationService.ANDROID_CHAT_MAX_COALESCING_DELAY));
+        assertThat(existingOutbox.getBody()).isEqualTo("Message 30");
+    }
+
+    @Test
+    void createAndEnqueueCreatesOneChatOutboxPerPushableDevice() {
+        PushDevice androidDevice = pushDevice(PushPlatform.ANDROID);
+        PushDevice iosDevice = pushDevice(PushPlatform.IOS);
+
+        when(notificationPreferenceService.getDeliveryPolicy(9L, NotificationType.CHAT_MESSAGE_RECEIVED))
+                .thenReturn(new NotificationPreferenceService.DeliveryPolicy(true, true));
+        when(notificationRepository.findByUserIdAndDedupeKey(9L, "chat-multi-device"))
+                .thenReturn(Optional.empty());
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
+            Notification notification = invocation.getArgument(0);
+            ReflectionTestUtils.setField(notification, "id", 5002L);
+            return notification;
+        });
+        when(pushDeviceService.findPushableDevices(9L)).thenReturn(List.of(androidDevice, iosDevice));
+        when(notificationOutboxRepository.findPendingChatOutboxForUpdate(17L, "88"))
+                .thenReturn(Optional.empty());
+
+        service.createAndEnqueue(new NotificationService.CreateCommand(
+                9L,
+                NotificationType.CHAT_MESSAGE_RECEIVED,
+                "Minsu",
+                "Hello both devices",
+                "airconnect://chat/rooms/88",
+                22L,
+                null,
+                "{\"chatRoomId\":\"88\",\"messageId\":\"9001\"}",
+                "chat-multi-device"
+        ));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<NotificationOutbox>> outboxesCaptor = ArgumentCaptor.forClass(List.class);
+        verify(notificationOutboxRepository).saveAll(outboxesCaptor.capture());
+        assertThat(outboxesCaptor.getValue()).hasSize(2);
+        assertThat(outboxesCaptor.getValue()).extracting(NotificationOutbox::getPushDeviceId)
+                .containsExactlyInAnyOrder(17L, 18L);
     }
 
     @Test

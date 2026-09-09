@@ -42,9 +42,9 @@ class PushDeviceServiceTest {
                 lastSeenAt
         );
 
-        when(pushDeviceRepository.findByProviderAndPushToken(PushProvider.FCM, "push-token-1"))
+        when(pushDeviceRepository.findByProviderAndPushTokenForUpdate(PushProvider.FCM, "push-token-1"))
                 .thenReturn(Optional.empty());
-        when(pushDeviceRepository.findByUserIdAndDeviceId(1L, "device-1"))
+        when(pushDeviceRepository.findByUserIdAndDeviceIdForUpdate(1L, "device-1"))
                 .thenReturn(Optional.empty());
         when(pushDeviceRepository.save(any(PushDevice.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0, PushDevice.class));
@@ -78,7 +78,7 @@ class PushDeviceServiceTest {
         );
         LocalDateTime lastSeenAt = LocalDateTime.of(2026, 4, 4, 11, 15);
 
-        when(pushDeviceRepository.findByUserIdAndDeviceId(7L, "device-7"))
+        when(pushDeviceRepository.findByUserIdAndDeviceIdForUpdate(7L, "device-7"))
                 .thenReturn(Optional.of(device));
 
         PushDevice response = service.updatePermission(7L, "device-7", true, lastSeenAt);

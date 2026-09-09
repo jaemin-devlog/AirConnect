@@ -48,8 +48,7 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
 
     private static final Set<String> INVALID_TOKEN_ERROR_CODES = Set.of(
             "UNREGISTERED",
-            "SENDER_ID_MISMATCH",
-            "INVALID_ARGUMENT"
+            "SENDER_ID_MISMATCH"
     );
 
     private static final Set<String> RETRYABLE_PLATFORM_ERROR_CODES = Set.of(
@@ -220,7 +219,7 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
         log.warn("FCM push failed: outboxId={}, errorCode={}, messagingErrorCode={}, message={}",
                 outbox.getId(), platformErrorCode, messagingErrorCode, errorMessage);
 
-        if (isInvalidTokenFailure(messagingErrorCode, errorMessage)) {
+        if (isInvalidTokenFailure(messagingErrorCode)) {
             return PushSendResult.invalidToken(errorCode, errorMessage);
         }
         if (isRetryableFailure(platformErrorCode, messagingErrorCode)) {
@@ -229,13 +228,8 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
         return PushSendResult.failed(errorCode, errorMessage);
     }
 
-    private boolean isInvalidTokenFailure(String messagingErrorCode, String errorMessage) {
-        if (messagingErrorCode != null && INVALID_TOKEN_ERROR_CODES.contains(messagingErrorCode)) {
-            return true;
-        }
-        return "INVALID_ARGUMENT".equals(messagingErrorCode)
-                || (errorMessage != null
-                && errorMessage.toLowerCase().contains("registration token"));
+    static boolean isInvalidTokenFailure(String messagingErrorCode) {
+        return messagingErrorCode != null && INVALID_TOKEN_ERROR_CODES.contains(messagingErrorCode);
     }
 
     private boolean isRetryableFailure(String platformErrorCode, String messagingErrorCode) {
