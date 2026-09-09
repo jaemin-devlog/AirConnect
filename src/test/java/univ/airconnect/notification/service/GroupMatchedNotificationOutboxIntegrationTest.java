@@ -111,7 +111,7 @@ class GroupMatchedNotificationOutboxIntegrationTest {
         NotificationOutbox outbox = notificationOutboxRepository.findAll().get(0);
         outbox.claim();
         notificationOutboxRepository.saveAndFlush(outbox);
-        when(pushNotificationSender.send(any(NotificationOutbox.class)))
+        when(pushNotificationSender.send(any(NotificationOutbox.class), any(PushPlatform.class)))
                 .thenReturn(PushNotificationSender.PushSendResult.success("fcm-group-message"));
 
         dispatchService.dispatch(outbox.getId());
@@ -119,7 +119,7 @@ class GroupMatchedNotificationOutboxIntegrationTest {
         NotificationOutbox reloaded = notificationOutboxRepository.findById(outbox.getId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(NotificationDeliveryStatus.SENT);
         assertThat(reloaded.getProviderMessageId()).isEqualTo("fcm-group-message");
-        verify(pushNotificationSender).send(any(NotificationOutbox.class));
+        verify(pushNotificationSender).send(any(NotificationOutbox.class), any(PushPlatform.class));
     }
 
     @Test

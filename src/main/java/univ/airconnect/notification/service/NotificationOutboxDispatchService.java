@@ -173,7 +173,10 @@ public class NotificationOutboxDispatchService {
 
     private void sendLocked(NotificationOutbox outbox, PushDevice device) {
         try {
-            PushNotificationSender.PushSendResult result = pushNotificationSender.send(outbox);
+            PushNotificationSender.PushSendResult result = pushNotificationSender.send(
+                    outbox,
+                    device.getPlatform()
+            );
             if (result.success()) {
                 outbox.markSent(result.providerMessageId());
                 return;

@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.PushProvider;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 
@@ -40,10 +41,6 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
     private static final String TEAM_MEMBER_LEFT_TYPE = "TEAM_MEMBER_LEFT";
     private static final String TEAM_MEMBER_READY_CHANGED_TYPE = "TEAM_MEMBER_READY_CHANGED";
     private static final String TEAM_ROOM_ID_KEY = "teamRoomId";
-    private static final String CHAT_ROOM_ID_KEY = "chatRoomId";
-    private static final String CHAT_PUSH_CHANNEL_ID = "airconnect_chat_push";
-    private static final String CHAT_PUSH_TAG_PREFIX = "chat-";
-    private static final String CHAT_COLLAPSE_KEY_PREFIX = "chat-room-";
     private static final String TEAM_ACTIVITY_COLLAPSE_KEY_PREFIX = "team-activity-";
 
     private static final Set<String> INVALID_TOKEN_ERROR_CODES = Set.of(
@@ -72,7 +69,7 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
      * outbox 한 건을 Firebase Cloud Messaging으로 발송한다.
      */
     @Override
-    public PushSendResult send(NotificationOutbox outbox) {
+    public PushSendResult send(NotificationOutbox outbox, PushPlatform platform) {
         if (outbox.getProvider() != PushProvider.FCM) {
             return PushSendResult.failed(
                     "UNSUPPORTED_PROVIDER",
@@ -81,7 +78,7 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
         }
 
         try {
-            String providerMessageId = firebaseMessaging.send(buildMessage(outbox));
+            String providerMessageId = firebaseMessaging.send(buildMessage(outbox, platform));
             log.debug("Push dispatched via FCM: outboxId={}, messageId={}", outbox.getId(), providerMessageId);
             return PushSendResult.success(providerMessageId);
         } catch (FirebaseMessagingException e) {
@@ -90,17 +87,15 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
     }
 
     /**
-     * 공통 알림 본문, Android 설정, APNs 설정을 포함한 FCM 메시지를 구성한다.
+     * 플랫폼별 표시 방식과 공통 data를 포함한 FCM 메시지를 구성한다.
+     * Android 채팅은 앱이 직접 알림을 게시할 수 있도록 data-only로 보낸다.
      */
-    private Message buildMessage(NotificationOutbox outbox) {
+    private Message buildMessage(NotificationOutbox outbox, PushPlatform platform) {
         Map<String, String> data = buildDataMap(outbox.getDataJson());
+        boolean androidChat = platform == PushPlatform.ANDROID && isChatMessageReceived(data);
 
         Message.Builder builder = Message.builder()
                 .setToken(outbox.getTargetToken())
-                .setNotification(com.google.firebase.messaging.Notification.builder()
-                        .setTitle(outbox.getTitle())
-                        .setBody(outbox.getBody())
-                        .build())
                 .setAndroidConfig(buildAndroidConfig(data))
                 .setApnsConfig(ApnsConfig.builder()
                         .putHeader("apns-priority", "10")
@@ -108,6 +103,13 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
                                 .setSound("default")
                                 .build())
                         .build());
+
+        if (!androidChat) {
+            builder.setNotification(com.google.firebase.messaging.Notification.builder()
+                    .setTitle(outbox.getTitle())
+                    .setBody(outbox.getBody())
+                    .build());
+        }
 
         if (!data.isEmpty()) {
             builder.putAllData(data);
@@ -117,23 +119,16 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
 
     private AndroidConfig buildAndroidConfig(Map<String, String> data) {
         String notificationType = data.get(NOTIFICATION_TYPE_KEY);
-        AndroidNotification.Builder notificationBuilder = AndroidNotification.builder();
-        AndroidConfig.Builder androidConfigBuilder = AndroidConfig.builder();
 
         if (isChatMessageReceived(data)) {
-            notificationBuilder
-                    .setChannelId(CHAT_PUSH_CHANNEL_ID)
-                    .setPriority(AndroidNotification.Priority.DEFAULT);
+            return AndroidConfig.builder()
+                    .setPriority(AndroidConfig.Priority.HIGH)
+                    .build();
+        }
 
-            String chatRoomId = data.get(CHAT_ROOM_ID_KEY);
-            if (chatRoomId != null && !chatRoomId.isBlank()) {
-                notificationBuilder.setTag(CHAT_PUSH_TAG_PREFIX + chatRoomId.trim());
-                androidConfigBuilder.setCollapseKey(CHAT_COLLAPSE_KEY_PREFIX + chatRoomId.trim());
-            }
-
-            notificationBuilder.setSound("default");
-            androidConfigBuilder.setPriority(AndroidConfig.Priority.NORMAL);
-        } else if (isLowValueTeamActivity(notificationType)) {
+        AndroidNotification.Builder notificationBuilder = AndroidNotification.builder();
+        AndroidConfig.Builder androidConfigBuilder = AndroidConfig.builder();
+        if (isLowValueTeamActivity(notificationType)) {
             notificationBuilder.setPriority(AndroidNotification.Priority.LOW);
 
             String teamRoomId = data.get(TEAM_ROOM_ID_KEY);

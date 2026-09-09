@@ -17,7 +17,6 @@ import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
 import univ.airconnect.notification.repository.NotificationRepository;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,9 +30,6 @@ import java.util.Optional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class NotificationService {
-
-    private static final Duration ANDROID_CHAT_COALESCING_WINDOW = Duration.ofSeconds(2);
-    static final Duration ANDROID_CHAT_MAX_COALESCING_DELAY = Duration.ofSeconds(5);
 
     private final NotificationRepository notificationRepository;
     private final NotificationOutboxRepository notificationOutboxRepository;
@@ -73,47 +69,11 @@ public class NotificationService {
 
         LocalDateTime now = LocalDateTime.now();
         String outboxPayloadJson = buildOutboxPayload(notification, now);
-        String chatRoomId = extractChatRoomId(outboxPayloadJson);
         List<NotificationOutbox> outboxes = new ArrayList<>();
         for (PushDevice pushDevice : pushDevices) {
             if (shouldSkipPushForDevice(pushDevice, command.type())) {
                 log.debug("Push skipped by platform policy: userId={}, type={}, platform={}",
                         command.userId(), command.type(), pushDevice.getPlatform());
-                continue;
-            }
-
-            if (shouldCoalesceAndroidChat(pushDevice, command.type(), chatRoomId)) {
-                LocalDateTime nextAttemptAt = now.plus(ANDROID_CHAT_COALESCING_WINDOW);
-                Optional<NotificationOutbox> existingOutbox =
-                        notificationOutboxRepository.findPendingChatOutboxForUpdate(pushDevice.getId(), chatRoomId);
-
-                if (existingOutbox.isPresent()) {
-                    LocalDateTime boundedNextAttemptAt = boundChatNextAttemptAt(
-                            existingOutbox.get(),
-                            nextAttemptAt
-                    );
-                    existingOutbox.get().coalesceToLatest(
-                            notification.getId(),
-                            pushDevice.getPushToken(),
-                            notification.getTitle(),
-                            notification.getBody(),
-                            outboxPayloadJson,
-                            boundedNextAttemptAt
-                    );
-                    continue;
-                }
-
-                outboxes.add(NotificationOutbox.create(
-                        notification.getId(),
-                        notification.getUserId(),
-                        pushDevice.getId(),
-                        pushDevice.getProvider(),
-                        pushDevice.getPushToken(),
-                        notification.getTitle(),
-                        notification.getBody(),
-                        outboxPayloadJson,
-                        nextAttemptAt
-                ));
                 continue;
             }
 
@@ -273,46 +233,6 @@ public class NotificationService {
         return pushDevice != null
                 && pushDevice.getPlatform() == PushPlatform.ANDROID
                 && notificationType == NotificationType.TEAM_MEMBER_READY_CHANGED;
-    }
-
-    private boolean shouldCoalesceAndroidChat(PushDevice pushDevice,
-                                              NotificationType notificationType,
-                                              String chatRoomId) {
-        return pushDevice != null
-                && pushDevice.getPlatform() == PushPlatform.ANDROID
-                && notificationType == NotificationType.CHAT_MESSAGE_RECEIVED
-                && chatRoomId != null
-                && !chatRoomId.isBlank();
-    }
-
-    private LocalDateTime boundChatNextAttemptAt(NotificationOutbox existingOutbox,
-                                                 LocalDateTime proposedNextAttemptAt) {
-        if (existingOutbox.getCreatedAt() == null) {
-            return proposedNextAttemptAt;
-        }
-        LocalDateTime maximumNextAttemptAt = existingOutbox.getCreatedAt()
-                .plus(ANDROID_CHAT_MAX_COALESCING_DELAY);
-        return proposedNextAttemptAt.isAfter(maximumNextAttemptAt)
-                ? maximumNextAttemptAt
-                : proposedNextAttemptAt;
-    }
-
-    private String extractChatRoomId(String payloadJson) {
-        if (payloadJson == null || payloadJson.isBlank()) {
-            return null;
-        }
-        try {
-            JsonNode payloadNode = objectMapper.readTree(payloadJson);
-            JsonNode roomIdNode = payloadNode.get("chatRoomId");
-            if (roomIdNode == null || roomIdNode.isNull()) {
-                return null;
-            }
-            String roomId = roomIdNode.asText();
-            return roomId == null || roomId.isBlank() ? null : roomId.trim();
-        } catch (Exception e) {
-            log.warn("Failed to extract chatRoomId from payload for Android coalescing: {}", e.getMessage());
-            return null;
-        }
     }
 
     private String stringifyPayload(ObjectNode payloadNode, String fallbackPayload) {

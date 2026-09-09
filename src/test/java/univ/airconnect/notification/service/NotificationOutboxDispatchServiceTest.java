@@ -79,12 +79,12 @@ class NotificationOutboxDispatchServiceTest {
         User user = user(USER_ID, UserStatus.ACTIVE);
         PushDevice device = device(USER_ID, "token-1");
         stubLockedRows(outbox, user, device);
-        when(pushNotificationSender.send(outbox))
+        when(pushNotificationSender.send(outbox, PushPlatform.ANDROID))
                 .thenReturn(PushNotificationSender.PushSendResult.success("fcm-message-1"));
 
         service.dispatch(OUTBOX_ID);
 
-        verify(pushNotificationSender).send(outbox);
+        verify(pushNotificationSender).send(outbox, PushPlatform.ANDROID);
         assertThat(outbox.getStatus()).isEqualTo(NotificationDeliveryStatus.SENT);
     }
 
@@ -98,7 +98,7 @@ class NotificationOutboxDispatchServiceTest {
 
         service.dispatch(OUTBOX_ID);
 
-        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushNotificationSender, never()).send(outbox, PushPlatform.ANDROID);
         assertSkipped(outbox, NotificationOutboxDispatchService.PUSH_DEVICE_INACTIVE);
     }
 
@@ -112,7 +112,7 @@ class NotificationOutboxDispatchServiceTest {
 
         service.dispatch(OUTBOX_ID);
 
-        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushNotificationSender, never()).send(outbox, PushPlatform.ANDROID);
         assertSkipped(outbox, NotificationOutboxDispatchService.PUSH_DEVICE_INACTIVE);
     }
 
@@ -125,7 +125,7 @@ class NotificationOutboxDispatchServiceTest {
 
         service.dispatch(OUTBOX_ID);
 
-        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushNotificationSender, never()).send(outbox, PushPlatform.ANDROID);
         verify(pushDeviceRepository, never()).findByIdForUpdate(DEVICE_ID);
         assertSkipped(outbox, NotificationOutboxDispatchService.RECIPIENT_NOT_ACTIVE);
     }
@@ -141,7 +141,7 @@ class NotificationOutboxDispatchServiceTest {
 
         service.dispatch(OUTBOX_ID);
 
-        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushNotificationSender, never()).send(outbox, PushPlatform.ANDROID);
         assertSkipped(outbox, NotificationOutboxDispatchService.PUSH_TOKEN_CHANGED);
     }
 
@@ -155,7 +155,7 @@ class NotificationOutboxDispatchServiceTest {
 
         service.dispatch(OUTBOX_ID);
 
-        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushNotificationSender, never()).send(outbox, PushPlatform.ANDROID);
         assertSkipped(outbox, NotificationOutboxDispatchService.PUSH_PERMISSION_REVOKED);
     }
 
@@ -168,7 +168,7 @@ class NotificationOutboxDispatchServiceTest {
 
         service.dispatch(OUTBOX_ID);
 
-        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushNotificationSender, never()).send(outbox, PushPlatform.ANDROID);
         assertSkipped(outbox, NotificationOutboxDispatchService.PUSH_DEVICE_OWNER_CHANGED);
     }
 
@@ -178,7 +178,7 @@ class NotificationOutboxDispatchServiceTest {
         User user = user(USER_ID, UserStatus.ACTIVE);
         PushDevice device = device(USER_ID, "token-1");
         stubLockedRows(outbox, user, device);
-        when(pushNotificationSender.send(outbox))
+        when(pushNotificationSender.send(outbox, PushPlatform.ANDROID))
                 .thenReturn(PushNotificationSender.PushSendResult.invalidToken("UNREGISTERED", "gone"));
 
         service.dispatch(OUTBOX_ID);
@@ -194,7 +194,7 @@ class NotificationOutboxDispatchServiceTest {
         User user = user(USER_ID, UserStatus.ACTIVE);
         PushDevice device = device(USER_ID, "token-1");
         stubLockedRows(outbox, user, device);
-        when(pushNotificationSender.send(outbox))
+        when(pushNotificationSender.send(outbox, PushPlatform.ANDROID))
                 .thenReturn(PushNotificationSender.PushSendResult.failed(
                         "INVALID_ARGUMENT", "payload contains an invalid data key"));
 
@@ -218,7 +218,7 @@ class NotificationOutboxDispatchServiceTest {
 
         service.dispatch(OUTBOX_ID);
 
-        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushNotificationSender, never()).send(outbox, PushPlatform.ANDROID);
         verify(pushDeviceRepository, never()).findByIdForUpdate(DEVICE_ID);
         assertSkipped(outbox, NotificationOutboxDispatchService.CHAT_ROOM_ACCESS_REVOKED);
     }
@@ -235,7 +235,7 @@ class NotificationOutboxDispatchServiceTest {
 
         service.dispatch(OUTBOX_ID);
 
-        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushNotificationSender, never()).send(outbox, PushPlatform.ANDROID);
         verify(pushDeviceRepository, never()).findByIdForUpdate(DEVICE_ID);
         assertSkipped(outbox, NotificationOutboxDispatchService.CHAT_MESSAGE_NOT_AVAILABLE);
     }
@@ -250,12 +250,12 @@ class NotificationOutboxDispatchServiceTest {
         PushDevice device = device(USER_ID, "token-1");
         stubChatRows(outbox, user, room, membership, message);
         when(pushDeviceRepository.findByIdForUpdate(DEVICE_ID)).thenReturn(Optional.of(device));
-        when(pushNotificationSender.send(outbox))
+        when(pushNotificationSender.send(outbox, PushPlatform.ANDROID))
                 .thenReturn(PushNotificationSender.PushSendResult.success("fcm-chat-1"));
 
         service.dispatch(OUTBOX_ID);
 
-        verify(pushNotificationSender).send(outbox);
+        verify(pushNotificationSender).send(outbox, PushPlatform.ANDROID);
         assertThat(outbox.getStatus()).isEqualTo(NotificationDeliveryStatus.SENT);
     }
 

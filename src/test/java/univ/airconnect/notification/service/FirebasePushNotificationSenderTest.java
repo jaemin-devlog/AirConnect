@@ -9,10 +9,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.PushProvider;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -33,7 +35,7 @@ class FirebasePushNotificationSenderTest {
     }
 
     @Test
-    void send_appliesChatAndroidNotificationOptionsOnlyForChatMessageReceived() throws Exception {
+    void send_usesHighPriorityDataOnlyMessageForAndroidChat() throws Exception {
         when(firebaseMessaging.send(any(Message.class))).thenReturn("provider-message-id");
         FirebasePushNotificationSender sender = new FirebasePushNotificationSender(firebaseMessaging, new ObjectMapper());
         NotificationOutbox outbox = outbox("""
@@ -45,18 +47,45 @@ class FirebasePushNotificationSenderTest {
                 }
                 """);
 
-        sender.send(outbox);
+        sender.send(outbox, PushPlatform.ANDROID);
 
         Message message = captureMessage();
+        assertThat(ReflectionTestUtils.getField(message, "notification")).isNull();
+        @SuppressWarnings("unchecked")
+        Map<String, String> data = (Map<String, String>) ReflectionTestUtils.getField(message, "data");
+        assertThat(data)
+                .containsEntry("notificationType", "CHAT_MESSAGE_RECEIVED")
+                .containsEntry("chatRoomId", "88")
+                .containsEntry("messageId", "5512");
         Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");
         assertThat(androidConfig).isNotNull();
-        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("normal");
-        assertThat(ReflectionTestUtils.getField(androidConfig, "collapseKey")).isEqualTo("chat-room-88");
+        assertThat(ReflectionTestUtils.getField(androidConfig, "priority")).isEqualTo("high");
+        assertThat(ReflectionTestUtils.getField(androidConfig, "collapseKey")).isNull();
         Object androidNotification = ReflectionTestUtils.getField(androidConfig, "notification");
-        assertThat(ReflectionTestUtils.getField(androidNotification, "sound")).isEqualTo("default");
-        assertThat(ReflectionTestUtils.getField(androidNotification, "channelId")).isEqualTo("airconnect_chat_push");
-        assertThat(ReflectionTestUtils.getField(androidNotification, "tag")).isEqualTo("chat-88");
-        assertThat(ReflectionTestUtils.getField(androidNotification, "priority")).isEqualTo("PRIORITY_DEFAULT");
+        assertThat(androidNotification).isNull();
+    }
+
+    @Test
+    void send_keepsNotificationPayloadForIosChat() throws Exception {
+        when(firebaseMessaging.send(any(Message.class))).thenReturn("provider-message-id");
+        FirebasePushNotificationSender sender = new FirebasePushNotificationSender(firebaseMessaging, new ObjectMapper());
+        NotificationOutbox outbox = outbox("""
+                {
+                  "notificationType": "CHAT_MESSAGE_RECEIVED",
+                  "type": "CHAT_MESSAGE",
+                  "chatRoomId": "88",
+                  "messageId": "5512"
+                }
+                """);
+
+        sender.send(outbox, PushPlatform.IOS);
+
+        Message message = captureMessage();
+        Object notification = ReflectionTestUtils.getField(message, "notification");
+        assertThat(notification).isNotNull();
+        assertThat(ReflectionTestUtils.getField(notification, "title")).isEqualTo("민수");
+        assertThat(ReflectionTestUtils.getField(notification, "body")).isEqualTo("오늘 시간 괜찮아요?");
+        assertThat(ReflectionTestUtils.getField(message, "apnsConfig")).isNotNull();
     }
 
     @Test
@@ -71,7 +100,7 @@ class FirebasePushNotificationSenderTest {
                 }
                 """);
 
-        sender.send(outbox);
+        sender.send(outbox, PushPlatform.ANDROID);
 
         Message message = captureMessage();
         Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");
@@ -96,7 +125,7 @@ class FirebasePushNotificationSenderTest {
                 }
                 """);
 
-        sender.send(outbox);
+        sender.send(outbox, PushPlatform.ANDROID);
 
         Message message = captureMessage();
         Object androidConfig = ReflectionTestUtils.getField(message, "androidConfig");

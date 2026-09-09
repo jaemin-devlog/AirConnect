@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -58,72 +59,8 @@ class NotificationServiceTest {
     }
 
     @Test
-    void createAndEnqueue_coalescesPendingAndroidChatOutboxByRoom() {
+    void createAndEnqueueCreatesOneImmediateAndroidOutboxPerChatMessage() {
         PushDevice androidDevice = pushDevice(PushPlatform.ANDROID);
-        NotificationOutbox existingOutbox = NotificationOutbox.create(
-                4001L,
-                9L,
-                17L,
-                PushProvider.FCM,
-                "old-token",
-                "old-title",
-                "old-body",
-                "{\"notificationType\":\"CHAT_MESSAGE_RECEIVED\",\"chatRoomId\":\"88\"}",
-                LocalDateTime.of(2026, 4, 26, 10, 0, 1)
-        );
-
-        when(notificationPreferenceService.getDeliveryPolicy(9L, NotificationType.CHAT_MESSAGE_RECEIVED))
-                .thenReturn(new NotificationPreferenceService.DeliveryPolicy(true, true));
-        when(notificationRepository.findByUserIdAndDedupeKey(9L, "chat-5512"))
-                .thenReturn(Optional.empty());
-        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
-            Notification notification = invocation.getArgument(0);
-            ReflectionTestUtils.setField(notification, "id", 5001L);
-            return notification;
-        });
-        when(pushDeviceService.findPushableDevices(9L)).thenReturn(List.of(androidDevice));
-        when(notificationOutboxRepository.findPendingChatOutboxForUpdate(17L, "88"))
-                .thenReturn(Optional.of(existingOutbox));
-
-        service.createAndEnqueue(new NotificationService.CreateCommand(
-                9L,
-                NotificationType.CHAT_MESSAGE_RECEIVED,
-                "Minsu",
-                "Hello there",
-                "airconnect://chat/rooms/88",
-                22L,
-                null,
-                "{\"chatRoomId\":\"88\",\"messageId\":\"5512\",\"senderNickname\":\"Minsu\",\"messagePreview\":\"Hello there\"}",
-                "chat-5512"
-        ));
-
-        assertThat(existingOutbox.getNotificationId()).isEqualTo(5001L);
-        assertThat(existingOutbox.getTargetToken()).isEqualTo("fcm-token");
-        assertThat(existingOutbox.getTitle()).isEqualTo("Minsu");
-        assertThat(existingOutbox.getBody()).isEqualTo("Hello there");
-        assertThat(existingOutbox.getDataJson()).contains("\"chatRoomId\":\"88\"");
-
-        ArgumentCaptor<List<NotificationOutbox>> outboxesCaptor = ArgumentCaptor.forClass(List.class);
-        verify(notificationOutboxRepository).saveAll(outboxesCaptor.capture());
-        assertThat(outboxesCaptor.getValue()).isEmpty();
-    }
-
-    @Test
-    void createAndEnqueueCapsContinuousAndroidChatCoalescingAtFiveSecondsFromFirstOutbox() {
-        PushDevice androidDevice = pushDevice(PushPlatform.ANDROID);
-        NotificationOutbox existingOutbox = NotificationOutbox.create(
-                4001L,
-                9L,
-                17L,
-                PushProvider.FCM,
-                "old-token",
-                "old-title",
-                "old-body",
-                "{\"notificationType\":\"CHAT_MESSAGE_RECEIVED\",\"chatRoomId\":\"88\"}",
-                LocalDateTime.now().plusSeconds(2)
-        );
-        LocalDateTime firstOutboxCreatedAt = LocalDateTime.now().minusSeconds(4);
-        ReflectionTestUtils.setField(existingOutbox, "createdAt", firstOutboxCreatedAt);
         AtomicLong notificationId = new AtomicLong(5000L);
 
         when(notificationPreferenceService.getDeliveryPolicy(9L, NotificationType.CHAT_MESSAGE_RECEIVED))
@@ -136,10 +73,9 @@ class NotificationServiceTest {
             return notification;
         });
         when(pushDeviceService.findPushableDevices(9L)).thenReturn(List.of(androidDevice));
-        when(notificationOutboxRepository.findPendingChatOutboxForUpdate(17L, "88"))
-                .thenReturn(Optional.of(existingOutbox));
 
-        for (int sequence = 1; sequence <= 30; sequence++) {
+        LocalDateTime before = LocalDateTime.now();
+        for (int sequence = 1; sequence <= 3; sequence++) {
             service.createAndEnqueue(new NotificationService.CreateCommand(
                     9L,
                     NotificationType.CHAT_MESSAGE_RECEIVED,
@@ -152,10 +88,23 @@ class NotificationServiceTest {
                     "chat-message-" + sequence
             ));
         }
+        LocalDateTime after = LocalDateTime.now();
 
-        assertThat(existingOutbox.getNextAttemptAt())
-                .isBeforeOrEqualTo(firstOutboxCreatedAt.plus(NotificationService.ANDROID_CHAT_MAX_COALESCING_DELAY));
-        assertThat(existingOutbox.getBody()).isEqualTo("Message 30");
+        ArgumentCaptor<List<NotificationOutbox>> outboxesCaptor = ArgumentCaptor.forClass(List.class);
+        verify(notificationOutboxRepository, times(3)).saveAll(outboxesCaptor.capture());
+        List<NotificationOutbox> outboxes = outboxesCaptor.getAllValues().stream()
+                .flatMap(List::stream)
+                .toList();
+
+        assertThat(outboxes).hasSize(3);
+        assertThat(outboxes).extracting(NotificationOutbox::getNotificationId)
+                .containsExactly(5001L, 5002L, 5003L);
+        assertThat(outboxes).extracting(NotificationOutbox::getDataJson)
+                .allSatisfy(payload -> assertThat(payload)
+                        .contains("\"notificationId\"")
+                        .contains("\"messageId\""));
+        assertThat(outboxes).allSatisfy(outbox -> assertThat(outbox.getNextAttemptAt())
+                .isBetween(before, after));
     }
 
     @Test
@@ -173,9 +122,6 @@ class NotificationServiceTest {
             return notification;
         });
         when(pushDeviceService.findPushableDevices(9L)).thenReturn(List.of(androidDevice, iosDevice));
-        when(notificationOutboxRepository.findPendingChatOutboxForUpdate(17L, "88"))
-                .thenReturn(Optional.empty());
-
         service.createAndEnqueue(new NotificationService.CreateCommand(
                 9L,
                 NotificationType.CHAT_MESSAGE_RECEIVED,

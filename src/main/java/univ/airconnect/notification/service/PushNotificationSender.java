@@ -1,5 +1,6 @@
 package univ.airconnect.notification.service;
 
+import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 
 /**
@@ -12,7 +13,7 @@ public interface PushNotificationSender {
     /**
      * 단건 outbox를 외부 프로바이더로 발송한다.
      */
-    PushSendResult send(NotificationOutbox outbox);
+    PushSendResult send(NotificationOutbox outbox, PushPlatform platform);
 
     /**
      * 발송 결과를 워커가 공통 처리할 수 있도록 정규화한 결과 모델이다.

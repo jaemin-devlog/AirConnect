@@ -3,6 +3,7 @@ package univ.airconnect.notification.service;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.entity.NotificationOutbox;
 
 /**
@@ -17,9 +18,9 @@ public class LoggingPushNotificationSender implements PushNotificationSender {
      * 나머지 outbox 파이프라인을 로컬에서 검증할 수 있도록 성공 발송을 흉내 낸다.
      */
     @Override
-    public PushSendResult send(NotificationOutbox outbox) {
-        log.debug("Push dispatch simulated: outboxId={}, userId={}, provider={}",
-                outbox.getId(), outbox.getUserId(), outbox.getProvider());
+    public PushSendResult send(NotificationOutbox outbox, PushPlatform platform) {
+        log.debug("Push dispatch simulated: outboxId={}, userId={}, provider={}, platform={}",
+                outbox.getId(), outbox.getUserId(), outbox.getProvider(), platform);
         return PushSendResult.success("simulated-" + outbox.getId());
     }
 }
