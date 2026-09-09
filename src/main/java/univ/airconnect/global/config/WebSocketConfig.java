@@ -14,6 +14,7 @@ import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
 import univ.airconnect.global.security.stomp.CustomStompErrorHandler;
 import univ.airconnect.global.security.stomp.StompOpsMonitor;
 import univ.airconnect.global.security.stomp.StompOutboundLoggingInterceptor;
+import univ.airconnect.global.security.stomp.StompOutboundAuthorizationInterceptor;
 import univ.airconnect.global.security.stomp.StompHandler;
 
 import java.util.Arrays;
@@ -25,6 +26,7 @@ import java.util.List;
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final StompHandler stompHandler;
+    private final StompOutboundAuthorizationInterceptor stompOutboundAuthorizationInterceptor;
     private final StompOutboundLoggingInterceptor stompOutboundLoggingInterceptor;
 
     @Value("${app.websocket.inbound.core-pool-size:16}")
@@ -106,7 +108,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .maxPoolSize(outboundMaxPoolSize)
                 .queueCapacity(outboundQueueCapacity)
                 .keepAliveSeconds(outboundKeepAliveSeconds);
-        registration.interceptors(stompOutboundLoggingInterceptor);
+        registration.interceptors(stompOutboundAuthorizationInterceptor, stompOutboundLoggingInterceptor);
     }
 
     @Override

@@ -61,6 +61,7 @@ import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.global.security.resolver.CurrentUserIdArgumentResolver;
 import univ.airconnect.global.security.stomp.StompHandler;
 import univ.airconnect.global.security.stomp.StompOpsMonitor;
+import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.groupmatching.service.GMatchingService;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.service.NotificationService;
@@ -105,6 +106,7 @@ class ChatSendStatusSecurityTest {
     @MockitoBean UserBlockPolicyService blockPolicy;
     @MockitoBean GMatchingService matchingService;
     @MockitoBean JwtProvider jwtProvider;
+    @Autowired StompSessionRegistry stompSessionRegistry;
 
     private TransactionTemplate transaction;
     private StompHandler handler;
@@ -129,7 +131,8 @@ class ChatSendStatusSecurityTest {
             roomId = chatService.createGroupRoomWithMembers("status-security", List.of(sender.getId(), recipient.getId())).getId();
         });
         when(jwtProvider.getUserId("test-token")).thenReturn(sender.getId());
-        handler = new StompHandler(jwtProvider, chatService, matchingService, new StompOpsMonitor(20), users);
+        handler = new StompHandler(jwtProvider, chatService, matchingService, new StompOpsMonitor(20), users,
+                stompSessionRegistry);
         controller = new ChatController(chatService);
 
         // The production JWT filter and the same authenticated-only rule used for chat REST.
@@ -166,8 +169,7 @@ class ChatSendStatusSecurityTest {
             send(connectedPrincipal);
             assertNormalSend();
         } else {
-            assertThatThrownBy(() -> send(connectedPrincipal)).isInstanceOf(AuthException.class)
-                    .extracting(ex -> ((AuthException) ex).getErrorCode()).isEqualTo(errorFor(status));
+            assertThatThrownBy(() -> send(connectedPrincipal)).isInstanceOf(AccessDeniedException.class);
             assertNoSendEffects();
         }
     }
@@ -177,11 +179,41 @@ class ChatSendStatusSecurityTest {
         Principal connectedPrincipal = connectAndSubscribe();
         changeStatus(UserStatus.SUSPENDED);
         clearSendEffects();
-        assertThatThrownBy(() -> send(connectedPrincipal)).isInstanceOf(AuthException.class);
+        assertThatThrownBy(() -> send(connectedPrincipal)).isInstanceOf(AccessDeniedException.class);
         assertNoSendEffects();
         transaction.executeWithoutResult(tx -> users.findById(sender.getId()).orElseThrow().reactivate());
         send(connectedPrincipal);
         assertNormalSend();
+    }
+
+    @Test
+    void brokerDirectSend_isRejectedWithoutCreatingChatMessage() {
+        Principal connectedPrincipal = connectAndSubscribe();
+        clearSendEffects();
+        StompHeaderAccessor directSend = frame(
+                StompCommand.SEND, "/sub/chat/room/" + roomId, connectedPrincipal);
+
+        assertThatThrownBy(() -> handler.preSend(
+                MessageBuilder.createMessage(new byte[0], directSend.getMessageHeaders()),
+                mock(MessageChannel.class)))
+                .isInstanceOf(AccessDeniedException.class);
+
+        assertNoSendEffects();
+    }
+
+    @Test
+    void brokerDirectSendToAnotherRoom_isRejectedWithoutCreatingChatMessage() {
+        Principal connectedPrincipal = connectAndSubscribe();
+        clearSendEffects();
+        StompHeaderAccessor directSend = frame(
+                StompCommand.SEND, "/sub/chat/room/" + (roomId + 999L), connectedPrincipal);
+
+        assertThatThrownBy(() -> handler.preSend(
+                MessageBuilder.createMessage(new byte[0], directSend.getMessageHeaders()),
+                mock(MessageChannel.class)))
+                .isInstanceOf(AccessDeniedException.class);
+
+        assertNoSendEffects();
     }
 
     @Test
@@ -332,7 +364,7 @@ class ChatSendStatusSecurityTest {
     @Configuration(proxyBeanMethods = false)
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackages = {"univ.airconnect.chat.repository", "univ.airconnect.user.repository"})
-    @Import(ChatService.class)
+    @Import({ChatService.class, StompSessionRegistry.class})
     static class JpaConfig {
         @Bean DataSource dataSource() {
             return new DriverManagerDataSource("jdbc:h2:mem:chat-send-security;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");

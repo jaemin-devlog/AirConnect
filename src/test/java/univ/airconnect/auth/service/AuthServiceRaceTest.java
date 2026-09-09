@@ -25,6 +25,8 @@ import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
 import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.global.security.jwt.JwtProvider;
+import univ.airconnect.chat.service.ChatService;
+import univ.airconnect.notification.service.PushDeviceService;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.service.UserService;
@@ -64,6 +66,8 @@ class AuthServiceRaceTest {
     @Mock private AttemptThrottleService attemptThrottleService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private SocialAuthClient socialAuthClient;
+    @Mock private PushDeviceService pushDeviceService;
+    @Mock private ChatService chatService;
 
     @InjectMocks
     private AuthService authService;

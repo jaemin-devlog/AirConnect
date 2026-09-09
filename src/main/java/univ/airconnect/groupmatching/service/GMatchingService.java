@@ -1400,6 +1400,9 @@ public class GMatchingService {
         if (memberOpt.isEmpty()) {
             return false;
         }
+        if (memberOpt.get().wasExpelled()) {
+            return false;
+        }
 
         Optional<GTemporaryTeamRoom> roomOpt = temporaryTeamRoomRepository.findById(teamRoomId);
         if (roomOpt.isEmpty()) {

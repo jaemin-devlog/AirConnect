@@ -23,6 +23,7 @@ import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
+import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
@@ -64,6 +65,7 @@ class ChatServiceReadTrackingTest {
     @Mock private SimpMessageSendingOperations messagingTemplate;
     @Mock private NotificationService notificationService;
     @Mock private UserBlockPolicyService userBlockPolicyService;
+    @Mock private StompSessionRegistry stompSessionRegistry;
 
     private ObjectMapper objectMapper;
     private ChatService chatService;
@@ -87,7 +89,8 @@ class ChatServiceReadTrackingTest {
                 messagingTemplate,
                 objectMapper,
                 notificationService,
-                userBlockPolicyService
+                userBlockPolicyService,
+                stompSessionRegistry
         );
         doAnswer(invocation -> {
             String payload = invocation.getArgument(1, String.class);

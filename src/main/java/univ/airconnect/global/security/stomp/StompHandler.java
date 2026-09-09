@@ -24,33 +24,41 @@ import univ.airconnect.user.repository.UserRepository;
 import java.security.Principal;
 import java.util.Base64;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Component
 public class StompHandler implements ChannelInterceptor {
 
-    private static final String CHAT_ROOM_SUB_PREFIX = "/sub/chat/room/";
-    private static final String CHAT_LIST_SUB_PREFIX = "/sub/chat/list/";
-    private static final String MATCHING_TEAM_ROOM_SUB_PREFIX = "/sub/matching/team-room/";
+    private static final String CHAT_SEND_DESTINATION = "/pub/chat/message";
+    private static final Pattern CHAT_ROOM_SUB_DESTINATION = Pattern.compile("^/sub/chat/room/([1-9]\\d*)$");
+    private static final Pattern CHAT_LIST_SUB_DESTINATION = Pattern.compile("^/sub/chat/list/([1-9]\\d*)$");
+    private static final Pattern MATCHING_TEAM_ROOM_SUB_DESTINATION = Pattern.compile("^/sub/matching/team-room/([1-9]\\d*)$");
+    private static final Set<String> ALLOWED_SEND_DESTINATIONS = Set.of(CHAT_SEND_DESTINATION);
 
     private final JwtProvider jwtProvider;
     private final ChatService chatService;
     private final GMatchingService matchingService;
     private final StompOpsMonitor stompOpsMonitor;
     private final UserRepository userRepository;
+    private final StompSessionRegistry sessionRegistry;
 
     public StompHandler(
             JwtProvider jwtProvider,
             @Lazy ChatService chatService,
             @Lazy GMatchingService matchingService,
             StompOpsMonitor stompOpsMonitor,
-            UserRepository userRepository
+            UserRepository userRepository,
+            StompSessionRegistry sessionRegistry
     ) {
         this.jwtProvider = jwtProvider;
         this.chatService = chatService;
         this.matchingService = matchingService;
         this.stompOpsMonitor = stompOpsMonitor;
         this.userRepository = userRepository;
+        this.sessionRegistry = sessionRegistry;
     }
 
     @Override
@@ -69,6 +77,8 @@ public class StompHandler implements ChannelInterceptor {
                 handleConnectWithLogging(accessor);
             } else if (StompCommand.SUBSCRIBE.equals(command)) {
                 handleSubscribe(accessor);
+            } else if (StompCommand.SEND.equals(command)) {
+                handleSend(accessor);
             } else if (StompCommand.UNSUBSCRIBE.equals(command)) {
                 handleUnsubscribe(accessor);
             } else if (StompCommand.DISCONNECT.equals(command)) {
@@ -104,6 +114,7 @@ public class StompHandler implements ChannelInterceptor {
                     new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 
             accessor.setUser(authentication);
+            sessionRegistry.register(accessor.getSessionId(), userId);
             try {
                 // principal 정보가 이미 세팅되어 있으므로 Redis 세션 저장 실패로 CONNECT를 깨지 않는다.
                 chatService.saveSessionInfo(accessor.getSessionId(), userId);
@@ -142,25 +153,30 @@ public class StompHandler implements ChannelInterceptor {
             throw new AccessDeniedException("Unable to resolve authenticated user.");
         }
         ensureActiveUser(userId);
+        ensureAuthorizedSession(accessor, userId);
 
-        if (destination.startsWith(CHAT_ROOM_SUB_PREFIX)) {
-            handleChatSubscribe(accessor, destination, userId);
+        Matcher chatRoomMatcher = CHAT_ROOM_SUB_DESTINATION.matcher(destination);
+        if (chatRoomMatcher.matches()) {
+            handleChatSubscribe(accessor, Long.valueOf(chatRoomMatcher.group(1)), userId);
             return;
         }
 
-        if (destination.startsWith(CHAT_LIST_SUB_PREFIX)) {
-            handleChatListSubscribe(destination, userId);
+        Matcher chatListMatcher = CHAT_LIST_SUB_DESTINATION.matcher(destination);
+        if (chatListMatcher.matches()) {
+            handleChatListSubscribe(Long.valueOf(chatListMatcher.group(1)), userId);
             return;
         }
 
-        if (destination.startsWith(MATCHING_TEAM_ROOM_SUB_PREFIX)) {
-            handleMatchingSubscribe(accessor, destination, userId);
+        Matcher matchingRoomMatcher = MATCHING_TEAM_ROOM_SUB_DESTINATION.matcher(destination);
+        if (matchingRoomMatcher.matches()) {
+            handleMatchingSubscribe(accessor, Long.valueOf(matchingRoomMatcher.group(1)), userId);
+            return;
         }
+
+        throw new AccessDeniedException("Unsupported STOMP subscription destination.");
     }
 
-    private void handleChatSubscribe(StompHeaderAccessor accessor, String destination, Long userId) {
-        Long roomId = extractId(destination, CHAT_ROOM_SUB_PREFIX, "chat room");
-
+    private void handleChatSubscribe(StompHeaderAccessor accessor, Long roomId, Long userId) {
         if (!chatService.isMember(roomId, userId)) {
             log.error("STOMP SUBSCRIBE REJECTED: roomId={}, userId={}, reason=not_member", roomId, userId);
             stompOpsMonitor.recordSubscribeFailure(new AccessDeniedException("not_member"));
@@ -191,8 +207,7 @@ public class StompHandler implements ChannelInterceptor {
                 accessor.getSessionId(), userId, roomId);
     }
 
-    private void handleMatchingSubscribe(StompHeaderAccessor accessor, String destination, Long userId) {
-        Long teamRoomId = extractId(destination, MATCHING_TEAM_ROOM_SUB_PREFIX, "team room");
+    private void handleMatchingSubscribe(StompHeaderAccessor accessor, Long teamRoomId, Long userId) {
         if (!matchingService.canSubscribeTeamRoom(teamRoomId, userId)) {
             log.error("STOMP SUBSCRIBE REJECTED: teamRoomId={}, userId={}, reason=no_access", teamRoomId, userId);
             stompOpsMonitor.recordSubscribeFailure(new AccessDeniedException("no_access"));
@@ -205,10 +220,10 @@ public class StompHandler implements ChannelInterceptor {
                 accessor.getSessionId(), userId, teamRoomId);
     }
 
-    private void handleChatListSubscribe(String destination, Long userId) {
-        Long subscribedUserId = extractId(destination, CHAT_LIST_SUB_PREFIX, "chat list user");
+    private void handleChatListSubscribe(Long subscribedUserId, Long userId) {
         if (!subscribedUserId.equals(userId)) {
-            log.error("STOMP SUBSCRIBE REJECTED: destination={}, userId={}, reason=list_forbidden", destination, userId);
+            log.error("STOMP SUBSCRIBE REJECTED: subscribedUserId={}, userId={}, reason=list_forbidden",
+                    subscribedUserId, userId);
             stompOpsMonitor.recordSubscribeFailure(new AccessDeniedException("list_forbidden"));
             throw new AccessDeniedException("No permission to subscribe this chat list.");
         }
@@ -222,7 +237,28 @@ public class StompHandler implements ChannelInterceptor {
 
     private void handleDisconnect(StompHeaderAccessor accessor) {
         log.debug("STOMP DISCONNECT: sessionId={}", accessor.getSessionId());
+        sessionRegistry.remove(accessor.getSessionId());
         chatService.removeSessionInfo(accessor.getSessionId());
+    }
+
+    private void handleSend(StompHeaderAccessor accessor) {
+        Long userId = extractUserId(accessor);
+        if (userId == null) {
+            throw new AccessDeniedException("Unable to resolve authenticated user.");
+        }
+        ensureActiveUser(userId);
+        ensureAuthorizedSession(accessor, userId);
+
+        String destination = accessor.getDestination();
+        if (!ALLOWED_SEND_DESTINATIONS.contains(destination)) {
+            throw new AccessDeniedException("Unsupported STOMP send destination.");
+        }
+    }
+
+    private void ensureAuthorizedSession(StompHeaderAccessor accessor, Long userId) {
+        if (!sessionRegistry.isAuthorized(accessor.getSessionId(), userId)) {
+            throw new AccessDeniedException("STOMP session is no longer authorized.");
+        }
     }
 
     private String extractToken(StompHeaderAccessor accessor) {
@@ -281,18 +317,6 @@ public class StompHandler implements ChannelInterceptor {
             return payload.substring(valueStart, valueEnd);
         } catch (Exception ignored) {
             return "unknown";
-        }
-    }
-
-    private Long extractId(String destination, String prefix, String target) {
-        try {
-            Long id = Long.valueOf(destination.substring(prefix.length()));
-            if (id <= 0) {
-                throw new IllegalArgumentException(target + " ID는 1 이상이어야 합니다.");
-            }
-            return id;
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(target + " 대상 경로가 올바르지 않습니다.");
         }
     }
 

@@ -453,6 +453,23 @@ class GMatchingServiceTest {
     }
 
     @Test
+    @DisplayName("expelled historical member cannot keep subscribing after room closes")
+    void canSubscribeTeamRoom_blocksExpelledHistoricalMember() {
+        Long teamRoomId = 931L;
+        Long userId = 72L;
+        GTemporaryTeamMember expelledMember = GTemporaryTeamMember.create(teamRoomId, userId, false);
+        expelledMember.markExpelled();
+
+        when(temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(teamRoomId, userId))
+                .thenReturn(false);
+        when(temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(teamRoomId, userId))
+                .thenReturn(Optional.of(expelledMember));
+
+        assertThat(matchingService.canSubscribeTeamRoom(teamRoomId, userId)).isFalse();
+        verify(temporaryTeamRoomRepository, never()).findById(teamRoomId);
+    }
+
+    @Test
     @DisplayName("temporary room creation builds Korean chat room name without corruption")
     void createTemporaryTeamRoom_buildsKoreanChatRoomName() {
         Long leaderUserId = 81L;

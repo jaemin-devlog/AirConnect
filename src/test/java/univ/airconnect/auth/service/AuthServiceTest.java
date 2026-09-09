@@ -27,6 +27,7 @@ import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
 import univ.airconnect.global.security.jwt.JwtProvider;
+import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.notification.service.PushDeviceService;
 import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
@@ -79,6 +80,8 @@ class AuthServiceTest {
     private SocialAuthClient socialAuthClient;
     @Mock
     private PushDeviceService pushDeviceService;
+    @Mock
+    private ChatService chatService;
 
     @InjectMocks
     private AuthService authService;
@@ -94,6 +97,7 @@ class AuthServiceTest {
 
         verify(refreshTokenRepository).deleteById("41:device-logout");
         verify(pushDeviceService).deactivateIfPresent(41L, "device-logout");
+        verify(chatService).invalidateSessionsByUserId(41L);
     }
 
     @Test

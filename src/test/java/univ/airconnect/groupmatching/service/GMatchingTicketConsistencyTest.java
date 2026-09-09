@@ -42,6 +42,7 @@ import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.chat.service.RedisSubscriber;
+import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.groupmatching.domain.GGenderFilter;
 import univ.airconnect.groupmatching.domain.GMatchResultStatus;
 import univ.airconnect.groupmatching.domain.GTeamGender;
@@ -449,7 +450,7 @@ class GMatchingTicketConsistencyTest {
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackages = {"univ.airconnect.chat.repository", "univ.airconnect.user.repository",
             "univ.airconnect.groupmatching.repository", "univ.airconnect.iap.repository"})
-    @Import({ChatService.class, GMatchingService.class})
+    @Import({ChatService.class, GMatchingService.class, StompSessionRegistry.class})
     static class IsolatedJpaConfig {
         @Bean DataSource dataSource() {
             return new DriverManagerDataSource("jdbc:h2:mem:group-ticket-consistency-only;MODE=MySQL;"

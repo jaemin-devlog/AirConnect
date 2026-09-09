@@ -32,6 +32,7 @@ import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
+import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.MilitaryStatus;
@@ -80,6 +81,8 @@ class ChatServiceTest {
     private NotificationService notificationService;
     @Mock
     private UserBlockPolicyService userBlockPolicyService;
+    @Mock
+    private StompSessionRegistry stompSessionRegistry;
     @Mock
     private ValueOperations<String, Object> valueOperations;
     @Mock
@@ -130,6 +133,17 @@ class ChatServiceTest {
                 org.mockito.ArgumentMatchers.eq(redisSubscriber),
                 org.mockito.ArgumentMatchers.any(Topic.class)
         );
+    }
+
+    @Test
+    void invalidateSessions_revokesLocalSessionsEvenWhenRedisCleanupFails() {
+        ChatService service = createService();
+        when(stompSessionRegistry.revokeUser(41L)).thenReturn(2);
+        when(redisTemplate.keys("chat:session:*")).thenThrow(new RuntimeException("redis unavailable"));
+
+        assertThat(service.invalidateSessionsByUserId(41L)).isEqualTo(2);
+
+        verify(stompSessionRegistry).revokeUser(41L);
     }
 
     @Test
@@ -830,7 +844,8 @@ class ChatServiceTest {
                 messagingTemplate,
                 objectMapper,
                 notificationService,
-                userBlockPolicyService
+                userBlockPolicyService,
+                stompSessionRegistry
         );
         ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
         return service;

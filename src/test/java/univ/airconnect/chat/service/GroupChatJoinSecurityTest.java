@@ -51,6 +51,7 @@ import univ.airconnect.global.security.principal.CustomUserPrincipal;
 import univ.airconnect.global.security.resolver.CurrentUserIdArgumentResolver;
 import univ.airconnect.global.security.stomp.StompHandler;
 import univ.airconnect.global.security.stomp.StompOpsMonitor;
+import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.groupmatching.domain.GGenderFilter;
 import univ.airconnect.groupmatching.domain.GMatchResultStatus;
 import univ.airconnect.groupmatching.domain.GTeamGender;
@@ -111,6 +112,7 @@ class GroupChatJoinSecurityTest {
     @Autowired GMatchResultRepository matchResults;
     @Autowired GFinalGroupChatRoomRepository finalRooms;
     @Autowired EntityManager entityManager;
+    @Autowired StompSessionRegistry stompSessionRegistry;
 
     @MockitoBean RedisTemplate<String, Object> redisTemplate;
     @MockitoBean RedisMessageListenerContainer redisListener;
@@ -214,7 +216,8 @@ class GroupChatJoinSecurityTest {
         assertThat(messages.findAll()).hasSize(1);
 
         StompHandler handler = new StompHandler(mock(JwtProvider.class), chatService, matchingService,
-                new StompOpsMonitor(20), users);
+                new StompOpsMonitor(20), users, stompSessionRegistry);
+        stompSessionRegistry.register("attacker-session", attacker.getId());
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setSessionId("attacker-session");
         accessor.setSubscriptionId("attacker-subscription");
@@ -348,7 +351,7 @@ class GroupChatJoinSecurityTest {
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackages = {"univ.airconnect.chat.repository", "univ.airconnect.user.repository",
             "univ.airconnect.groupmatching.repository", "univ.airconnect.iap.repository"})
-    @Import({ChatService.class, GMatchingService.class})
+    @Import({ChatService.class, GMatchingService.class, StompSessionRegistry.class})
     static class IsolatedJpaConfig {
         @Bean DataSource dataSource() {
             return new DriverManagerDataSource("jdbc:h2:mem:group-join-security;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");

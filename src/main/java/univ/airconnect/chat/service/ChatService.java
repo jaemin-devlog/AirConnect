@@ -33,6 +33,7 @@ import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
+import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
@@ -64,6 +65,7 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final NotificationService notificationService;
     private final UserBlockPolicyService userBlockPolicyService;
+    private final StompSessionRegistry stompSessionRegistry;
 
     private final Map<String, ChannelTopic> topics = new ConcurrentHashMap<>();
 
@@ -306,32 +308,36 @@ public class ChatService {
     }
 
     /**
-     * 사용자 탈퇴 등으로 특정 사용자의 활성 STOMP 세션 정보를 Redis에서 제거한다.
+     * 로그아웃/탈퇴 시 로컬 STOMP 권한을 먼저 폐기하고 Redis 관측 메타데이터를 정리한다.
      */
     public int invalidateSessionsByUserId(Long userId) {
         if (userId == null) {
             return 0;
         }
-
-        Set<String> sessionKeys = redisTemplate.keys(CHAT_SESSION_KEY + "*");
-        if (sessionKeys == null || sessionKeys.isEmpty()) {
-            return 0;
-        }
-
-        int removed = 0;
-        String targetUserId = String.valueOf(userId);
-        for (String sessionKey : sessionKeys) {
-            Object storedUserId = redisTemplate.opsForValue().get(sessionKey);
-            if (storedUserId == null || !targetUserId.equals(String.valueOf(storedUserId))) {
-                continue;
+        int revokedLocalSessions = stompSessionRegistry.revokeUser(userId);
+        int removedRedisSessions = 0;
+        try {
+            Set<String> sessionKeys = redisTemplate.keys(CHAT_SESSION_KEY + "*");
+            if (sessionKeys == null || sessionKeys.isEmpty()) {
+                return revokedLocalSessions;
             }
 
-            String sessionId = sessionKey.substring(CHAT_SESSION_KEY.length());
-            removeSessionInfo(sessionId);
-            removed++;
-        }
+            String targetUserId = String.valueOf(userId);
+            for (String sessionKey : sessionKeys) {
+                Object storedUserId = redisTemplate.opsForValue().get(sessionKey);
+                if (storedUserId == null || !targetUserId.equals(String.valueOf(storedUserId))) {
+                    continue;
+                }
 
-        return removed;
+                String sessionId = sessionKey.substring(CHAT_SESSION_KEY.length());
+                removeSessionInfo(sessionId);
+                removedRedisSessions++;
+            }
+        } catch (RuntimeException ex) {
+            log.warn("STOMP Redis session cleanup failed after local revocation. userId={}, reason={}",
+                    userId, ex.getMessage());
+        }
+        return Math.max(revokedLocalSessions, removedRedisSessions);
     }
 
     /**
