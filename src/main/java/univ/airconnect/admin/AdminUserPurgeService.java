@@ -9,6 +9,8 @@ import univ.airconnect.auth.repository.SocialLoginDeviceBindingRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
+import univ.airconnect.matching.repository.MatchingConnectionRepository;
+import univ.airconnect.matching.repository.MatchingExposureRepository;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
 import univ.airconnect.notification.repository.NotificationPreferenceRepository;
 import univ.airconnect.notification.repository.NotificationRepository;
@@ -34,6 +36,8 @@ public class AdminUserPurgeService {
     private final UserProfileRepository userProfileRepository;
     private final UserSchoolConsentRepository userSchoolConsentRepository;
     private final ChatRoomMemberRepository chatRoomMemberRepository;
+    private final MatchingConnectionRepository matchingConnectionRepository;
+    private final MatchingExposureRepository matchingExposureRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final SocialLoginDeviceBindingRepository socialLoginDeviceBindingRepository;
     private final PushDeviceRepository pushDeviceRepository;
@@ -66,6 +70,8 @@ public class AdminUserPurgeService {
         long deletedRefreshTokenRows = deleteRefreshTokens(userId);
         long deletedUserMilestoneRows = userMilestoneRepository.deleteByUserId(userId);
         long deletedChatRoomMemberRows = chatRoomMemberRepository.deleteByUserId(userId);
+        matchingConnectionRepository.deleteByUser1IdOrUser2Id(userId, userId);
+        matchingExposureRepository.deleteByUserIdOrCandidateUserId(userId, userId);
         long deletedProfileRows = userProfileRepository.deleteByUserId(userId);
         long deletedSchoolConsentRows = userSchoolConsentRepository.deleteByUserId(userId);
 

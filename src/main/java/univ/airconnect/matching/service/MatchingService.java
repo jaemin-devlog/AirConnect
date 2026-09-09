@@ -356,20 +356,20 @@ public class MatchingService {
                 userId, sentConnections.size(), receivedConnections.size());
 
         List<MatchingRequestResponse> sent = sentConnections.stream()
-                .map(conn -> {
-                    MatchingRequestResponse response = toMatchingRequestResponse(conn, conn.getOtherUserId(userId));
+                .map(conn -> toMatchingRequestResponseIfActive(conn, conn.getOtherUserId(userId)))
+                .flatMap(Optional::stream)
+                .peek(response -> {
                     log.debug("  📤 보낸요청: connectionId={}, targetUserId={}, targetName={}", 
-                            conn.getId(), response.getUserId(), response.getNickname());
-                    return response;
+                            response.getConnectionId(), response.getUserId(), response.getNickname());
                 })
                 .toList();
 
         List<MatchingRequestResponse> received = receivedConnections.stream()
-                .map(conn -> {
-                    MatchingRequestResponse response = toMatchingRequestResponse(conn, conn.getRequesterId());
+                .map(conn -> toMatchingRequestResponseIfActive(conn, conn.getRequesterId()))
+                .flatMap(Optional::stream)
+                .peek(response -> {
                     log.debug("  📥 받은요청: connectionId={}, requesterId={}, requesterName={}", 
-                            conn.getId(), response.getUserId(), response.getNickname());
-                    return response;
+                            response.getConnectionId(), response.getUserId(), response.getNickname());
                 })
                 .toList();
 
@@ -381,9 +381,24 @@ public class MatchingService {
                 .build();
     }
 
-    private MatchingRequestResponse toMatchingRequestResponse(MatchingConnection conn, Long otherUserId) {
-        User otherUser = userRepository.findById(otherUserId)
-                .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
+    private Optional<MatchingRequestResponse> toMatchingRequestResponseIfActive(MatchingConnection conn,
+                                                                                 Long otherUserId) {
+        Optional<User> otherUser = userRepository.findById(otherUserId);
+        if (otherUser.isEmpty()) {
+            log.warn("고아 매칭 요청을 목록에서 제외합니다. connectionId={}, missingUserId={}",
+                    conn.getId(), otherUserId);
+            return Optional.empty();
+        }
+        if (otherUser.get().getStatus() != UserStatus.ACTIVE) {
+            log.info("비활성 사용자 매칭 요청을 목록에서 제외합니다. connectionId={}, userId={}, status={}",
+                    conn.getId(), otherUserId, otherUser.get().getStatus());
+            return Optional.empty();
+        }
+        return Optional.of(toMatchingRequestResponse(conn, otherUser.get()));
+    }
+
+    private MatchingRequestResponse toMatchingRequestResponse(MatchingConnection conn, User otherUser) {
+        Long otherUserId = otherUser.getId();
         UserProfile profile = otherUser.getUserProfile();
         UserProfileResponse profileResponse = (profile != null) ? UserProfileResponse.from(profile, imageUrlBase) : null;
 

@@ -13,6 +13,8 @@ public interface MatchingExposureRepository extends JpaRepository<MatchingExposu
 
     void deleteByUserId(Long userId);
 
+    long deleteByUserIdOrCandidateUserId(Long userId, Long candidateUserId);
+
 
     @Query("""
             SELECT me.candidateUserId

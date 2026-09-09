@@ -405,6 +405,34 @@ class MatchingServiceTest {
     }
 
     @Test
+    @DisplayName("request list skips a pending connection whose other user was permanently deleted")
+    void requestList_skipsOrphanedConnection() {
+        User me = saveUserWithProfile("u1", Gender.MALE, 100);
+        matchingConnectionRepository.save(MatchingConnection.createPending(999_999L, me.getId()));
+
+        MatchingRequestsResponse response = matchingService.getRequests(me.getId());
+
+        assertThat(response.getSentCount()).isZero();
+        assertThat(response.getReceivedCount()).isZero();
+        assertThat(response.getSent()).isEmpty();
+        assertThat(response.getReceived()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("request list skips a pending connection whose other user is inactive")
+    void requestList_skipsInactiveUserConnection() {
+        User me = saveUserWithProfile("u1", Gender.MALE, 100);
+        User requester = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        requester.markDeleted();
+        matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), me.getId()));
+
+        MatchingRequestsResponse response = matchingService.getRequests(me.getId());
+
+        assertThat(response.getReceivedCount()).isZero();
+        assertThat(response.getReceived()).isEmpty();
+    }
+
+    @Test
     @DisplayName("recommendation dto excludes only name email and provider")
     void recommendationDto_excludesOnlyNameEmailProvider() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);

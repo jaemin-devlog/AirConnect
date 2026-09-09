@@ -16,6 +16,8 @@ public interface MatchingConnectionRepository extends JpaRepository<MatchingConn
 
     Optional<MatchingConnection> findByUser1IdAndUser2Id(Long user1Id, Long user2Id);
 
+    long deleteByUser1IdOrUser2Id(Long user1Id, Long user2Id);
+
     // 요청 보낸 목록
     List<MatchingConnection> findByRequesterId(Long requesterId);
 
