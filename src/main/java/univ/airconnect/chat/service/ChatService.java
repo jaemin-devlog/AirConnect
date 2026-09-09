@@ -34,6 +34,7 @@ import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.global.security.stomp.StompSessionRegistry;
+import univ.airconnect.global.transaction.AfterCommitExecutor;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
@@ -253,7 +254,7 @@ public class ChatService {
         User sender = findUserOrThrow(senderId);
         validateRoomAccess(roomId, senderId);
 
-        return saveAndPublishMessage(roomId, sender, message, type);
+        return saveAndPublishMessage(roomId, sender, message, type, null);
     }
 
     @Transactional
@@ -459,41 +460,65 @@ public class ChatService {
     @Transactional
     public void syncReadStateOnRoomViewed(Long roomId, Long userId) {
         ChatRoom room = findRoomForUpdateOrThrow(roomId);
-        ChatRoomMember member = chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "해당 채팅방에 접근할 수 없습니다."));
-
-        Long previousLastReadMessageId = member.getLastReadMessageId();
-        Long newLastReadMessageId = resolveLatestMessageId(roomId);
-
-        if (newLastReadMessageId == null) {
+        ChatRoomMember member = findVisibleMemberForUpdateOrThrow(roomId, userId);
+        Long latestMessageId = resolveLatestMessageId(roomId);
+        if (latestMessageId == null) {
             publishRoomListUpdate(room, userId, 0);
+            return;
+        }
+        updateReadState(room, member, latestMessageId);
+    }
+
+    /**
+     * 클라이언트가 실제로 확인했다고 보고한 메시지까지만 읽음 커서를 전진시킨다.
+     */
+    @Transactional
+    public void markMessagesReadThrough(Long roomId, Long userId, Long lastReadMessageId) {
+        if (lastReadMessageId == null || lastReadMessageId <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "마지막 읽은 메시지 ID가 올바르지 않습니다.");
+        }
+
+        ChatRoom room = findRoomForUpdateOrThrow(roomId);
+        ChatRoomMember member = findVisibleMemberForUpdateOrThrow(roomId, userId);
+        ChatMessage targetMessage = findMessageForUpdateOrThrow(lastReadMessageId);
+        validateReadableTarget(roomId, member, targetMessage);
+        updateReadState(room, member, targetMessage.getId());
+    }
+
+    private void updateReadState(ChatRoom room, ChatRoomMember member, Long requestedMessageId) {
+        Long previousLastReadMessageId = member.getLastReadMessageId();
+        if (previousLastReadMessageId != null && previousLastReadMessageId >= requestedMessageId) {
+            publishRoomListUpdate(
+                    room,
+                    member.getUser().getId(),
+                    resolveRoomListUnreadCount(member.getUser().getId(), room.getId())
+            );
             return;
         }
 
         List<ChatMessage> newlyReadIncomingMessages = findNewlyReadIncomingMessages(
-                roomId,
-                userId,
+                room.getId(),
+                member.getUser().getId(),
                 previousLastReadMessageId,
-                newLastReadMessageId
+                requestedMessageId
         );
-        member.updateLastReadMessageId(newLastReadMessageId);
+        member.updateLastReadMessageId(requestedMessageId);
 
-        if (newlyReadIncomingMessages.isEmpty()) {
-            publishRoomListUpdate(room, userId, 0);
-            return;
+        if (!newlyReadIncomingMessages.isEmpty()) {
+            List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(room.getId());
+            LocalDateTime actionTime = LocalDateTime.now(java.time.Clock.systemUTC());
+            if (room.getType() == ChatRoomType.PERSONAL) {
+                syncPersonalReadReceipts(room, newlyReadIncomingMessages, roomMembers, actionTime);
+            } else {
+                syncGroupReadReceipts(room, newlyReadIncomingMessages, roomMembers, actionTime);
+            }
         }
 
-        List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
-        LocalDateTime actionTime = LocalDateTime.now(java.time.Clock.systemUTC());
-
-        if (room.getType() == ChatRoomType.PERSONAL) {
-            syncPersonalReadReceipts(room, newlyReadIncomingMessages, roomMembers, actionTime);
-            publishRoomListUpdate(room, userId, 0);
-            return;
-        }
-
-        syncGroupReadReceipts(room, newlyReadIncomingMessages, roomMembers, actionTime);
-        publishRoomListUpdate(room, userId, 0);
+        publishRoomListUpdate(
+                room,
+                member.getUser().getId(),
+                resolveRoomListUnreadCount(member.getUser().getId(), room.getId())
+        );
     }
 
     /**
@@ -504,23 +529,9 @@ public class ChatService {
         syncReadStateOnRoomViewed(roomId, userId);
     }
 
-    /**
-     * 발신자는 본인 메시지를 즉시 읽은 것으로 간주한다.
-     */
     @Transactional
     public void markOwnMessageAsRead(Long roomId, Long userId, Long messageId) {
-        chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)
-                .ifPresent(member -> member.updateLastReadMessageId(messageId));
-    }
-
-    private List<ChatMessage> markSenderReadThroughNewMessage(Long roomId, Long senderId, Long newMessageId) {
-        if (newMessageId == null) {
-            return Collections.emptyList();
-        }
-
-        ChatRoomMember senderMember = chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "해당 채팅방에 접근할 수 없습니다."));
-        return markMemberReadThroughMessage(roomId, senderMember, newMessageId, null);
+        markMessagesReadThrough(roomId, userId, messageId);
     }
 
     private List<ChatMessage> findNewlyReadIncomingMessages(Long roomId,
@@ -557,39 +568,12 @@ public class ChatService {
                 .collect(Collectors.toList());
     }
 
-    private List<ChatMessage> markMemberReadThroughMessage(Long roomId,
-                                                           ChatRoomMember member,
-                                                           Long newLastReadMessageId,
-                                                           Long excludedReceiptMessageId) {
-        if (member == null || newLastReadMessageId == null) {
-            return Collections.emptyList();
-        }
-
-        Long memberUserId = member.getUser().getId();
-        Long previousLastReadMessageId = member.getLastReadMessageId();
-        List<ChatMessage> newlyReadIncomingMessages = findNewlyReadIncomingMessages(
-                roomId,
-                memberUserId,
-                previousLastReadMessageId,
-                newLastReadMessageId
-        );
-        member.updateLastReadMessageId(newLastReadMessageId);
-
-        if (excludedReceiptMessageId == null || newlyReadIncomingMessages.isEmpty()) {
-            return newlyReadIncomingMessages;
-        }
-
-        return newlyReadIncomingMessages.stream()
-                .filter(message -> !Objects.equals(message.getId(), excludedReceiptMessageId))
-                .collect(Collectors.toList());
-    }
-
     /**
      * 기존 호출부 호환용 래퍼. 새 구현은 markOwnMessageAsRead를 사용한다.
      */
     @Transactional
     public void updateLastRead(Long roomId, Long userId, Long messageId) {
-        markOwnMessageAsRead(roomId, userId, messageId);
+        markMessagesReadThrough(roomId, userId, messageId);
     }
 
     /**
@@ -598,21 +582,22 @@ public class ChatService {
     @Transactional
     public void sendMessage(Long userId, ChatMessageRequest request) {
         MessageType messageType = normalizeMessageType(request.getMessageType());
-        sendMessageInternal(userId, request.getRoomId(), request.getMessage(), messageType);
+        sendMessageInternal(userId, request.getRoomId(), request.getMessage(), messageType,
+                request.getClientMessageId());
     }
 
     @Transactional
     public ChatMessageResponse sendMessage(Long userId, Long roomId, SendMessageRequest request) {
         MessageType messageType = normalizeMessageType(request.getMessageType());
-        return sendMessageInternal(userId, roomId, request.getContent(), messageType);
+        return sendMessageInternal(userId, roomId, request.getContent(), messageType,
+                request.getClientMessageId());
     }
 
     @Transactional
     public ChatMessageResponse deleteMessage(Long userId, Long roomId, Long messageId) {
-        validateRoomAccess(roomId, userId);
-
-        ChatMessage message = chatMessageRepository.findById(messageId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "메시지를 찾을 수 없습니다."));
+        ChatRoom room = findRoomForUpdateOrThrow(roomId);
+        findVisibleMemberForUpdateOrThrow(roomId, userId);
+        ChatMessage message = findMessageForUpdateOrThrow(messageId);
 
         if (!Objects.equals(message.getRoomId(), roomId)) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "잘못된 채팅방 메시지 요청입니다.");
@@ -621,7 +606,6 @@ public class ChatService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "본인이 보낸 메시지만 삭제할 수 있습니다.");
         }
 
-        ChatRoom room = findRoomOrThrow(roomId);
         message.softDelete();
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
         ChatMessageResponse response = ChatMessageResponse.from(
@@ -633,33 +617,50 @@ public class ChatService {
         return response;
     }
 
-    private ChatMessageResponse sendMessageInternal(Long userId, Long roomId, String content, MessageType messageType) {
-        User user = findChatSenderOrThrow(userId);
-        validateRoomAccess(roomId, userId);
+    private ChatMessageResponse sendMessageInternal(Long userId,
+                                                    Long roomId,
+                                                    String content,
+                                                    MessageType messageType,
+                                                    String clientMessageId) {
+        User user = findChatSenderForUpdateOrThrow(userId);
 
         validateMessagePayload(content, messageType);
         validateNotBlocked(roomId, userId);
 
-        return saveAndPublishMessage(roomId, user, content, messageType);
+        return saveAndPublishMessage(roomId, user, content, messageType,
+                normalizeClientMessageId(clientMessageId));
     }
 
-    private ChatMessageResponse saveAndPublishMessage(Long roomId, User sender, String content, MessageType messageType) {
+    private ChatMessageResponse saveAndPublishMessage(Long roomId,
+                                                      User sender,
+                                                      String content,
+                                                      MessageType messageType,
+                                                      String clientMessageId) {
         ChatRoom room = findRoomForUpdateOrThrow(roomId);
+        findVisibleMemberForUpdateOrThrow(roomId, sender.getId());
+        validateChatSenderStatus(sender);
 
-        ChatMessage chatMessage = ChatMessage.create(roomId, sender.getId(), sender.getNickname(), content, messageType);
+        if (clientMessageId != null) {
+            Optional<ChatMessage> existing = chatMessageRepository
+                    .findByRoomIdAndSenderIdAndClientMessageId(roomId, sender.getId(), clientMessageId);
+            if (existing.isPresent()) {
+                return resolveIdempotentRetry(room, sender, existing.get(), content, messageType);
+            }
+        }
+
+        ChatMessage chatMessage = ChatMessage.create(
+                roomId,
+                sender.getId(),
+                sender.getNickname(),
+                content,
+                messageType,
+                clientMessageId
+        );
         chatMessageRepository.save(chatMessage);
 
         room.updateLastMessage(summarizeForRoomList(content, messageType), chatMessage.getCreatedAt());
 
-        List<ChatMessage> readReceiptMessages = new ArrayList<>(markSenderReadThroughNewMessage(roomId, sender.getId(), chatMessage.getId()));
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
-
-        LocalDateTime actionTime = LocalDateTime.now(java.time.Clock.systemUTC());
-        if (room.getType() == ChatRoomType.PERSONAL) {
-            syncPersonalReadReceipts(room, readReceiptMessages, roomMembers, actionTime);
-        } else {
-            syncGroupReadReceipts(room, readReceiptMessages, roomMembers, actionTime);
-        }
 
         ChatMessageResponse response = ChatMessageResponse.from(
                 chatMessage,
@@ -674,6 +675,24 @@ public class ChatService {
         return response;
     }
 
+    private ChatMessageResponse resolveIdempotentRetry(ChatRoom room,
+                                                       User sender,
+                                                       ChatMessage existing,
+                                                       String content,
+                                                       MessageType messageType) {
+        if (!Objects.equals(existing.getDisplayContent(), content)
+                || normalizeMessageType(existing.getType()) != messageType) {
+            throw new BusinessException(ErrorCode.CHAT_MESSAGE_IDEMPOTENCY_CONFLICT);
+        }
+
+        List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(room.getId());
+        return ChatMessageResponse.from(
+                existing,
+                extractProfileImage(sender),
+                resolveMessageUnreadCount(room, existing, roomMembers)
+        );
+    }
+
     /**
      * 채팅방 나가기 (참여 해제)
      */
@@ -682,8 +701,7 @@ public class ChatService {
         ChatRoom room = findRoomForUpdateOrThrow(roomId);
         User user = findUserOrThrow(userId);
 
-        ChatRoomMember member = chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "해당 채팅방의 멤버가 아닙니다."));
+        ChatRoomMember member = findVisibleMemberForUpdateOrThrow(roomId, userId);
 
         ChatMessage exitMessage = ChatMessage.create(
                 roomId,
@@ -703,6 +721,21 @@ public class ChatService {
         publishToRedisSilently(roomId, response);
 
         chatRoomMemberRepository.delete(member);
+    }
+
+    /**
+     * 그룹 매칭의 나가기/추방 처리도 SEND와 동일한 채팅방 잠금 경계를 사용한다.
+     */
+    @Transactional
+    public boolean removeMember(Long roomId, Long userId) {
+        findRoomForUpdateOrThrow(roomId);
+        Optional<ChatRoomMember> member = chatRoomMemberRepository
+                .findVisibleByChatRoomIdAndUserIdForUpdate(roomId, userId);
+        if (member.isEmpty()) {
+            return false;
+        }
+        chatRoomMemberRepository.delete(member.get());
+        return true;
     }
 
     /**
@@ -812,10 +845,9 @@ public class ChatService {
     /**
      * 특정 채팅방 메시지 조회
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public List<ChatMessageResponse> findMessagesByRoomId(Long roomId, Long userId, Long lastMessageId, int size) {
         validateRoomAccess(roomId, userId);
-        syncReadStateOnRoomViewed(roomId, userId);
         ChatRoom room = findRoomOrThrow(roomId);
 
         Pageable pageable = PageRequest.of(0, size);
@@ -1016,8 +1048,20 @@ public class ChatService {
      * CONNECT/SUBSCRIBE와 동일하게 DELETED/SUSPENDED/RESTRICTED를 거절한다.
      * 매칭 전용 제한 필드(isMatchingRestricted)는 채팅 제한으로 취급하지 않는다.
      */
-    private User findChatSenderOrThrow(Long userId) {
-        User user = findUserOrThrow(userId);
+    private User findChatSenderForUpdateOrThrow(Long userId) {
+        Optional<User> lockedUser = userRepository.findByIdForUpdate(userId);
+        User user;
+        if (lockedUser == null) {
+            // Mockito 기반 기존 단위 테스트 호환. 실제 Spring Data 구현은 null을 반환하지 않는다.
+            user = findUserOrThrow(userId);
+        } else {
+            user = lockedUser.orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+        }
+        validateChatSenderStatus(user);
+        return user;
+    }
+
+    private void validateChatSenderStatus(User user) {
         if (user.getStatus() == UserStatus.DELETED) {
             throw new AuthException(AuthErrorCode.USER_DELETED);
         }
@@ -1027,7 +1071,6 @@ public class ChatService {
         if (user.getStatus() == UserStatus.RESTRICTED) {
             throw new AuthException(AuthErrorCode.USER_RESTRICTED);
         }
-        return user;
     }
 
     private ChatRoom findRoomOrThrow(Long roomId) {
@@ -1041,6 +1084,40 @@ public class ChatService {
             return lockedRoom.get();
         }
         return findRoomOrThrow(roomId);
+    }
+
+    private ChatRoomMember findVisibleMemberForUpdateOrThrow(Long roomId, Long userId) {
+        Optional<ChatRoomMember> lockedMember = chatRoomMemberRepository
+                .findVisibleByChatRoomIdAndUserIdForUpdate(roomId, userId);
+        if (lockedMember == null) {
+            // Mockito 기반 기존 단위 테스트 호환. 실제 Spring Data 구현은 null을 반환하지 않는다.
+            lockedMember = chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId);
+        }
+        return lockedMember.orElseThrow(() ->
+                new BusinessException(ErrorCode.FORBIDDEN, "해당 채팅방에 접근할 수 없습니다."));
+    }
+
+    private ChatMessage findMessageForUpdateOrThrow(Long messageId) {
+        Optional<ChatMessage> lockedMessage = chatMessageRepository.findByIdForUpdate(messageId);
+        if (lockedMessage == null) {
+            // Mockito 기반 기존 단위 테스트 호환. 실제 Spring Data 구현은 null을 반환하지 않는다.
+            lockedMessage = chatMessageRepository.findById(messageId);
+        }
+        return lockedMessage.orElseThrow(() ->
+                new BusinessException(ErrorCode.INVALID_REQUEST, "메시지를 찾을 수 없습니다."));
+    }
+
+    private void validateReadableTarget(Long roomId, ChatRoomMember member, ChatMessage targetMessage) {
+        if (!Objects.equals(targetMessage.getRoomId(), roomId)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "다른 채팅방의 메시지는 읽음 처리할 수 없습니다.");
+        }
+        if (member.getJoinedAt() != null
+                && targetMessage.getCreatedAt() != null
+                && targetMessage.getCreatedAt().isBefore(member.getJoinedAt())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN,
+                    "참여 이전 메시지는 읽음 처리할 수 없습니다.");
+        }
     }
 
     private String extractProfileImage(User user) {
@@ -1063,11 +1140,10 @@ public class ChatService {
     }
 
     private void publishToRedisSilently(Long roomId, ChatMessageResponse response) {
-        try {
-            publishToRedis(roomId, response);
-        } catch (RuntimeException e) {
-            log.error("Redis publish skipped after DB save. roomId={}", roomId, e);
-        }
+        AfterCommitExecutor.execute(
+                "chat-redis:" + response.getEventType(),
+                () -> publishToRedis(roomId, response)
+        );
     }
 
     private void publishRoomListUpdates(ChatRoom room, Collection<Long> userIds) {
@@ -1086,18 +1162,17 @@ public class ChatService {
             return;
         }
 
-        try {
-            ChatRoomListUpdateResponse payload = ChatRoomListUpdateResponse.of(
-                    userId,
-                    room.getId(),
-                    room.getLastMessage(),
-                    room.getLastMessageAt(),
-                    unreadCount
-            );
-            messagingTemplate.convertAndSend("/sub/chat/list/" + userId, payload);
-        } catch (RuntimeException e) {
-            log.error("Room list update publish failed. roomId={}, userId={}", room.getId(), userId, e);
-        }
+        ChatRoomListUpdateResponse payload = ChatRoomListUpdateResponse.of(
+                userId,
+                room.getId(),
+                room.getLastMessage(),
+                room.getLastMessageAt(),
+                unreadCount
+        );
+        AfterCommitExecutor.execute(
+                "chat-room-list",
+                () -> messagingTemplate.convertAndSend("/sub/chat/list/" + userId, payload)
+        );
     }
 
     private int resolveRoomListUnreadCount(Long userId, Long roomId) {
@@ -1206,6 +1281,19 @@ public class ChatService {
         return messageType;
     }
 
+    private String normalizeClientMessageId(String clientMessageId) {
+        if (clientMessageId == null || clientMessageId.isBlank()) {
+            return null;
+        }
+
+        String normalized = clientMessageId.trim();
+        if (normalized.length() > 64) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "클라이언트 메시지 ID는 64자 이내여야 합니다.");
+        }
+        return normalized;
+    }
+
     private boolean isPushEligibleMessage(MessageType messageType) {
         return messageType == MessageType.TEXT || messageType == MessageType.IMAGE;
     }
@@ -1242,7 +1330,8 @@ public class ChatService {
     }
 
     private List<ChatRoomMember> loadVisibleRoomMembers(Long roomId) {
-        List<ChatRoomMember> members = chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId);
+        List<ChatRoomMember> members = chatRoomMemberRepository
+                .findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId);
         return members != null ? members : Collections.emptyList();
     }
 

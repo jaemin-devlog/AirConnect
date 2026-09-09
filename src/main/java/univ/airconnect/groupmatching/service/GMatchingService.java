@@ -1505,8 +1505,7 @@ public class GMatchingService {
     }
 
     private void removeChatRoomMembership(Long chatRoomId, Long userId) {
-        Optional<ChatRoomMember> memberOpt = chatRoomMemberRepository.findByChatRoomIdAndUserId(chatRoomId, userId);
-        memberOpt.ifPresent(chatRoomMemberRepository::delete);
+        chatService.removeMember(chatRoomId, userId);
     }
 
     private User findUserOrThrow(Long userId) {

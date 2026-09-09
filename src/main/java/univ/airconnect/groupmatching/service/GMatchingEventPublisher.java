@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.stereotype.Component;
 import univ.airconnect.groupmatching.dto.response.GMatchingRealtimeEventResponse;
+import univ.airconnect.global.transaction.AfterCommitExecutor;
 
 @Slf4j
 @Component
@@ -33,7 +34,9 @@ public class GMatchingEventPublisher {
         GMatchingRealtimeEventResponse payload =
                 GMatchingRealtimeEventResponse.fromQueueSnapshot(eventType, snapshot);
         String destination = MATCHING_TEAM_ROOM_SUB_PREFIX + snapshot.teamRoomId();
-        messagingTemplate.convertAndSend(destination, payload);
-        log.debug("과팅 실시간 이벤트를 발행했습니다. destination={}, eventType={}", destination, eventType);
+        AfterCommitExecutor.execute("group-matching:" + eventType, () -> {
+            messagingTemplate.convertAndSend(destination, payload);
+            log.debug("과팅 실시간 이벤트를 발행했습니다. destination={}, eventType={}", destination, eventType);
+        });
     }
 }

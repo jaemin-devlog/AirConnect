@@ -51,6 +51,8 @@ public enum ErrorCode {
 
     USER_BLOCKED_INTERACTION(HttpStatus.FORBIDDEN, "MOD-001", "차단된 사용자와는 상호작용할 수 없습니다."),
 
+    CHAT_MESSAGE_IDEMPOTENCY_CONFLICT(HttpStatus.CONFLICT, "CHAT-409", "같은 클라이언트 메시지 ID에 다른 메시지 내용이 사용되었습니다."),
+
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON-999", "서버 오류가 발생했습니다.");
 
     private final HttpStatus httpStatus;

@@ -185,7 +185,7 @@ class ChatRoomControllerTest {
         when(request.getAttribute("traceId")).thenReturn(traceId);
 
         ResponseEntity<ApiResponse<Void>> response =
-                controller.updateReadStatus(roomId, currentUserId, request);
+                controller.updateReadStatus(roomId, currentUserId, null, request);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();

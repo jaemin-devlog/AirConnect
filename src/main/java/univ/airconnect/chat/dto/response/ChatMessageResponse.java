@@ -20,6 +20,7 @@ public class ChatMessageResponse {
     private String eventType;
     private Long id;
     private Long messageId;
+    private String clientMessageId;
     private Long roomId;
     private Long chatRoomId;
     private Long senderId;
@@ -55,6 +56,7 @@ public class ChatMessageResponse {
                 .eventType(EVENT_MESSAGE)
                 .id(entity.getId())
                 .messageId(entity.getId())
+                .clientMessageId(entity.getClientMessageId())
                 .roomId(entity.getRoomId())
                 .chatRoomId(entity.getRoomId())
                 .senderId(entity.getSenderId())

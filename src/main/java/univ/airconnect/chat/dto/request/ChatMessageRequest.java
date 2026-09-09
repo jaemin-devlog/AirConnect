@@ -21,4 +21,7 @@ public class ChatMessageRequest {
     private String message;
 
     private MessageType messageType;
+
+    @Size(max = 64, message = "클라이언트 메시지 ID는 64자 이내여야 합니다.")
+    private String clientMessageId;
 }

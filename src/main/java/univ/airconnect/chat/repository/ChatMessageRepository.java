@@ -1,9 +1,11 @@
 package univ.airconnect.chat.repository;
 
-import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import univ.airconnect.chat.domain.entity.ChatMessage;
@@ -25,6 +27,18 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     }
 
     List<ChatMessage> findByRoomIdOrderByCreatedAtAsc(Long roomId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT m FROM ChatMessage m WHERE m.id = :messageId")
+    Optional<ChatMessage> findByIdForUpdate(@Param("messageId") Long messageId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT m FROM ChatMessage m " +
+            "WHERE m.roomId = :roomId AND m.senderId = :senderId " +
+            "AND m.clientMessageId = :clientMessageId")
+    Optional<ChatMessage> findByRoomIdAndSenderIdAndClientMessageId(@Param("roomId") Long roomId,
+                                                                    @Param("senderId") Long senderId,
+                                                                    @Param("clientMessageId") String clientMessageId);
 
     @Query("SELECT m FROM ChatMessage m " +
             "WHERE m.roomId = :roomId " +

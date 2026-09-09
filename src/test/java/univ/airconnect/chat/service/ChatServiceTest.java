@@ -99,13 +99,17 @@ class ChatServiceTest {
         Long roomId = 99L;
 
         User user = createUser(userId, "sender");
+        ChatRoom room = ChatRoom.create("r-99", ChatRoomType.PERSONAL);
+        ReflectionTestUtils.setField(room, "id", roomId);
+        ChatRoomMember member = ChatRoomMember.create(room, user);
         ChatMessageRequest request = new ChatMessageRequest();
         ReflectionTestUtils.setField(request, "roomId", roomId);
         ReflectionTestUtils.setField(request, "message", "hello");
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)).thenReturn(true);
-        when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(ChatRoom.create("r-99", ChatRoomType.PERSONAL)));
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId))
+                .thenReturn(Optional.of(member));
+        when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(objectMapper.writeValueAsString(any())).thenThrow(new JsonProcessingException("boom") {
         });
 
@@ -414,8 +418,9 @@ class ChatServiceTest {
         ChatMessage message = ChatMessage.create(roomId, userId, "sender", "hello", univ.airconnect.chat.domain.MessageType.TEXT);
         ReflectionTestUtils.setField(message, "id", messageId);
 
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)).thenReturn(true);
         when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId))
+                .thenReturn(Optional.of(senderMember));
         when(chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId))
                 .thenReturn(List.of(senderMember));
         when(chatMessageRepository.findById(messageId)).thenReturn(Optional.of(message));
@@ -532,7 +537,6 @@ class ChatServiceTest {
         ReflectionTestUtils.setField(request, "message", "hello");
 
         when(userRepository.findById(senderId)).thenReturn(Optional.of(sender));
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(true);
         when(chatRoomMemberRepository.findUserIdsByChatRoomId(roomId)).thenReturn(List.of(senderId, readerId));
         when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(Optional.of(senderMember));
@@ -590,9 +594,6 @@ class ChatServiceTest {
         when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)).thenReturn(true);
         when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(chatMessageRepository.findMessagesCursor(eq(roomId), eq(null), any())).thenReturn(List.of(newer, older));
-        when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)).thenReturn(Optional.of(readerMember));
-        when(chatMessageRepository.findUnreadIncomingMessages(roomId, userId, null)).thenReturn(List.of());
-        when(chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)).thenReturn(Optional.of(newer));
         when(chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId))
                 .thenReturn(List.of(readerMember, senderMember));
         when(userRepository.findAllByIdWithProfile(Set.of(sender.getId()))).thenReturn(List.of(sender));
@@ -630,9 +631,6 @@ class ChatServiceTest {
 
         when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(true);
         when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(Optional.of(senderMember));
-        when(chatMessageRepository.findUnreadIncomingMessages(roomId, senderId, 100L)).thenReturn(List.of());
-        when(chatMessageRepository.findTopByRoomIdOrderByIdDesc(roomId)).thenReturn(Optional.of(message));
         when(chatMessageRepository.findMessagesCursor(eq(roomId), eq(null), any())).thenReturn(List.of(message));
         when(chatRoomMemberRepository.findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(roomId))
                 .thenReturn(List.of(senderMember, memberA, memberB, memberC));
@@ -764,7 +762,6 @@ class ChatServiceTest {
         ChatMessage[] savedMessage = new ChatMessage[1];
 
         when(userRepository.findById(senderId)).thenReturn(Optional.of(sender));
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(true);
         when(chatRoomMemberRepository.findUserIdsByChatRoomId(roomId)).thenReturn(List.of(senderId, readerId));
         when(chatRoomRepository.findById(roomId)).thenReturn(Optional.of(room));
         when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, senderId)).thenReturn(Optional.of(senderMember));
@@ -817,7 +814,6 @@ class ChatServiceTest {
         ReflectionTestUtils.setField(request, "message", "hello");
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId)).thenReturn(true);
         when(chatRoomMemberRepository.findUserIdsByChatRoomId(roomId)).thenReturn(List.of(userId, otherUserId));
         when(userBlockPolicyService.findAnyBlockedCounterpart(userId, List.of(otherUserId))).thenReturn(Optional.of(otherUserId));
 
@@ -833,6 +829,13 @@ class ChatServiceTest {
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         lenient().when(userBlockPolicyService.hasBlockRelation(any(), any())).thenReturn(false);
         lenient().when(userBlockPolicyService.findAnyBlockedCounterpart(any(), any())).thenReturn(Optional.empty());
+        lenient().when(userRepository.findByIdForUpdate(any()))
+                .thenAnswer(invocation -> userRepository.findById(invocation.getArgument(0)));
+        lenient().when(chatRoomMemberRepository.findVisibleByChatRoomIdAndUserIdForUpdate(any(), any()))
+                .thenAnswer(invocation -> chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(
+                        invocation.getArgument(0), invocation.getArgument(1)));
+        lenient().when(chatMessageRepository.findByIdForUpdate(any()))
+                .thenAnswer(invocation -> chatMessageRepository.findById(invocation.getArgument(0)));
         ChatService service = new ChatService(
                 chatRoomRepository,
                 chatMessageRepository,

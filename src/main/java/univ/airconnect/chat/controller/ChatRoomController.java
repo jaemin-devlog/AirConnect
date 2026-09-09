@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import univ.airconnect.chat.dto.request.ChatRoomCreateRequest;
+import univ.airconnect.chat.dto.request.ChatReadRequest;
 import univ.airconnect.chat.dto.request.SendMessageRequest;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantDetailResponse;
@@ -177,10 +178,15 @@ public class ChatRoomController {
     public ResponseEntity<ApiResponse<Void>> updateReadStatus(
             @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
             @CurrentUserId Long userId,
+            @RequestBody(required = false) @Valid ChatReadRequest requestBody,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        chatService.syncReadStateOnRoomViewed(roomId, userId);
+        if (requestBody == null || requestBody.getLastReadMessageId() == null) {
+            chatService.syncReadStateOnRoomViewed(roomId, userId);
+        } else {
+            chatService.markMessagesReadThrough(roomId, userId, requestBody.getLastReadMessageId());
+        }
         return ResponseEntity.ok(ApiResponse.ok(null, traceId));
     }
 }

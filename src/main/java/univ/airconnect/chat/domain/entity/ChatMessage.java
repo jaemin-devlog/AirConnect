@@ -10,7 +10,13 @@ import univ.airconnect.chat.domain.MessageType;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "chat_messages")
+@Table(
+        name = "chat_messages",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_chat_messages_room_sender_client",
+                columnNames = {"room_id", "sender_id", "client_message_id"}
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatMessage {
@@ -19,11 +25,14 @@ public class ChatMessage {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "room_id", nullable = false)
     private Long roomId;
 
-    @Column(nullable = false)
+    @Column(name = "sender_id", nullable = false)
     private Long senderId;
+
+    @Column(name = "client_message_id", length = 64)
+    private String clientMessageId;
 
     @Column(nullable = false, length = 100)
     private String senderNickname;
@@ -54,6 +63,7 @@ public class ChatMessage {
     @Builder
     private ChatMessage(Long roomId,
                         Long senderId,
+                        String clientMessageId,
                         String senderNickname,
                         String content,
                         MessageType type,
@@ -62,6 +72,7 @@ public class ChatMessage {
                         LocalDateTime readAt) {
         this.roomId = roomId;
         this.senderId = senderId;
+        this.clientMessageId = clientMessageId;
         this.senderNickname = senderNickname;
         this.content = content;
         this.legacyMessage = content;
@@ -73,9 +84,19 @@ public class ChatMessage {
     }
 
     public static ChatMessage create(Long roomId, Long senderId, String senderNickname, String content, MessageType type) {
+        return create(roomId, senderId, senderNickname, content, type, null);
+    }
+
+    public static ChatMessage create(Long roomId,
+                                     Long senderId,
+                                     String senderNickname,
+                                     String content,
+                                     MessageType type,
+                                     String clientMessageId) {
         return ChatMessage.builder()
                 .roomId(roomId)
                 .senderId(senderId)
+                .clientMessageId(clientMessageId)
                 .senderNickname(senderNickname)
                 .content(content)
                 .type(type)

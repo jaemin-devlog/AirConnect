@@ -11,6 +11,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import univ.airconnect.chat.dto.request.SendMessageRequest;
+import univ.airconnect.chat.dto.request.ChatReadRequest;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.error.BusinessException;
@@ -169,11 +170,16 @@ public class GMatchingController {
     @PatchMapping({"/{teamRoomId}/chat/read", "/{teamRoomId}/chat/read/"})
     public ResponseEntity<Void> updateTeamRoomChatRead(
             @PathVariable Long teamRoomId,
+            @RequestBody(required = false) @Valid ChatReadRequest request,
             Authentication authentication
     ) {
         Long userId = currentUserId(authentication);
         Long chatRoomId = matchingService.getTempChatRoomId(teamRoomId, userId);
-        chatService.updateLastRead(chatRoomId, userId);
+        if (request == null || request.getLastReadMessageId() == null) {
+            chatService.updateLastRead(chatRoomId, userId);
+        } else {
+            chatService.markMessagesReadThrough(chatRoomId, userId, request.getLastReadMessageId());
+        }
         return ResponseEntity.ok().build();
     }
 

@@ -7,6 +7,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.chat.domain.ChatRoomType;
+import univ.airconnect.chat.domain.MessageType;
+import univ.airconnect.chat.domain.entity.ChatMessage;
+import univ.airconnect.chat.domain.entity.ChatRoom;
+import univ.airconnect.chat.domain.entity.ChatRoomMember;
 import univ.airconnect.notification.domain.NotificationDeliveryStatus;
 import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.PushProvider;
@@ -14,6 +19,9 @@ import univ.airconnect.notification.domain.entity.NotificationOutbox;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
 import univ.airconnect.notification.repository.PushDeviceRepository;
+import univ.airconnect.chat.repository.ChatMessageRepository;
+import univ.airconnect.chat.repository.ChatRoomMemberRepository;
+import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
@@ -32,6 +40,8 @@ class NotificationOutboxDispatchServiceTest {
     private static final Long USER_ID = 11L;
     private static final Long DEVICE_ID = 21L;
     private static final Long OUTBOX_ID = 31L;
+    private static final Long ROOM_ID = 41L;
+    private static final Long MESSAGE_ID = 51L;
 
     @Mock
     private NotificationOutboxRepository notificationOutboxRepository;
@@ -41,6 +51,12 @@ class NotificationOutboxDispatchServiceTest {
     private PushDeviceRepository pushDeviceRepository;
     @Mock
     private PushNotificationSender pushNotificationSender;
+    @Mock
+    private ChatRoomRepository chatRoomRepository;
+    @Mock
+    private ChatRoomMemberRepository chatRoomMemberRepository;
+    @Mock
+    private ChatMessageRepository chatMessageRepository;
 
     private NotificationOutboxDispatchService service;
 
@@ -50,7 +66,10 @@ class NotificationOutboxDispatchServiceTest {
                 notificationOutboxRepository,
                 userRepository,
                 pushDeviceRepository,
-                pushNotificationSender
+                pushNotificationSender,
+                chatRoomRepository,
+                chatRoomMemberRepository,
+                chatMessageRepository
         );
     }
 
@@ -187,6 +206,59 @@ class NotificationOutboxDispatchServiceTest {
         assertThat(outbox.getLastErrorCode()).isEqualTo("INVALID_ARGUMENT");
     }
 
+    @Test
+    void chatPushIsSkippedWhenRecipientHasLeftRoom() {
+        NotificationOutbox outbox = processingChatOutbox("token-1");
+        User user = user(USER_ID, UserStatus.ACTIVE);
+        when(notificationOutboxRepository.findByIdForUpdate(OUTBOX_ID)).thenReturn(Optional.of(outbox));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
+        when(chatRoomRepository.findByIdForUpdate(ROOM_ID)).thenReturn(Optional.of(room()));
+        when(chatRoomMemberRepository.findVisibleByChatRoomIdAndUserIdForUpdate(ROOM_ID, USER_ID))
+                .thenReturn(Optional.empty());
+
+        service.dispatch(OUTBOX_ID);
+
+        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushDeviceRepository, never()).findByIdForUpdate(DEVICE_ID);
+        assertSkipped(outbox, NotificationOutboxDispatchService.CHAT_ROOM_ACCESS_REVOKED);
+    }
+
+    @Test
+    void chatPushIsSkippedWhenMessageWasSoftDeleted() {
+        NotificationOutbox outbox = processingChatOutbox("token-1");
+        User user = user(USER_ID, UserStatus.ACTIVE);
+        ChatRoom room = room();
+        ChatRoomMember membership = ChatRoomMember.create(room, user);
+        ChatMessage message = message();
+        message.softDelete();
+        stubChatRows(outbox, user, room, membership, message);
+
+        service.dispatch(OUTBOX_ID);
+
+        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushDeviceRepository, never()).findByIdForUpdate(DEVICE_ID);
+        assertSkipped(outbox, NotificationOutboxDispatchService.CHAT_MESSAGE_NOT_AVAILABLE);
+    }
+
+    @Test
+    void validChatPushStillSends() {
+        NotificationOutbox outbox = processingChatOutbox("token-1");
+        User user = user(USER_ID, UserStatus.ACTIVE);
+        ChatRoom room = room();
+        ChatRoomMember membership = ChatRoomMember.create(room, user);
+        ChatMessage message = message();
+        PushDevice device = device(USER_ID, "token-1");
+        stubChatRows(outbox, user, room, membership, message);
+        when(pushDeviceRepository.findByIdForUpdate(DEVICE_ID)).thenReturn(Optional.of(device));
+        when(pushNotificationSender.send(outbox))
+                .thenReturn(PushNotificationSender.PushSendResult.success("fcm-chat-1"));
+
+        service.dispatch(OUTBOX_ID);
+
+        verify(pushNotificationSender).send(outbox);
+        assertThat(outbox.getStatus()).isEqualTo(NotificationDeliveryStatus.SENT);
+    }
+
     private void stubLockedRows(NotificationOutbox outbox, User user, PushDevice device) {
         when(notificationOutboxRepository.findByIdForUpdate(OUTBOX_ID)).thenReturn(Optional.of(outbox));
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
@@ -208,6 +280,49 @@ class NotificationOutboxDispatchServiceTest {
         ReflectionTestUtils.setField(outbox, "id", OUTBOX_ID);
         outbox.claim();
         return outbox;
+    }
+
+    private NotificationOutbox processingChatOutbox(String token) {
+        NotificationOutbox outbox = NotificationOutbox.create(
+                102L,
+                USER_ID,
+                DEVICE_ID,
+                PushProvider.FCM,
+                token,
+                "채팅 알림",
+                "새 메시지",
+                "{\"notificationType\":\"CHAT_MESSAGE_RECEIVED\",\"chatRoomId\":\"" + ROOM_ID
+                        + "\",\"messageId\":\"" + MESSAGE_ID + "\"}",
+                LocalDateTime.now()
+        );
+        ReflectionTestUtils.setField(outbox, "id", OUTBOX_ID);
+        outbox.claim();
+        return outbox;
+    }
+
+    private void stubChatRows(NotificationOutbox outbox,
+                              User user,
+                              ChatRoom room,
+                              ChatRoomMember membership,
+                              ChatMessage message) {
+        when(notificationOutboxRepository.findByIdForUpdate(OUTBOX_ID)).thenReturn(Optional.of(outbox));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
+        when(chatRoomRepository.findByIdForUpdate(ROOM_ID)).thenReturn(Optional.of(room));
+        when(chatRoomMemberRepository.findVisibleByChatRoomIdAndUserIdForUpdate(ROOM_ID, USER_ID))
+                .thenReturn(Optional.of(membership));
+        when(chatMessageRepository.findByIdForUpdate(MESSAGE_ID)).thenReturn(Optional.of(message));
+    }
+
+    private ChatRoom room() {
+        ChatRoom room = ChatRoom.create("chat", ChatRoomType.PERSONAL);
+        ReflectionTestUtils.setField(room, "id", ROOM_ID);
+        return room;
+    }
+
+    private ChatMessage message() {
+        ChatMessage message = ChatMessage.create(ROOM_ID, 99L, "sender", "hello", MessageType.TEXT);
+        ReflectionTestUtils.setField(message, "id", MESSAGE_ID);
+        return message;
     }
 
     private User user(Long userId, UserStatus status) {

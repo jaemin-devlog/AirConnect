@@ -1,6 +1,8 @@
 package univ.airconnect.chat.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -41,7 +43,18 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
 
     Optional<ChatRoomMember> findByChatRoomIdAndUserIdAndHiddenAtIsNull(Long chatRoomId, Long userId);
 
-    List<ChatRoomMember> findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(Long chatRoomId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT m FROM ChatRoomMember m JOIN FETCH m.user " +
+            "WHERE m.chatRoom.id = :chatRoomId AND m.user.id = :userId AND m.hiddenAt IS NULL")
+    Optional<ChatRoomMember> findVisibleByChatRoomIdAndUserIdForUpdate(
+            @Param("chatRoomId") Long chatRoomId,
+            @Param("userId") Long userId
+    );
+
+    @Query("SELECT m FROM ChatRoomMember m JOIN FETCH m.user u LEFT JOIN FETCH u.userProfile " +
+            "WHERE m.chatRoom.id = :chatRoomId AND m.hiddenAt IS NULL " +
+            "AND u.status = univ.airconnect.user.domain.UserStatus.ACTIVE ORDER BY m.joinedAt ASC")
+    List<ChatRoomMember> findByChatRoomIdAndHiddenAtIsNullOrderByJoinedAtAsc(@Param("chatRoomId") Long chatRoomId);
 
     long countByChatRoomId(Long chatRoomId);
 

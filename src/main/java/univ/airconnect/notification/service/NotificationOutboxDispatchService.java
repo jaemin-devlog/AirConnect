@@ -1,5 +1,7 @@
 package univ.airconnect.notification.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -9,6 +11,11 @@ import univ.airconnect.notification.domain.entity.NotificationOutbox;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
 import univ.airconnect.notification.repository.PushDeviceRepository;
+import univ.airconnect.chat.domain.entity.ChatMessage;
+import univ.airconnect.chat.domain.entity.ChatRoomMember;
+import univ.airconnect.chat.repository.ChatMessageRepository;
+import univ.airconnect.chat.repository.ChatRoomMemberRepository;
+import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
@@ -33,13 +40,21 @@ public class NotificationOutboxDispatchService {
     static final String PUSH_DEVICE_OWNER_CHANGED = "PUSH_DEVICE_OWNER_CHANGED";
     static final String PUSH_PROVIDER_CHANGED = "PUSH_PROVIDER_CHANGED";
     static final String PUSH_TOKEN_CHANGED = "PUSH_TOKEN_CHANGED";
+    static final String CHAT_ROOM_ACCESS_REVOKED = "CHAT_ROOM_ACCESS_REVOKED";
+    static final String CHAT_MESSAGE_NOT_AVAILABLE = "CHAT_MESSAGE_NOT_AVAILABLE";
+    static final String CHAT_PUSH_PAYLOAD_INVALID = "CHAT_PUSH_PAYLOAD_INVALID";
 
     private static final int MAX_ATTEMPTS = 3;
+    private static final String CHAT_NOTIFICATION_TYPE = "CHAT_MESSAGE_RECEIVED";
+    private static final ObjectMapper PAYLOAD_MAPPER = new ObjectMapper();
 
     private final NotificationOutboxRepository notificationOutboxRepository;
     private final UserRepository userRepository;
     private final PushDeviceRepository pushDeviceRepository;
     private final PushNotificationSender pushNotificationSender;
+    private final ChatRoomRepository chatRoomRepository;
+    private final ChatRoomMemberRepository chatRoomMemberRepository;
+    private final ChatMessageRepository chatMessageRepository;
 
     /**
      * PROCESSING outbox 한 건을 잠근 뒤 현재 수신 자격을 검증하고 발송한다.
@@ -64,6 +79,12 @@ public class NotificationOutboxDispatchService {
             return;
         }
 
+        String chatInvalidReason = validateCurrentChatDelivery(outbox);
+        if (chatInvalidReason != null) {
+            skip(outbox, chatInvalidReason, "현재 채팅방 또는 메시지 상태가 발송 조건을 만족하지 않습니다.");
+            return;
+        }
+
         PushDevice device = pushDeviceRepository.findByIdForUpdate(outbox.getPushDeviceId()).orElse(null);
         String invalidReason = validateCurrentDevice(outbox, device);
         if (invalidReason != null) {
@@ -72,6 +93,60 @@ public class NotificationOutboxDispatchService {
         }
 
         sendLocked(outbox, device);
+    }
+
+    private String validateCurrentChatDelivery(NotificationOutbox outbox) {
+        JsonNode payload;
+        try {
+            payload = PAYLOAD_MAPPER.readTree(outbox.getDataJson());
+        } catch (Exception exception) {
+            log.warn("Unable to parse outbox payload before dispatch: outboxId={}", outbox.getId());
+            return null;
+        }
+
+        if (payload == null || !CHAT_NOTIFICATION_TYPE.equals(payload.path("notificationType").asText())) {
+            return null;
+        }
+
+        Long roomId = positiveLong(payload.get("chatRoomId"));
+        Long messageId = positiveLong(payload.get("messageId"));
+        if (roomId == null || messageId == null) {
+            return CHAT_PUSH_PAYLOAD_INVALID;
+        }
+
+        if (chatRoomRepository.findByIdForUpdate(roomId).isEmpty()) {
+            return CHAT_ROOM_ACCESS_REVOKED;
+        }
+
+        ChatRoomMember membership = chatRoomMemberRepository
+                .findVisibleByChatRoomIdAndUserIdForUpdate(roomId, outbox.getUserId())
+                .orElse(null);
+        if (membership == null) {
+            return CHAT_ROOM_ACCESS_REVOKED;
+        }
+
+        ChatMessage message = chatMessageRepository.findByIdForUpdate(messageId).orElse(null);
+        if (message == null || message.isDeleted() || !roomId.equals(message.getRoomId())) {
+            return CHAT_MESSAGE_NOT_AVAILABLE;
+        }
+        if (membership.getJoinedAt() != null
+                && message.getCreatedAt() != null
+                && message.getCreatedAt().isBefore(membership.getJoinedAt())) {
+            return CHAT_ROOM_ACCESS_REVOKED;
+        }
+        return null;
+    }
+
+    private Long positiveLong(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        try {
+            long value = Long.parseLong(node.asText());
+            return value > 0 ? value : null;
+        } catch (NumberFormatException exception) {
+            return null;
+        }
     }
 
     private String validateCurrentDevice(NotificationOutbox outbox, PushDevice device) {

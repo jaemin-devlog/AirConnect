@@ -99,6 +99,13 @@ class ChatServiceReadTrackingTest {
         }).when(redisTemplate).convertAndSend(any(String.class), any(String.class));
 
         when(userBlockPolicyService.findAnyBlockedCounterpart(anyLong(), anyList())).thenReturn(Optional.empty());
+        when(userRepository.findByIdForUpdate(anyLong()))
+                .thenAnswer(invocation -> userRepository.findById(invocation.getArgument(0)));
+        when(chatRoomMemberRepository.findVisibleByChatRoomIdAndUserIdForUpdate(anyLong(), anyLong()))
+                .thenAnswer(invocation -> chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(
+                        invocation.getArgument(0), invocation.getArgument(1)));
+        when(chatMessageRepository.findByIdForUpdate(anyLong()))
+                .thenAnswer(invocation -> chatMessageRepository.findById(invocation.getArgument(0)));
     }
 
     @Test
@@ -145,7 +152,7 @@ class ChatServiceReadTrackingTest {
 
         assertEquals(1, response.getUnreadCount());
         assertNull(response.getReadAt());
-        assertEquals(response.getMessageId(), senderMember.getLastReadMessageId());
+        assertNull(senderMember.getLastReadMessageId());
         assertNull(counterpartMember.getLastReadMessageId());
         assertEquals(1, publishedEvents.size());
         assertEquals("MESSAGE", publishedEvents.get(0).getEventType());

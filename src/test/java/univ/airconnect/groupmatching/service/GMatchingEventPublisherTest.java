@@ -6,10 +6,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessageSendingOperations;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import univ.airconnect.groupmatching.dto.response.GMatchingRealtimeEventResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class GMatchingEventPublisherTest {
@@ -43,5 +46,27 @@ class GMatchingEventPublisherTest {
         assertThat(payload.teamRoomId()).isEqualTo(12L);
         assertThat(payload.position()).isEqualTo(3);
         assertThat(payload.matched()).isFalse();
+    }
+
+    @Test
+    void publishStatus_defersUntilTransactionCommit() {
+        GMatchingEventPublisher publisher = new GMatchingEventPublisher(messagingTemplate);
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            publisher.publishStatus(12L, "MATCHED");
+
+            verifyNoInteractions(messagingTemplate);
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(TransactionSynchronization::afterCommit);
+
+            verify(messagingTemplate).convertAndSend(
+                    org.mockito.ArgumentMatchers.eq("/sub/matching/team-room/12"),
+                    org.mockito.ArgumentMatchers.any(GMatchingRealtimeEventResponse.class)
+            );
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
     }
 }

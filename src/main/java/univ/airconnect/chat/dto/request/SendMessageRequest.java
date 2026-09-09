@@ -16,5 +16,8 @@ public class SendMessageRequest {
 
     // 기본값은 TEXT로 처리한다.
     private MessageType messageType;
+
+    @Size(max = 64, message = "클라이언트 메시지 ID는 64자 이내여야 합니다.")
+    private String clientMessageId;
 }
 
