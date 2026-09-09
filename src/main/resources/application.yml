@@ -26,6 +26,8 @@ spring:
         enabled: ${REDIS_SSL_ENABLED:false}
 
 app:
+  festival-coupons:
+    seed-enabled: ${FESTIVAL_COUPON_SEED_ENABLED:true}
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
   rewards:

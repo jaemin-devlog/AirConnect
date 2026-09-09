@@ -200,6 +200,22 @@ public class TicketLedger {
                 .build();
     }
 
+    public static TicketLedger grantForFestivalCoupon(Long userId,
+                                                       int amount,
+                                                       int beforeAmount,
+                                                       int afterAmount,
+                                                       String couponCode) {
+        return TicketLedger.builder()
+                .userId(userId)
+                .changeAmount(amount)
+                .beforeAmount(beforeAmount)
+                .afterAmount(afterAmount)
+                .reason("FESTIVAL_COUPON")
+                .refType(LedgerRefType.FESTIVAL_COUPON)
+                .refId("festival-coupon:" + couponCode)
+                .build();
+    }
+
     public String ledgerExternalId() {
         return "TICKET_LEDGER_" + id;
     }
