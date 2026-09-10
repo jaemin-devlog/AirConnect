@@ -237,7 +237,9 @@ class GroupChatJoinSecurityTest {
         User a = saveUser("a", Gender.MALE);
         User b = saveUser("b", Gender.FEMALE);
         User attacker = saveUser("attacker", Gender.MALE);
-        Long roomId = chatService.createChatRoom("personal", ChatRoomType.PERSONAL, a.getId(), b.getId()).getId();
+        Long roomId = chatService.createOrGetPersonalRoomForConnection(
+                987654L, a.getId(), b.getId(), "personal"
+        ).getId();
         for (User user : List.of(a, attacker)) {
             authenticate(user);
             mvc.perform(post("/api/v1/chat/rooms/{roomId}/join", roomId))

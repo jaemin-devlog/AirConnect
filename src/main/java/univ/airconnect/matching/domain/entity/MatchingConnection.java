@@ -10,12 +10,10 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 @Entity
-@Table(
-        name = "matching_connections",
-        uniqueConstraints = {
-                @UniqueConstraint(columnNames = {"user1_id", "user2_id"})
-        }
-)
+@Table(name = "matching_connections", indexes = {
+        @Index(name = "idx_matching_connection_pair", columnList = "user1_id,user2_id,connected_at"),
+        @Index(name = "idx_matching_connection_status", columnList = "status")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class MatchingConnection {
@@ -70,20 +68,6 @@ public class MatchingConnection {
     public void reject() {
         this.status = ConnectionStatus.REJECTED;
         this.respondedAt = LocalDateTime.now();
-    }
-
-    public void resetToPending() {
-        this.status = ConnectionStatus.PENDING;
-        this.respondedAt = null;
-        this.connectedAt = LocalDateTime.now();
-    }
-
-    public void reopenAsPending(Long requesterUserId) {
-        this.status = ConnectionStatus.PENDING;
-        this.requesterId = requesterUserId;
-        this.chatRoomId = null;
-        this.respondedAt = null;
-        this.connectedAt = LocalDateTime.now();
     }
 
     public boolean isParticipant(Long userId) {

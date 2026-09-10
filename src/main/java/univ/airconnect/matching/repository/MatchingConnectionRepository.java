@@ -9,11 +9,10 @@ import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
 
 import java.util.List;
-import java.util.Optional;
 
-public interface MatchingConnectionRepository extends JpaRepository<MatchingConnection, Long> {
+public interface MatchingConnectionRepository extends JpaRepository<MatchingConnection, Long>, MatchingConnectionLockRepository {
 
-    Optional<MatchingConnection> findByUser1IdAndUser2Id(Long user1Id, Long user2Id);
+    List<MatchingConnection> findByUser1IdAndUser2IdOrderByConnectedAtDescIdDesc(Long user1Id, Long user2Id);
 
     long deleteByUser1IdOrUser2Id(Long user1Id, Long user2Id);
 

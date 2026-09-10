@@ -87,20 +87,9 @@ public class ChatService {
         findUserOrThrow(creatorUserId);
 
         if (type == ChatRoomType.PERSONAL) {
-            if (targetUserId == null) {
-                throw new BusinessException(ErrorCode.INVALID_REQUEST, "1:1 채팅은 대상 사용자가 필요합니다.");
-            }
-            ensureNotBlockedPair(creatorUserId, targetUserId);
-
-            List<Long> existingRoomIds = chatRoomMemberRepository.findCommonPersonalRoomIds(creatorUserId, targetUserId);
-            if (!existingRoomIds.isEmpty()) {
-                ChatRoom existingRoom = chatRoomRepository.findById(existingRoomIds.get(0))
-                        .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR));
-                return buildCreateRoomResponse(existingRoom, creatorUserId);
-            }
-
-            ChatRoom personalRoom = createPersonalRoom(name, creatorUserId, targetUserId, null);
-            return buildCreateRoomResponse(personalRoom, creatorUserId);
+            throw new BusinessException(
+                    ErrorCode.PERSONAL_ROOM_REQUIRES_MATCH
+            );
         }
 
         ChatRoom groupRoom = createRoomWithMembers(name, ChatRoomType.GROUP, List.of(creatorUserId));

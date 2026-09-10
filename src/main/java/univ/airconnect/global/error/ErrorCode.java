@@ -16,6 +16,8 @@ public enum ErrorCode {
     FESTIVAL_COUPON_INVALID(HttpStatus.BAD_REQUEST, "COUPON-001", "유효하지 않은 쿠폰 코드입니다."),
     FESTIVAL_COUPON_ALREADY_REDEEMED(HttpStatus.CONFLICT, "COUPON-002", "이미 사용된 쿠폰 코드입니다."),
 
+    PERSONAL_ROOM_REQUIRES_MATCH(HttpStatus.FORBIDDEN, "CHAT-001", "1:1 채팅방은 매칭 요청이 수락된 경우에만 생성할 수 있습니다."),
+
     TEAM_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "GMATCH-001", "임시 팀방을 찾을 수 없습니다."),
     TEAM_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "GMATCH-002", "임시 팀방 멤버를 찾을 수 없습니다."),
     READY_STATE_NOT_FOUND(HttpStatus.NOT_FOUND, "GMATCH-003", "준비 상태 정보를 찾을 수 없습니다."),

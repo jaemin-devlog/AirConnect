@@ -101,6 +101,8 @@ public interface UserRepository extends JpaRepository<User, Long>, UserTicketLoc
         FROM User u
         INNER JOIN u.userProfile up
         WHERE u.status = 'ACTIVE'
+          AND u.onboardingStatus = 'FULL'
+          AND (u.restrictedAt IS NULL OR (u.restrictedUntil IS NOT NULL AND u.restrictedUntil <= CURRENT_TIMESTAMP))
           AND u.id <> :userId
           AND up.gender <> (
               SELECT up2.gender FROM UserProfile up2 WHERE up2.userId = :userId
@@ -141,6 +143,8 @@ public interface UserRepository extends JpaRepository<User, Long>, UserTicketLoc
         FROM User u
         INNER JOIN u.userProfile up
         WHERE u.status = 'ACTIVE'
+          AND u.onboardingStatus = 'FULL'
+          AND (u.restrictedAt IS NULL OR (u.restrictedUntil IS NOT NULL AND u.restrictedUntil <= CURRENT_TIMESTAMP))
           AND u.id <> :userId
           AND up.gender = (
               SELECT up2.gender FROM UserProfile up2 WHERE up2.userId = :userId

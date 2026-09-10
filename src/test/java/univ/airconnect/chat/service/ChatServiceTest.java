@@ -226,42 +226,23 @@ class ChatServiceTest {
     }
 
     @Test
-    void createChatRoom_returnsCounterpartInfoImmediatelyForPersonalRoom() {
+    void createChatRoom_rejectsDirectPersonalRoomCreation() {
         ChatService service = createService();
         Long creatorUserId = 1L;
         Long targetUserId = 2L;
         User creator = createUser(creatorUserId, "creator");
-        User target = createUser(targetUserId, "target");
-        createDetailedProfile(target, Gender.FEMALE, "INFJ", "Busan", "target_insta");
 
         when(userRepository.findById(creatorUserId)).thenReturn(Optional.of(creator));
-        when(chatRoomMemberRepository.findCommonPersonalRoomIds(creatorUserId, targetUserId)).thenReturn(List.of());
-        when(userRepository.findAllById(List.of(creatorUserId, targetUserId))).thenReturn(List.of(creator, target));
-        when(chatRoomRepository.save(any(ChatRoom.class))).thenAnswer(invocation -> {
-            ChatRoom room = invocation.getArgument(0);
-            ReflectionTestUtils.setField(room, "id", 777L);
-            return room;
-        });
-        when(chatRoomMemberRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(userRepository.findAllByIdWithProfile(List.of(targetUserId))).thenReturn(List.of(target));
 
-        ChatRoomResponse response = service.createChatRoom("새 채팅방", ChatRoomType.PERSONAL, creatorUserId, targetUserId);
+        assertThatThrownBy(() -> service.createChatRoom(
+                "새 채팅방", ChatRoomType.PERSONAL, creatorUserId, targetUserId
+        )).isInstanceOf(univ.airconnect.global.error.BusinessException.class)
+                .hasMessageContaining("매칭 요청이 수락된 경우에만")
+                .extracting("errorCode")
+                .isEqualTo(univ.airconnect.global.error.ErrorCode.PERSONAL_ROOM_REQUIRES_MATCH);
 
-        assertThat(response.getId()).isEqualTo(777L);
-        assertThat(response.getType()).isEqualTo(ChatRoomType.PERSONAL);
-        assertThat(response.getTargetUserId()).isEqualTo(targetUserId);
-        assertThat(response.getTargetNickname()).isEqualTo("target");
-        assertThat(response.getTargetStudentNum()).isEqualTo(20230002);
-        assertThat(response.getTargetProfileImage()).isEqualTo("profiles/" + targetUserId + ".png");
-        assertThat(response.getTargetProfile()).isNotNull();
-        assertThat(response.getTargetProfile().getUserId()).isEqualTo(targetUserId);
-        assertThat(response.getTargetProfile().getStudentNum()).isEqualTo(20230002);
-        assertThat(response.getTargetProfile().getGender()).isEqualTo(Gender.FEMALE);
-        assertThat(response.getTargetProfile().getProfileImage()).isEqualTo("profiles/" + targetUserId + ".png");
-        assertThat(response.getTargetProfile().getProfile()).isNotNull();
-        assertThat(response.getTargetProfile().getProfile().getMbti()).isEqualTo("INFJ");
-        assertThat(response.getTargetProfile().getProfile().getResidence()).isEqualTo("Busan");
-        assertThat(response.getName()).isEqualTo("target");
+        verify(chatRoomRepository, never()).save(any(ChatRoom.class));
+        verify(chatRoomMemberRepository, never()).saveAll(any());
     }
 
     @Test
