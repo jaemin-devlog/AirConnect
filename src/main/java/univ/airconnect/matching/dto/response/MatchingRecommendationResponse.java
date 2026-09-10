@@ -11,6 +11,7 @@ import java.util.List;
 @AllArgsConstructor
 public class MatchingRecommendationResponse {
 
+    private String recommendationRequestId;
     private int count;
     private List<MatchingCandidateResponse> candidates;
     private Integer userTicketsRemaining;

@@ -2,6 +2,7 @@ package univ.airconnect.matching.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -27,20 +28,24 @@ public class MatchingController {
     @GetMapping("/recommendations")
     public ResponseEntity<ApiResponse<MatchingRecommendationResponse>> recommend(
             @CurrentUserId Long userId,
+            @RequestHeader(value = "Idempotency-Key", required = false)
+            @Size(max = 100) String recommendationRequestId,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        MatchingRecommendationResponse response = matchingService.recommend(userId);
+        MatchingRecommendationResponse response = matchingService.recommend(userId, recommendationRequestId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
     @GetMapping("/recommendations/same-gender")
     public ResponseEntity<ApiResponse<MatchingRecommendationResponse>> recommendSameGender(
             @CurrentUserId Long userId,
+            @RequestHeader(value = "Idempotency-Key", required = false)
+            @Size(max = 100) String recommendationRequestId,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        MatchingRecommendationResponse response = matchingService.recommendSameGender(userId);
+        MatchingRecommendationResponse response = matchingService.recommendSameGender(userId, recommendationRequestId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
@@ -48,10 +53,12 @@ public class MatchingController {
     public ResponseEntity<ApiResponse<MatchingConnectResponse>> connect(
             @CurrentUserId Long userId,
             @PathVariable @Positive Long targetUserId,
+            @RequestHeader(value = "Idempotency-Key", required = false)
+            @Size(max = 100) String connectRequestId,
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        MatchingConnectResponse response = matchingService.connect(userId, targetUserId);
+        MatchingConnectResponse response = matchingService.connect(userId, targetUserId, connectRequestId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
