@@ -115,4 +115,12 @@ config/firebase-service-account.json
 secrets/
 !secrets/.gitkeep
 
+# Local Figma/design work (never publish)
+/FigmaSetup.exe
+/design-system-state-airconnect-*.json
+/design-assets/
+/tools/airconnect-figma-builder/
+/outputs/character-assets/
+/outputs/ui/
+
 .md
