@@ -1298,6 +1298,10 @@ public class ChatService {
         if (messageType == null || messageType == MessageType.TALK) {
             return MessageType.TEXT;
         }
+        if (messageType != MessageType.TEXT && messageType != MessageType.IMAGE) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "사용자는 TEXT 또는 IMAGE 메시지만 전송할 수 있습니다.");
+        }
         return messageType;
     }
 

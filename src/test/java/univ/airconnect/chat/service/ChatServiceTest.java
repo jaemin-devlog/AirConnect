@@ -61,6 +61,28 @@ import static org.mockito.Mockito.atLeastOnce;
 @ExtendWith(MockitoExtension.class)
 class ChatServiceTest {
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = univ.airconnect.chat.domain.MessageType.class,
+            names = {"ENTER", "EXIT"})
+    void rejectsClientSystemMessagesOnBothTransports(univ.airconnect.chat.domain.MessageType type) {
+        ChatService service = createService();
+        ChatMessageRequest stomp = new ChatMessageRequest();
+        ReflectionTestUtils.setField(stomp, "roomId", 99L);
+        ReflectionTestUtils.setField(stomp, "message", "forged system message");
+        ReflectionTestUtils.setField(stomp, "messageType", type);
+        var rest = new univ.airconnect.chat.dto.request.SendMessageRequest();
+        ReflectionTestUtils.setField(rest, "content", "forged system message");
+        ReflectionTestUtils.setField(rest, "messageType", type);
+
+        assertThatThrownBy(() -> service.sendMessage(1L, stomp))
+                .isInstanceOf(univ.airconnect.global.error.BusinessException.class)
+                .hasMessageContaining("TEXT 또는 IMAGE");
+        assertThatThrownBy(() -> service.sendMessage(1L, 99L, rest))
+                .isInstanceOf(univ.airconnect.global.error.BusinessException.class)
+                .hasMessageContaining("TEXT 또는 IMAGE");
+        org.mockito.Mockito.verifyNoInteractions(chatMessageRepository, notificationService);
+    }
+
     @Mock
     private ChatRoomRepository chatRoomRepository;
     @Mock
