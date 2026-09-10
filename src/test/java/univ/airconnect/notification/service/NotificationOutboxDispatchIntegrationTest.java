@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @DataJpaTest
 @ActiveProfiles("test")
 @Import({NotificationOutboxDispatchService.class, PushDeviceService.class})
@@ -164,6 +165,8 @@ class NotificationOutboxDispatchIntegrationTest {
     private void flushAndClear() {
         entityManager.flush();
         entityManager.clear();
+        org.springframework.test.context.transaction.TestTransaction.flagForCommit();
+        org.springframework.test.context.transaction.TestTransaction.end();
     }
 
     private void assertSkipped(Long outboxId, String expectedReason) {

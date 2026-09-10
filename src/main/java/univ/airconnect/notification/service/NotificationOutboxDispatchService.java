@@ -21,12 +21,16 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.*;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.annotation.Propagation;
 
 /**
  * outbox 발송 직전에 현재 사용자와 푸시 디바이스 소유권을 다시 검증한다.
  *
- * <p>사용자와 디바이스 행의 쓰기 잠금을 FCM 응답까지 유지해 로그아웃, 계정 전환,
- * 토큰 갱신, 회원 탈퇴와 발송이 서로 엇갈리지 않게 한다.</p>
+ * Starts the asynchronous provider call while authorization locks are held, then
+ * releases DB locks before awaiting the provider response. Completion is fenced per attempt.
  */
 @Slf4j
 @Service
@@ -55,44 +59,80 @@ public class NotificationOutboxDispatchService {
     private final ChatRoomRepository chatRoomRepository;
     private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final PlatformTransactionManager transactionManager;
+
+    private TransactionTemplate newTransaction() {
+        var template = new TransactionTemplate(transactionManager);
+        template.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return template;
+    }
+
+    private record Attempt(Long id, String token, Long userId, Long deviceId, String targetToken,
+                           CompletableFuture<PushNotificationSender.PushSendResult> future) {}
+
 
     /**
      * PROCESSING outbox 한 건을 잠근 뒤 현재 수신 자격을 검증하고 발송한다.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void dispatch(Long outboxId) {
+        Attempt attempt = newTransaction().execute(status -> begin(outboxId));
+        if (attempt == null) return;
+        PushNotificationSender.PushSendResult result;
+        try {
+            // No application transaction/row lock is held while waiting for FCM.
+            result = attempt.future().get(30, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            result = PushNotificationSender.PushSendResult.retryableFailure("INTERRUPTED", "Push wait interrupted");
+        } catch (Exception failure) {
+            result = PushNotificationSender.PushSendResult.retryableFailure("PROVIDER_FAILURE", failure.toString());
+        }
+        var completedResult = result;
+        newTransaction().executeWithoutResult(status -> complete(attempt, completedResult));
+    }
+
+    private Attempt begin(Long outboxId) {
         NotificationOutbox outbox = notificationOutboxRepository.findByIdForUpdate(outboxId).orElse(null);
         if (outbox == null) {
             log.debug("Ignoring deleted notification outbox: outboxId={}", outboxId);
-            return;
+            return null;
         }
 
         if (outbox.getStatus() != NotificationDeliveryStatus.PROCESSING) {
             log.debug("Ignoring outbox outside PROCESSING state: outboxId={}, status={}",
                     outboxId, outbox.getStatus());
-            return;
+            return null;
         }
 
         User recipient = userRepository.findByIdForUpdate(outbox.getUserId()).orElse(null);
         if (recipient == null || recipient.getStatus() != UserStatus.ACTIVE) {
             skip(outbox, RECIPIENT_NOT_ACTIVE, "수신 사용자가 없거나 활성 상태가 아닙니다.");
-            return;
+            return null;
         }
 
         String chatInvalidReason = validateCurrentChatDelivery(outbox);
         if (chatInvalidReason != null) {
             skip(outbox, chatInvalidReason, "현재 채팅방 또는 메시지 상태가 발송 조건을 만족하지 않습니다.");
-            return;
+            return null;
         }
 
         PushDevice device = pushDeviceRepository.findByIdForUpdate(outbox.getPushDeviceId()).orElse(null);
         String invalidReason = validateCurrentDevice(outbox, device);
         if (invalidReason != null) {
             skip(outbox, invalidReason, "현재 푸시 디바이스 상태가 outbox 생성 시점과 다릅니다.");
-            return;
+            return null;
         }
 
-        sendLocked(outbox, device);
+        String token = outbox.beginDispatch();
+        if (token == null) return null;
+        CompletableFuture<PushNotificationSender.PushSendResult> future;
+        try {
+            future = pushNotificationSender.sendAsync(outbox, device.getPlatform());
+        } catch (RuntimeException failure) {
+            future = CompletableFuture.failedFuture(failure);
+        }
+        return new Attempt(outbox.getId(), token, outbox.getUserId(), device.getId(), outbox.getTargetToken(), future);
     }
 
     private String validateCurrentChatDelivery(NotificationOutbox outbox) {
@@ -171,36 +211,23 @@ public class NotificationOutboxDispatchService {
         return null;
     }
 
-    private void sendLocked(NotificationOutbox outbox, PushDevice device) {
-        try {
-            PushNotificationSender.PushSendResult result = pushNotificationSender.send(
-                    outbox,
-                    device.getPlatform()
-            );
-            if (result.success()) {
-                outbox.markSent(result.providerMessageId());
-                return;
-            }
-
-            if (result.invalidToken()) {
-                device.releaseTokenOwnership();
-                outbox.markSkipped(result.errorCode(), result.errorMessage());
-                return;
-            }
-
-            if (result.retryable() && canRetry(outbox)) {
-                outbox.markRetry(result.errorCode(), result.errorMessage(), nextAttemptAt(outbox));
-                return;
-            }
-
+    private void complete(Attempt attempt, PushNotificationSender.PushSendResult result) {
+        var outbox = notificationOutboxRepository.findByIdForUpdate(attempt.id()).orElse(null);
+        if (outbox == null || outbox.getStatus() != NotificationDeliveryStatus.PROCESSING
+                || !attempt.token().equals(outbox.getDispatchToken())) return;
+        if (result.success()) {
+            outbox.markSent(result.providerMessageId());
+        } else if (result.invalidToken()) {
+            // A late invalid-token response must not invalidate a refreshed/reassigned device.
+            pushDeviceRepository.findByIdForUpdate(attempt.deviceId()).ifPresent(device -> {
+                if (attempt.userId().equals(device.getUserId())
+                        && attempt.targetToken().equals(device.getPushToken())) device.releaseTokenOwnership();
+            });
+            outbox.markSkipped(result.errorCode(), result.errorMessage());
+        } else if (result.retryable() && canRetry(outbox)) {
+            outbox.markRetry(result.errorCode(), result.errorMessage(), nextAttemptAt(outbox));
+        } else {
             outbox.markFailed(result.errorCode(), result.errorMessage());
-        } catch (Exception e) {
-            log.error("Notification outbox dispatch failed unexpectedly: outboxId={}", outbox.getId(), e);
-            if (canRetry(outbox)) {
-                outbox.markRetry("UNEXPECTED_ERROR", e.getMessage(), nextAttemptAt(outbox));
-                return;
-            }
-            outbox.markFailed("UNEXPECTED_ERROR", e.getMessage());
         }
     }
 

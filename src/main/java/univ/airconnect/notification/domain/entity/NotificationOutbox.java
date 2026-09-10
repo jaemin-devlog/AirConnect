@@ -105,6 +105,16 @@ public class NotificationOutbox {
     @Column(name = "claimed_at")
     private LocalDateTime claimedAt;
 
+    @Column(name = "dispatch_token", length = 36)
+    private String dispatchToken;
+
+    public String beginDispatch() {
+        if (status != NotificationDeliveryStatus.PROCESSING || dispatchToken != null) return null;
+        dispatchToken = java.util.UUID.randomUUID().toString();
+        claimedAt = LocalDateTime.now();
+        return dispatchToken;
+    }
+
     /** 실제 발송 완료 시각 */
     @Column(name = "sent_at")
     private LocalDateTime sentAt;
@@ -202,6 +212,7 @@ public class NotificationOutbox {
         this.lastErrorCode = null;
         this.lastErrorMessage = null;
         this.claimedAt = null;
+        this.dispatchToken = null;
         touch();
     }
 
@@ -215,9 +226,10 @@ public class NotificationOutbox {
         this.status = NotificationDeliveryStatus.PENDING;
         this.attemptCount = this.attemptCount + 1;
         this.nextAttemptAt = nextAttemptAt;
-        this.lastErrorCode = errorCode;
-        this.lastErrorMessage = errorMessage;
+        this.lastErrorCode = truncate(errorCode, 100);
+        this.lastErrorMessage = truncate(errorMessage, 1000);
         this.claimedAt = null;
+        this.dispatchToken = null;
         touch();
     }
 
@@ -227,9 +239,10 @@ public class NotificationOutbox {
     public void markFailed(String errorCode, String errorMessage) {
         this.status = NotificationDeliveryStatus.FAILED;
         this.attemptCount = this.attemptCount + 1;
-        this.lastErrorCode = errorCode;
-        this.lastErrorMessage = errorMessage;
+        this.lastErrorCode = truncate(errorCode, 100);
+        this.lastErrorMessage = truncate(errorMessage, 1000);
         this.claimedAt = null;
+        this.dispatchToken = null;
         touch();
     }
 
@@ -244,6 +257,7 @@ public class NotificationOutbox {
         this.status = NotificationDeliveryStatus.PENDING;
         this.nextAttemptAt = requestedAt;
         this.claimedAt = null;
+        this.dispatchToken = null;
         this.lastErrorCode = "ADMIN_RETRY_QUEUED";
         this.lastErrorMessage = null;
         touch();
@@ -255,13 +269,18 @@ public class NotificationOutbox {
      */
     public void markSkipped(String errorCode, String errorMessage) {
         this.status = NotificationDeliveryStatus.SKIPPED;
-        this.lastErrorCode = errorCode;
-        this.lastErrorMessage = errorMessage;
+        this.lastErrorCode = truncate(errorCode, 100);
+        this.lastErrorMessage = truncate(errorMessage, 1000);
         this.claimedAt = null;
+        this.dispatchToken = null;
         touch();
     }
 
     /** updatedAt 갱신용 공통 메서드 */
+    private static String truncate(String value, int max) {
+        return value == null || value.length() <= max ? value : value.substring(0, max);
+    }
+
     private void touch() {
         this.updatedAt = LocalDateTime.now();
     }

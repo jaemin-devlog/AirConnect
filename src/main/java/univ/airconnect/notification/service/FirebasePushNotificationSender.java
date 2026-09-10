@@ -69,21 +69,28 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
      * outbox 한 건을 Firebase Cloud Messaging으로 발송한다.
      */
     @Override
-    public PushSendResult send(NotificationOutbox outbox, PushPlatform platform) {
+    public java.util.concurrent.CompletableFuture<PushSendResult> sendAsync(NotificationOutbox outbox, PushPlatform platform) {
         if (outbox.getProvider() != PushProvider.FCM) {
-            return PushSendResult.failed(
+            return java.util.concurrent.CompletableFuture.completedFuture(PushSendResult.failed(
                     "UNSUPPORTED_PROVIDER",
                     "현재는 FCM 전송만 구현되어 있습니다. iOS 기기도 FCM 토큰으로 등록해 주세요."
-            );
+            ));
         }
 
+        var result = new java.util.concurrent.CompletableFuture<PushSendResult>();
         try {
-            String providerMessageId = firebaseMessaging.send(buildMessage(outbox, platform));
-            log.debug("Push dispatched via FCM: outboxId={}, messageId={}", outbox.getId(), providerMessageId);
-            return PushSendResult.success(providerMessageId);
-        } catch (FirebaseMessagingException e) {
-            return mapFailure(outbox, e);
+            com.google.api.core.ApiFutures.addCallback(firebaseMessaging.sendAsync(buildMessage(outbox, platform)),
+                    new com.google.api.core.ApiFutureCallback<String>() {
+                        public void onSuccess(String id) { result.complete(PushSendResult.success(id)); }
+                        public void onFailure(Throwable failure) {
+                            if (failure instanceof FirebaseMessagingException fcm) result.complete(mapFailure(outbox, fcm));
+                            else result.completeExceptionally(failure);
+                        }
+                    }, Runnable::run);
+        } catch (RuntimeException failure) {
+            result.completeExceptionally(failure);
         }
+        return result;
     }
 
     /**

@@ -115,7 +115,7 @@ class ChatServiceTest {
     private SimpMessageSendingOperations messagingTemplate;
 
     @Test
-    void sendMessage_doesNotFailWhenRedisPublishSerializationFails() throws Exception {
+    void sendMessage_rejectsUnserializableDeliveryIntent() throws Exception {
         ChatService service = createService();
         Long userId = 1L;
         Long roomId = 99L;
@@ -135,7 +135,7 @@ class ChatServiceTest {
         when(objectMapper.writeValueAsString(any())).thenThrow(new JsonProcessingException("boom") {
         });
 
-        assertThatCode(() -> service.sendMessage(userId, request)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> service.sendMessage(userId, request)).isInstanceOf(IllegalStateException.class);
         verify(chatMessageRepository).save(any());
         verify(redisTemplate, never()).convertAndSend(anyString(), any());
     }
@@ -860,6 +860,7 @@ class ChatServiceTest {
     }
 
     private ChatService createService() {
+        lenient().when(objectMapper.createObjectNode()).thenAnswer(invocation -> new ObjectMapper().createObjectNode());
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(redisTemplate.opsForSet()).thenReturn(setOperations);
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
@@ -882,7 +883,7 @@ class ChatServiceTest {
                 redisTemplate,
                 messagingTemplate,
                 objectMapper,
-                notificationService,
+                ChatDeliveryTestSupport.immediate(notificationService, redisTemplate, messagingTemplate, objectMapper),
                 userBlockPolicyService,
                 stompSessionRegistry
         );

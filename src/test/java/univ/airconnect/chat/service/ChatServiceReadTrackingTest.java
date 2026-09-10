@@ -88,7 +88,7 @@ class ChatServiceReadTrackingTest {
                 redisTemplate,
                 messagingTemplate,
                 objectMapper,
-                notificationService,
+                ChatDeliveryTestSupport.immediate(notificationService, redisTemplate, messagingTemplate, objectMapper),
                 userBlockPolicyService,
                 stompSessionRegistry
         );

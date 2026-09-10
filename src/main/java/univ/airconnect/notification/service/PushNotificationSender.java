@@ -13,7 +13,11 @@ public interface PushNotificationSender {
     /**
      * 단건 outbox를 외부 프로바이더로 발송한다.
      */
-    PushSendResult send(NotificationOutbox outbox, PushPlatform platform);
+    java.util.concurrent.CompletableFuture<PushSendResult> sendAsync(NotificationOutbox outbox, PushPlatform platform);
+
+    default PushSendResult send(NotificationOutbox outbox, PushPlatform platform) {
+        return sendAsync(outbox, platform).join();
+    }
 
     /**
      * 발송 결과를 워커가 공통 처리할 수 있도록 정규화한 결과 모델이다.

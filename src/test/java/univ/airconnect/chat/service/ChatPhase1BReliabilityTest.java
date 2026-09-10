@@ -136,20 +136,13 @@ class ChatPhase1BReliabilityTest {
     }
 
     @Test
-    void notificationPersistenceRollbackDoesNotLeakRealtimeMessage() {
-        doAnswer(invocation -> {
-            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
-            return null;
-        }).when(notifications).createAndEnqueue(any(NotificationService.CreateCommand.class));
-
-        assertThatThrownBy(() -> transaction.executeWithoutResult(status ->
-                send(sender.getId(), firstRoomId, "notification rollback", "rollback-2")))
-                .isInstanceOf(UnexpectedRollbackException.class);
-
-        assertThat(messages.countByRoomId(firstRoomId)).isZero();
-        verify(notifications).createAndEnqueue(any(NotificationService.CreateCommand.class));
-        verify(redisTemplate, never()).convertAndSend(anyString(), any());
-        verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
+    void notificationFailureAfterCommitDoesNotRollbackChat() {
+        doThrow(new IllegalStateException("notification storage unavailable"))
+                .when(notifications).createAndEnqueue(any(NotificationService.CreateCommand.class));
+        assertThatCode(() -> send(sender.getId(), firstRoomId, "notification failure", "rollback-2"))
+                .doesNotThrowAnyException();
+        assertThat(messages.countByRoomId(firstRoomId)).isEqualTo(1);
+        verify(redisTemplate).convertAndSend(eq(firstRoomId.toString()), any());
     }
 
     @Test

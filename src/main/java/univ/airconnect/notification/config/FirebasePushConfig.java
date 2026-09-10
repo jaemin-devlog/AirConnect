@@ -40,6 +40,8 @@ public class FirebasePushConfig {
         }
 
         FirebaseOptions.Builder optionsBuilder = FirebaseOptions.builder()
+                .setConnectTimeout(5000)
+                .setReadTimeout(10000)
                 .setCredentials(loadCredentials(properties));
         if (hasText(properties.projectId())) {
             optionsBuilder.setProjectId(properties.projectId());

@@ -113,6 +113,7 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
     @Query(value = """
             UPDATE notification_outbox
             SET status = 'PROCESSING',
+                dispatch_token = NULL,
                 claimed_at = :claimedAt,
                 updated_at = :claimedAt
             WHERE id IN (:ids)
@@ -124,6 +125,7 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
     @Query(value = """
             UPDATE notification_outbox
             SET status = 'PENDING',
+                dispatch_token = NULL,
                 claimed_at = NULL,
                 next_attempt_at = :recoveredAt,
                 updated_at = :recoveredAt

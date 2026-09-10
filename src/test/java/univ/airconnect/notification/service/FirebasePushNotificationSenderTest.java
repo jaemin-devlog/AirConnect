@@ -36,7 +36,7 @@ class FirebasePushNotificationSenderTest {
 
     @Test
     void send_usesHighPriorityDataOnlyMessageForAndroidChat() throws Exception {
-        when(firebaseMessaging.send(any(Message.class))).thenReturn("provider-message-id");
+        when(firebaseMessaging.sendAsync(any(Message.class))).thenReturn(com.google.api.core.ApiFutures.immediateFuture("provider-message-id"));
         FirebasePushNotificationSender sender = new FirebasePushNotificationSender(firebaseMessaging, new ObjectMapper());
         NotificationOutbox outbox = outbox("""
                 {
@@ -67,7 +67,7 @@ class FirebasePushNotificationSenderTest {
 
     @Test
     void send_keepsNotificationPayloadForIosChat() throws Exception {
-        when(firebaseMessaging.send(any(Message.class))).thenReturn("provider-message-id");
+        when(firebaseMessaging.sendAsync(any(Message.class))).thenReturn(com.google.api.core.ApiFutures.immediateFuture("provider-message-id"));
         FirebasePushNotificationSender sender = new FirebasePushNotificationSender(firebaseMessaging, new ObjectMapper());
         NotificationOutbox outbox = outbox("""
                 {
@@ -90,7 +90,7 @@ class FirebasePushNotificationSenderTest {
 
     @Test
     void send_keepsExistingAndroidNotificationOptionsForNonChatTypes() throws Exception {
-        when(firebaseMessaging.send(any(Message.class))).thenReturn("provider-message-id");
+        when(firebaseMessaging.sendAsync(any(Message.class))).thenReturn(com.google.api.core.ApiFutures.immediateFuture("provider-message-id"));
         FirebasePushNotificationSender sender = new FirebasePushNotificationSender(firebaseMessaging, new ObjectMapper());
         NotificationOutbox outbox = outbox("""
                 {
@@ -115,7 +115,7 @@ class FirebasePushNotificationSenderTest {
 
     @Test
     void send_reducesAndroidTeamActivityPriority() throws Exception {
-        when(firebaseMessaging.send(any(Message.class))).thenReturn("provider-message-id");
+        when(firebaseMessaging.sendAsync(any(Message.class))).thenReturn(com.google.api.core.ApiFutures.immediateFuture("provider-message-id"));
         FirebasePushNotificationSender sender = new FirebasePushNotificationSender(firebaseMessaging, new ObjectMapper());
         NotificationOutbox outbox = outbox("""
                 {
@@ -139,7 +139,7 @@ class FirebasePushNotificationSenderTest {
 
     private Message captureMessage() throws Exception {
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(firebaseMessaging).send(messageCaptor.capture());
+        verify(firebaseMessaging).sendAsync(messageCaptor.capture());
         return messageCaptor.getValue();
     }
 

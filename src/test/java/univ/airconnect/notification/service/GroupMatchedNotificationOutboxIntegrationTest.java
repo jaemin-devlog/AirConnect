@@ -32,6 +32,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @DataJpaTest
 @ActiveProfiles("test")
 @Import({
@@ -111,15 +112,17 @@ class GroupMatchedNotificationOutboxIntegrationTest {
         NotificationOutbox outbox = notificationOutboxRepository.findAll().get(0);
         outbox.claim();
         notificationOutboxRepository.saveAndFlush(outbox);
-        when(pushNotificationSender.send(any(NotificationOutbox.class), any(PushPlatform.class)))
-                .thenReturn(PushNotificationSender.PushSendResult.success("fcm-group-message"));
+        when(pushNotificationSender.sendAsync(any(NotificationOutbox.class), any(PushPlatform.class)))
+                .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(PushNotificationSender.PushSendResult.success("fcm-group-message")));
 
+        org.springframework.test.context.transaction.TestTransaction.flagForCommit();
+        org.springframework.test.context.transaction.TestTransaction.end();
         dispatchService.dispatch(outbox.getId());
 
         NotificationOutbox reloaded = notificationOutboxRepository.findById(outbox.getId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(NotificationDeliveryStatus.SENT);
         assertThat(reloaded.getProviderMessageId()).isEqualTo("fcm-group-message");
-        verify(pushNotificationSender).send(any(NotificationOutbox.class), any(PushPlatform.class));
+        verify(pushNotificationSender).sendAsync(any(NotificationOutbox.class), any(PushPlatform.class));
     }
 
     @Test
@@ -131,6 +134,8 @@ class GroupMatchedNotificationOutboxIntegrationTest {
         notificationOutboxRepository.saveAndFlush(outbox);
         pushDeviceService.deactivateIfPresent(user.getId(), "device-stale");
 
+        org.springframework.test.context.transaction.TestTransaction.flagForCommit();
+        org.springframework.test.context.transaction.TestTransaction.end();
         dispatchService.dispatch(outbox.getId());
 
         NotificationOutbox reloaded = notificationOutboxRepository.findById(outbox.getId()).orElseThrow();

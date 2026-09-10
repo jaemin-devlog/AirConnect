@@ -353,7 +353,7 @@ class GroupChatJoinSecurityTest {
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackages = {"univ.airconnect.chat.repository", "univ.airconnect.user.repository",
             "univ.airconnect.groupmatching.repository", "univ.airconnect.iap.repository"})
-    @Import({ChatService.class, GMatchingService.class, StompSessionRegistry.class})
+    @Import({univ.airconnect.chat.service.ChatDeliveryService.class, univ.airconnect.chat.service.ChatDeliveryDispatcher.class, ChatService.class, GMatchingService.class, StompSessionRegistry.class})
     static class IsolatedJpaConfig {
         @Bean DataSource dataSource() {
             return new DriverManagerDataSource("jdbc:h2:mem:group-join-security;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");

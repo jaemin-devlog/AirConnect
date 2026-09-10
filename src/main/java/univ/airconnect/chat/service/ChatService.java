@@ -64,7 +64,7 @@ public class ChatService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final SimpMessageSendingOperations messagingTemplate;
     private final ObjectMapper objectMapper;
-    private final NotificationService notificationService;
+    private final ChatDeliveryService chatDeliveryService;
     private final UserBlockPolicyService userBlockPolicyService;
     private final StompSessionRegistry stompSessionRegistry;
 
@@ -1133,10 +1133,8 @@ public class ChatService {
     }
 
     private void publishToRedisSilently(Long roomId, ChatMessageResponse response) {
-        AfterCommitExecutor.execute(
-                "chat-redis:" + response.getEventType(),
-                () -> publishToRedis(roomId, response)
-        );
+        chatDeliveryService.enqueue(univ.airconnect.chat.domain.entity.ChatDeliveryEvent.Kind.MESSAGE,
+                roomId, response.getId(), null, response);
     }
 
     private void publishRoomListUpdates(ChatRoom room, Collection<Long> userIds) {
@@ -1162,10 +1160,8 @@ public class ChatService {
                 room.getLastMessageAt(),
                 unreadCount
         );
-        AfterCommitExecutor.execute(
-                "chat-room-list",
-                () -> messagingTemplate.convertAndSend("/sub/chat/list/" + userId, payload)
-        );
+        chatDeliveryService.enqueue(univ.airconnect.chat.domain.entity.ChatDeliveryEvent.Kind.ROOM_LIST,
+                room.getId(), null, userId, payload);
     }
 
     private void refreshRoomLastMessage(ChatRoom room) {
@@ -1238,7 +1234,6 @@ public class ChatService {
             if (Objects.equals(recipientUserId, sender.getId())) {
                 continue;
             }
-            try {
                 var payload = objectMapper.createObjectNode();
                 payload.put("chatRoomId", roomId);
                 payload.put("messageId", chatMessage.getId());
@@ -1247,7 +1242,8 @@ public class ChatService {
                 payload.put("messagePreview", preview);
                 payload.put("messageType", chatMessage.getType().name());
 
-                notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+                chatDeliveryService.enqueue(univ.airconnect.chat.domain.entity.ChatDeliveryEvent.Kind.NOTIFICATION,
+                        roomId, chatMessage.getId(), recipientUserId, new NotificationService.CreateCommand(
                         recipientUserId,
                         NotificationType.CHAT_MESSAGE_RECEIVED,
                         senderNickname,
@@ -1258,10 +1254,6 @@ public class ChatService {
                         payload.toString(),
                         "chat-message:" + chatMessage.getId() + ":received"
                 ));
-            } catch (Exception e) {
-                log.error("채팅 메시지 알림 저장에 실패했습니다. roomId={}, messageId={}, recipientUserId={}",
-                        roomId, chatMessage.getId(), recipientUserId, e);
-            }
         }
     }
 

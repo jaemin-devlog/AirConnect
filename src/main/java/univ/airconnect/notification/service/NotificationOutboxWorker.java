@@ -28,7 +28,7 @@ public class NotificationOutboxWorker {
     /**
      * 발송 가능한 outbox를 batch 단위로 처리한다.
      */
-    @Scheduled(fixedDelayString = "${notification.outbox.worker.delay-ms:1000}")
+    @Scheduled(fixedDelayString = "${notification.outbox.worker.delay-ms:1000}", scheduler = "pushDeliveryScheduler")
     public void drain() {
         List<NotificationOutbox> batch = notificationOutboxService.claimNextBatch(DEFAULT_BATCH_SIZE);
         if (batch.isEmpty()) {
