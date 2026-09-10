@@ -13,6 +13,7 @@ import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.service.oauth.apple.AppleAccountRevocationService;
 import univ.airconnect.chat.service.ChatService;
+import univ.airconnect.department.repository.DepartmentRepository;
 import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.PushProvider;
 import univ.airconnect.notification.domain.entity.PushDevice;
@@ -26,6 +27,7 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.dto.request.UpdateNicknameRequest;
 import univ.airconnect.user.dto.request.UpdateProfileRequest;
+import univ.airconnect.user.dto.request.SignUpRequest;
 import univ.airconnect.user.dto.response.UpdateNicknameResponse;
 import univ.airconnect.user.dto.response.UserMeResponse;
 import univ.airconnect.user.dto.response.UserProfileResponse;
@@ -65,6 +67,40 @@ class UserServiceTest {
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private AppleAccountRevocationService appleAccountRevocationService;
+    @Mock
+    private DepartmentRepository departmentRepository;
+
+    @Test
+    void signUp_rejectsDepartmentThatIsNotInCatalog() {
+        UserService service = createService();
+        Long userId = 1L;
+        User user = User.create(SocialProvider.KAKAO, "signup-invalid-department");
+        SignUpRequest request = signUpRequest("등록되지않은학과");
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(departmentRepository.existsByName("등록되지않은학과")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.signUp(userId, request))
+                .isInstanceOfSatisfying(UserException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(UserErrorCode.INVALID_DEPARTMENT));
+    }
+
+    @Test
+    void signUp_storesCurrentNameWhenPreviousDepartmentNameIsSubmitted() {
+        UserService service = createService();
+        Long userId = 2L;
+        User user = User.create(SocialProvider.KAKAO, "signup-renamed-department");
+        SignUpRequest request = signUpRequest("산업디자인학과");
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(departmentRepository.existsByName("디지털산업디자인학과")).thenReturn(true);
+        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.empty());
+
+        service.signUp(userId, request);
+
+        assertThat(user.getDeptName()).isEqualTo("디지털산업디자인학과");
+        verify(departmentRepository).existsByName("디지털산업디자인학과");
+    }
 
     @Test
     void deleteAccount_marksUserDeleted_andRevokesSessions() {
@@ -358,10 +394,20 @@ class UserServiceTest {
                 chatService,
                 pushDeviceRepository,
                 redisTemplate,
-                appleAccountRevocationService
+                appleAccountRevocationService,
+                departmentRepository
         );
         ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
         ReflectionTestUtils.setField(service, "profileImageDir", "/tmp/airconnect-test-profile-images");
         return service;
+    }
+
+    private SignUpRequest signUpRequest(String departmentName) {
+        SignUpRequest request = new SignUpRequest();
+        ReflectionTestUtils.setField(request, "name", "테스트 사용자");
+        ReflectionTestUtils.setField(request, "nickname", "테스트닉네임");
+        ReflectionTestUtils.setField(request, "studentNum", 20260001);
+        ReflectionTestUtils.setField(request, "deptName", departmentName);
+        return request;
     }
 }

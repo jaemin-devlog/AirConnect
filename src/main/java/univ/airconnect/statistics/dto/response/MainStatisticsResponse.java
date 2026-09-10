@@ -31,7 +31,10 @@ public class MainStatisticsResponse {
     @Builder
     public static class DepartmentRanking {
         private final int rank;
+        private final Long departmentId;
         private final String deptName;
+        private final String collegeName;
+        private final String status;
         private final long requestCount;
     }
 }

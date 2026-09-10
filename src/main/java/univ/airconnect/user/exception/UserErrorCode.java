@@ -18,6 +18,7 @@ public enum UserErrorCode {
     PROFILE_IMAGE_UNSUPPORTED_FORMAT(HttpStatus.BAD_REQUEST, "PROFILE_IMAGE_UNSUPPORTED_FORMAT", "지원하지 않는 프로필 이미지 형식입니다."),
     PROFILE_IMAGE_CORRUPTED(HttpStatus.BAD_REQUEST, "PROFILE_IMAGE_CORRUPTED", "프로필 이미지가 손상되었거나 올바르지 않습니다."),
     PROFILE_IMAGE_STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "PROFILE_IMAGE_STORAGE_ERROR", "프로필 이미지 저장에 실패했습니다."),
+    INVALID_DEPARTMENT(HttpStatus.BAD_REQUEST, "INVALID_DEPARTMENT", "등록되지 않은 학과입니다."),
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "입력값이 올바르지 않습니다.");
 
     private final HttpStatus httpStatus;

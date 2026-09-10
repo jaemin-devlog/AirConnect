@@ -276,7 +276,8 @@ public final class IsolatedReportMySqlServer implements AutoCloseable {
         @Bean UserService userService(UserRepository users, UserProfileRepository profiles, UserMilestoneRepository milestones,
                 RefreshTokenRepository refresh, AnalyticsService analytics, PushDeviceRepository devices) {
             return new UserService(users, profiles, milestones, refresh, analytics, mock(ChatService.class), devices,
-                    mock(RedisTemplate.class), mock(AppleAccountRevocationService.class));
+                    mock(RedisTemplate.class), mock(AppleAccountRevocationService.class),
+                    mock(univ.airconnect.department.repository.DepartmentRepository.class));
         }
         @Bean UserProfileImageService profileImages() { return mock(UserProfileImageService.class); }
         @Bean UserSchoolConsentService schoolConsent() { return mock(UserSchoolConsentService.class); }

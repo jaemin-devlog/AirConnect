@@ -5,13 +5,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Pageable;
+import univ.airconnect.department.repository.DepartmentRankingProjection;
+import univ.airconnect.department.repository.DepartmentRepository;
 import univ.airconnect.groupmatching.domain.GFinalGroupRoomStatus;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
-import univ.airconnect.statistics.repository.DepartmentRequestCountProjection;
 import univ.airconnect.statistics.repository.GenderCountProjection;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.repository.UserProfileRepository;
@@ -38,6 +38,9 @@ class StatisticsServiceTest {
     @Mock
     private GFinalGroupChatRoomRepository finalGroupChatRoomRepository;
 
+    @Mock
+    private DepartmentRepository departmentRepository;
+
     @InjectMocks
     private StatisticsService statisticsService;
 
@@ -51,9 +54,10 @@ class StatisticsServiceTest {
         ));
         when(matchingConnectionRepository.countByStatus(ConnectionStatus.ACCEPTED)).thenReturn(40L);
         when(finalGroupChatRoomRepository.countByStatusIn(any())).thenReturn(10L);
-        when(matchingConnectionRepository.findTopRequestedDepartments(any(Pageable.class))).thenReturn(List.of(
-                departmentCount("컴퓨터공학과", 23L),
-                departmentCount("경영학과", 17L)
+        when(departmentRepository.findAllRankedByMatchingRequests()).thenReturn(List.of(
+                departmentCount(1L, "항공운항학과", "항공학부", "ACTIVE", 23L),
+                departmentCount(2L, "간호학과", "보건학부", "ACTIVE", 23L),
+                departmentCount(3L, "항공컴퓨터학과", "항공융합학부(이전)", "LEGACY", 0L)
         ));
 
         MainStatisticsResponse response = statisticsService.getMainStatistics();
@@ -66,11 +70,13 @@ class StatisticsServiceTest {
         assertThat(response.getGenderRatio().getMalePercentage()).isEqualTo(58);
         assertThat(response.getGenderRatio().getFemalePercentage()).isEqualTo(42);
         assertThat(response.getTotalMatchSuccessCount()).isEqualTo(50L);
-        assertThat(response.getTopRequestedDepartments()).hasSize(2);
+        assertThat(response.getTopRequestedDepartments()).hasSize(3);
         assertThat(response.getTopRequestedDepartments().get(0).getRank()).isEqualTo(1);
-        assertThat(response.getTopRequestedDepartments().get(0).getDeptName()).isEqualTo("컴퓨터공학과");
+        assertThat(response.getTopRequestedDepartments().get(0).getDeptName()).isEqualTo("항공운항학과");
         assertThat(response.getTopRequestedDepartments().get(0).getRequestCount()).isEqualTo(23L);
-        assertThat(response.getTopRequestedDepartments().get(1).getRank()).isEqualTo(2);
+        assertThat(response.getTopRequestedDepartments().get(1).getRank()).isEqualTo(1);
+        assertThat(response.getTopRequestedDepartments().get(2).getRank()).isEqualTo(3);
+        assertThat(response.getTopRequestedDepartments().get(2).getRequestCount()).isZero();
         assertThat(response.getGeneratedAt()).isNotNull();
     }
 
@@ -88,11 +94,28 @@ class StatisticsServiceTest {
         };
     }
 
-    private DepartmentRequestCountProjection departmentCount(String deptName, long requestCount) {
-        return new DepartmentRequestCountProjection() {
+    private DepartmentRankingProjection departmentCount(Long departmentId, String deptName,
+                                                        String collegeName, String status,
+                                                        long requestCount) {
+        return new DepartmentRankingProjection() {
+            @Override
+            public Long getDepartmentId() {
+                return departmentId;
+            }
+
             @Override
             public String getDeptName() {
                 return deptName;
+            }
+
+            @Override
+            public String getCollegeName() {
+                return collegeName;
+            }
+
+            @Override
+            public String getStatus() {
+                return status;
             }
 
             @Override

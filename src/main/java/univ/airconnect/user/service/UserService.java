@@ -12,6 +12,8 @@ import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.service.oauth.apple.AppleAccountRevocationService;
 import univ.airconnect.chat.service.ChatService;
+import univ.airconnect.department.domain.DepartmentNames;
+import univ.airconnect.department.repository.DepartmentRepository;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.PushDeviceRepository;
 import univ.airconnect.user.domain.MilestoneType;
@@ -56,6 +58,7 @@ public class UserService {
     private final PushDeviceRepository pushDeviceRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     private final AppleAccountRevocationService appleAccountRevocationService;
+    private final DepartmentRepository departmentRepository;
 
     private static final String USER_ACTIVITY_TOUCH_KEY_PREFIX = "analytics:user:last-active:";
     private static final int NICKNAME_MAX_LENGTH = 100;
@@ -86,11 +89,17 @@ public class UserService {
 
         ensureUserActive(user);
 
+        String departmentName = DepartmentNames.canonicalize(request.getDeptName());
+        if (departmentName == null || departmentName.isBlank()
+                || !departmentRepository.existsByName(departmentName)) {
+            throw new UserException(UserErrorCode.INVALID_DEPARTMENT);
+        }
+
         user.completeSignUp(
                 request.getName(),
                 request.getNickname(),
                 request.getStudentNum(),
-                request.getDeptName()
+                departmentName
         );
 
         userProfileRepository.findByUserId(userId)
@@ -125,7 +134,7 @@ public class UserService {
         log.info("✅ 회원가입/프로필 생성 완료: userId={}", userId);
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("deptName", request.getDeptName());
+        payload.put("deptName", departmentName);
         payload.put("nickname", request.getNickname());
         if (request.getGender() != null) {
             payload.put("gender", request.getGender().name());

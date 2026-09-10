@@ -1,15 +1,15 @@
 package univ.airconnect.statistics.service;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import univ.airconnect.department.repository.DepartmentRankingProjection;
+import univ.airconnect.department.repository.DepartmentRepository;
 import univ.airconnect.groupmatching.domain.GFinalGroupRoomStatus;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
-import univ.airconnect.statistics.repository.DepartmentRequestCountProjection;
 import univ.airconnect.statistics.repository.GenderCountProjection;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.repository.UserProfileRepository;
@@ -26,12 +26,11 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class StatisticsService {
 
-    private static final int TOP_DEPARTMENT_LIMIT = 5;
-
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final MatchingConnectionRepository matchingConnectionRepository;
     private final GFinalGroupChatRoomRepository finalGroupChatRoomRepository;
+    private final DepartmentRepository departmentRepository;
 
     public MainStatisticsResponse getMainStatistics() {
         long totalRegisteredUsers = userRepository.countActiveSignedUpUsers();
@@ -44,14 +43,23 @@ public class StatisticsService {
                 EnumSet.of(GFinalGroupRoomStatus.ACTIVE, GFinalGroupRoomStatus.ENDED)
         );
 
-        List<DepartmentRequestCountProjection> departmentProjections =
-                matchingConnectionRepository.findTopRequestedDepartments(PageRequest.of(0, TOP_DEPARTMENT_LIMIT));
+        List<DepartmentRankingProjection> departmentProjections =
+                departmentRepository.findAllRankedByMatchingRequests();
         List<MainStatisticsResponse.DepartmentRanking> topRequestedDepartments = new ArrayList<>();
-        for (int i = 0; i < departmentProjections.size() && i < TOP_DEPARTMENT_LIMIT; i++) {
-            DepartmentRequestCountProjection projection = departmentProjections.get(i);
+        int rank = 0;
+        long previousCount = Long.MIN_VALUE;
+        for (int i = 0; i < departmentProjections.size(); i++) {
+            DepartmentRankingProjection projection = departmentProjections.get(i);
+            if (projection.getRequestCount() != previousCount) {
+                rank = i + 1;
+                previousCount = projection.getRequestCount();
+            }
             topRequestedDepartments.add(MainStatisticsResponse.DepartmentRanking.builder()
-                    .rank(i + 1)
+                    .rank(rank)
+                    .departmentId(projection.getDepartmentId())
                     .deptName(projection.getDeptName())
+                    .collegeName(projection.getCollegeName())
+                    .status(projection.getStatus())
                     .requestCount(projection.getRequestCount())
                     .build());
         }
