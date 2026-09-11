@@ -29,6 +29,7 @@ public class StompOutboundAuthorizationInterceptor implements ChannelInterceptor
     private static final Pattern CHAT_ROOM = Pattern.compile("^/sub/chat/room/([1-9]\\d*)$");
     private static final Pattern CHAT_LIST = Pattern.compile("^/sub/chat/list/([1-9]\\d*)$");
     private static final Pattern MATCHING_TEAM_ROOM = Pattern.compile("^/sub/matching/team-room/([1-9]\\d*)$");
+    private static final String ONLINE_USERS = StompSessionRegistry.ONLINE_USERS_DESTINATION;
 
     private final StompSessionRegistry sessionRegistry;
     private final UserRepository userRepository;
@@ -62,6 +63,14 @@ public class StompOutboundAuthorizationInterceptor implements ChannelInterceptor
 
         String sessionId = accessor.getSessionId();
         Long userId = sessionRegistry.findUserId(sessionId).orElse(null);
+        if (userId == null) {
+            return deny(accessor, null, "inactive_or_revoked_session");
+        }
+        // 전 사용자 브로드캐스트마다 DB를 조회하면 접속자 수 변동 1회가
+        // 구독자 수만큼의 쿼리를 만들므로, 로컬에서 폐기되지 않은 인증 세션만 확인한다.
+        if (ONLINE_USERS.equals(destination)) {
+            return message;
+        }
         if (!isActiveUser(userId)) {
             return deny(accessor, userId, "inactive_or_revoked_session");
         }

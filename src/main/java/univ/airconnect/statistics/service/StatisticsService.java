@@ -7,9 +7,11 @@ import univ.airconnect.department.repository.DepartmentRankingProjection;
 import univ.airconnect.department.repository.DepartmentRepository;
 import univ.airconnect.groupmatching.domain.GFinalGroupRoomStatus;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
+import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
+import univ.airconnect.statistics.dto.response.OnlinePresenceResponse;
 import univ.airconnect.statistics.repository.GenderCountProjection;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.repository.UserProfileRepository;
@@ -31,12 +33,14 @@ public class StatisticsService {
     private final MatchingConnectionRepository matchingConnectionRepository;
     private final GFinalGroupChatRoomRepository finalGroupChatRoomRepository;
     private final DepartmentRepository departmentRepository;
+    private final StompSessionRegistry stompSessionRegistry;
 
     public MainStatisticsResponse getMainStatistics() {
-        long totalRegisteredUsers = userRepository.countActiveSignedUpUsers();
+        long totalRegisteredUsers = userRepository.countRegisteredUsersExcludingDeleted();
+        long activeSignedUpUsers = userRepository.countActiveSignedUpUsers();
         long dailyActiveUsers = userRepository.countDailyActiveSignedUpUsers(LocalDate.now().atStartOfDay());
 
-        MainStatisticsResponse.GenderRatio genderRatio = buildGenderRatio(totalRegisteredUsers);
+        MainStatisticsResponse.GenderRatio genderRatio = buildGenderRatio(activeSignedUpUsers);
 
         long oneToOneSuccessCount = matchingConnectionRepository.countByStatus(ConnectionStatus.ACCEPTED);
         long groupSuccessCount = finalGroupChatRoomRepository.countByStatusIn(
@@ -67,11 +71,16 @@ public class StatisticsService {
         return MainStatisticsResponse.builder()
                 .totalRegisteredUsers(totalRegisteredUsers)
                 .dailyActiveUsers(dailyActiveUsers)
+                .onlineUserCount(stompSessionRegistry.onlineUserCount())
                 .genderRatio(genderRatio)
                 .totalMatchSuccessCount(oneToOneSuccessCount + groupSuccessCount)
                 .topRequestedDepartments(topRequestedDepartments)
                 .generatedAt(LocalDateTime.now())
                 .build();
+    }
+
+    public OnlinePresenceResponse getOnlinePresence() {
+        return OnlinePresenceResponse.of(stompSessionRegistry.onlineUserCount());
     }
 
     private MainStatisticsResponse.GenderRatio buildGenderRatio(long totalRegisteredUsers) {

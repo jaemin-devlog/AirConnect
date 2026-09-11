@@ -284,6 +284,7 @@ public class AdminService {
         switch (request.action()) {
             case SUSPEND -> {
                 user.suspend(request.until(), reason);
+                userService.invalidateRealtimeSessions(userId);
                 matchingConnectionRepository.cancelPendingForUser(userId, LocalDateTime.now(java.time.Clock.systemUTC()));
                 sendAdminAnnouncementToUser(
                         user.getId(),

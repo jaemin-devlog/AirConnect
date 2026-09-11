@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
+import univ.airconnect.statistics.dto.response.OnlinePresenceResponse;
 import univ.airconnect.statistics.service.StatisticsService;
 
 import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
@@ -24,5 +25,11 @@ public class StatisticsController {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         MainStatisticsResponse response = statisticsService.getMainStatistics();
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    @GetMapping("/online")
+    public ResponseEntity<ApiResponse<OnlinePresenceResponse>> getOnlinePresence(HttpServletRequest request) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        return ResponseEntity.ok(ApiResponse.ok(statisticsService.getOnlinePresence(), traceId));
     }
 }

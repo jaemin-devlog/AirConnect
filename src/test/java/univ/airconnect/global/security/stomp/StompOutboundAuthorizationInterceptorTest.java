@@ -20,6 +20,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -81,6 +82,15 @@ class StompOutboundAuthorizationInterceptorTest {
 
         assertThat(interceptor.preSend(
                 outbound("session-list", "/sub/chat/list/2"), channel)).isNull();
+    }
+
+    @Test
+    void activeUserReceivesOnlineUserCount() {
+        when(sessionRegistry.findUserId("session-online")).thenReturn(Optional.of(1L));
+        Message<byte[]> message = outbound("session-online", "/sub/statistics/online");
+
+        assertThat(interceptor.preSend(message, channel)).isSameAs(message);
+        verifyNoInteractions(userRepository);
     }
 
     private void allowActiveSession(String sessionId, Long userId) {

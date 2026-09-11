@@ -86,6 +86,13 @@ public interface UserRepository extends JpaRepository<User, Long>, UserTicketLoc
     @Query("""
         SELECT count(u)
         FROM User u
+        WHERE u.status <> univ.airconnect.user.domain.UserStatus.DELETED
+    """)
+    long countRegisteredUsersExcludingDeleted();
+
+    @Query("""
+        SELECT count(u)
+        FROM User u
         WHERE u.status = univ.airconnect.user.domain.UserStatus.ACTIVE
           AND u.onboardingStatus = univ.airconnect.user.domain.OnboardingStatus.FULL
           AND u.lastActiveAt >= :startOfDay

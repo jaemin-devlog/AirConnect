@@ -12,6 +12,7 @@ public class MainStatisticsResponse {
 
     private final long totalRegisteredUsers;
     private final long dailyActiveUsers;
+    private final int onlineUserCount;
     private final GenderRatio genderRatio;
     private final long totalMatchSuccessCount;
     private final List<DepartmentRanking> topRequestedDepartments;

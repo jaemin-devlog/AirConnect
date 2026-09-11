@@ -49,6 +49,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -267,9 +268,7 @@ public class GMatchingService {
             processQueueUntilStableUnderLock(teamRoom.getTeamSize());
             return buildQueueSnapshot(teamRoom);
         });
-        if (snapshot.finalGroupRoomId() == null) {
-            matchingEventPublisher.publishQueueSnapshot(snapshot);
-        }
+        publishWaitingQueueSnapshots(teamRoom.getTeamSize());
         analyticsService.trackServerEvent(
                 AnalyticsEventType.GROUP_QUEUE_STARTED,
                 requestUserId,
@@ -303,6 +302,7 @@ public class GMatchingService {
             return null;
         });
         matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
+        publishWaitingQueueSnapshots(teamRoom.getTeamSize());
         notifyMatchingStopped(teamRoom, requestUserId, queueToken);
         return teamRoom;
     }
@@ -318,11 +318,20 @@ public class GMatchingService {
 
     @Transactional
     public int processQueueUntilStable(GTeamSize teamSize) {
+        if (teamSize == null) {
+            throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
+        }
         int matchedCount = 0;
 
         while (true) {
-            MatchSuccessResult matchResult = processQueue(teamSize, FULL_QUEUE_SCAN);
+            MatchSuccessResult matchResult = withQueueLock(
+                    teamSize,
+                    () -> processQueueUnderLock(teamSize, FULL_QUEUE_SCAN)
+            ).orElse(null);
             if (matchResult == null) {
+                if (matchedCount > 0) {
+                    publishWaitingQueueSnapshots(teamSize);
+                }
                 return matchedCount;
             }
             matchedCount++;
@@ -388,7 +397,14 @@ public class GMatchingService {
         if (teamSize == null) {
             throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
         }
-        return withQueueLock(teamSize, () -> processQueueUnderLock(teamSize, scanSize)).orElse(null);
+        MatchSuccessResult result = withQueueLock(
+                teamSize,
+                () -> processQueueUnderLock(teamSize, scanSize)
+        ).orElse(null);
+        if (result != null) {
+            publishWaitingQueueSnapshots(teamSize);
+        }
+        return result;
     }
 
     private int processQueueUntilStableUnderLock(GTeamSize teamSize) {
@@ -522,6 +538,7 @@ public class GMatchingService {
                 removeRoomFromRedisQueue(teamRoom.getTeamSize(), teamRoomId, queueToken);
                 return null;
             });
+            publishWaitingQueueSnapshots(teamRoom.getTeamSize());
         }
 
         return teamRoom;
@@ -1453,6 +1470,36 @@ public class GMatchingService {
             return List.of();
         }
         return new ArrayList<>(new LinkedHashSet<>(roomIds));
+    }
+
+    /**
+     * 큐 구성 변경 후 같은 인원수 대기열에 남은 모든 팀의 최신 순번을 발행한다.
+     * 순번은 상대 팀과 섞지 않고 같은 성별 팀 안에서 queuedAt, id 순으로 계산한다.
+     */
+    private void publishWaitingQueueSnapshots(GTeamSize teamSize) {
+        List<GTemporaryTeamRoom> waitingRooms = temporaryTeamRoomRepository.findAllQueueWaitingRooms(teamSize);
+        if (waitingRooms.isEmpty()) {
+            return;
+        }
+
+        Map<GTeamGender, Integer> totals = new EnumMap<>(GTeamGender.class);
+        for (GTemporaryTeamRoom room : waitingRooms) {
+            totals.merge(room.getTeamGender(), 1, Integer::sum);
+        }
+
+        Map<GTeamGender, Integer> positions = new EnumMap<>(GTeamGender.class);
+        for (GTemporaryTeamRoom room : waitingRooms) {
+            int position = positions.merge(room.getTeamGender(), 1, Integer::sum);
+            matchingEventPublisher.publishQueueSnapshot(new QueueSnapshot(
+                    room.getId(),
+                    room.getStatus().name(),
+                    position,
+                    position - 1,
+                    totals.get(room.getTeamGender()),
+                    null,
+                    null
+            ));
+        }
     }
 
     private String queueKey(GTeamSize teamSize) {

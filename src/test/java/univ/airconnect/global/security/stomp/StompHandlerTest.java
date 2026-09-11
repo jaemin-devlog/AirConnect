@@ -107,6 +107,15 @@ class StompHandlerTest {
         verify(matchingService).canSubscribeTeamRoom(41L, 1L);
     }
 
+    @Test
+    void subscribeToOnlineUserCountIsAllowedForActiveSession() {
+        allowActiveSession("session-online", 1L);
+
+        assertThatCode(() -> handler.preSend(frame(StompCommand.SUBSCRIBE,
+                "session-online", "sub-online", "/sub/statistics/online", 1L), messageChannel))
+                .doesNotThrowAnyException();
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "/sub/**", "/sub/chat/**", "/sub/chat/room/*", "/sub/chat/room/**",

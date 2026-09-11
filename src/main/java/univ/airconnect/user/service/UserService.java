@@ -423,6 +423,10 @@ public class UserService {
         }
     }
 
+    public int invalidateRealtimeSessions(Long userId) {
+        return purgeChatSessions(userId);
+    }
+
     private int revokePushDevices(Long userId) {
         try {
             List<PushDevice> devices = pushDeviceRepository.findByUserIdAndActiveTrue(userId);

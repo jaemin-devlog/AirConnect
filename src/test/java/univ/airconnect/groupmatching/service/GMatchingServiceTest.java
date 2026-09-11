@@ -47,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -242,6 +243,35 @@ class GMatchingServiceTest {
         assertThat(snapshot.position()).isEqualTo(2);
         assertThat(snapshot.aheadCount()).isEqualTo(1);
         assertThat(snapshot.totalWaitingTeams()).isEqualTo(2);
+    }
+
+    @Test
+    void stoppingQueuePublishesNewPositionsForEveryRemainingTeam() {
+        GTemporaryTeamRoom stopping = queueRoom(80L, 8L, GTeamGender.M, GTeamSize.TWO);
+        GTemporaryTeamRoom firstMale = queueRoom(90L, 9L, GTeamGender.M, GTeamSize.TWO);
+        GTemporaryTeamRoom female = queueRoom(95L, 7L, GTeamGender.F, GTeamSize.TWO);
+        GTemporaryTeamRoom secondMale = queueRoom(100L, 1L, GTeamGender.M, GTeamSize.TWO);
+        when(rooms.findByIdForUpdate(80L)).thenReturn(Optional.of(stopping));
+        when(members.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(80L, 8L)).thenReturn(true);
+        when(members.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(80L)).thenReturn(List.of());
+        when(users.findById(8L)).thenReturn(Optional.of(user(8L, "중지", 10)));
+        when(rooms.findAllQueueWaitingRooms(GTeamSize.TWO))
+                .thenReturn(List.of(firstMale, female, secondMale));
+
+        service.leaveMatchingQueue(80L, 8L);
+
+        var snapshotCaptor = org.mockito.ArgumentCaptor.forClass(GMatchingService.QueueSnapshot.class);
+        verify(events, times(3)).publishQueueSnapshot(snapshotCaptor.capture());
+        assertThat(snapshotCaptor.getAllValues())
+                .extracting(GMatchingService.QueueSnapshot::teamRoomId,
+                        GMatchingService.QueueSnapshot::position,
+                        GMatchingService.QueueSnapshot::aheadCount,
+                        GMatchingService.QueueSnapshot::totalWaitingTeams)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(90L, 1, 0, 2),
+                        org.assertj.core.groups.Tuple.tuple(95L, 1, 0, 1),
+                        org.assertj.core.groups.Tuple.tuple(100L, 2, 1, 2)
+                );
     }
 
     private GTemporaryTeamRoom room(Long id, Long leaderId, GTeamGender gender, GTeamSize size) {

@@ -9,6 +9,7 @@ import univ.airconnect.department.repository.DepartmentRankingProjection;
 import univ.airconnect.department.repository.DepartmentRepository;
 import univ.airconnect.groupmatching.domain.GFinalGroupRoomStatus;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
+import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
@@ -41,11 +42,15 @@ class StatisticsServiceTest {
     @Mock
     private DepartmentRepository departmentRepository;
 
+    @Mock
+    private StompSessionRegistry stompSessionRegistry;
+
     @InjectMocks
     private StatisticsService statisticsService;
 
     @Test
     void getMainStatistics_returnsAggregatedValues() {
+        when(userRepository.countRegisteredUsersExcludingDeleted()).thenReturn(135L);
         when(userRepository.countActiveSignedUpUsers()).thenReturn(120L);
         when(userRepository.countDailyActiveSignedUpUsers(any())).thenReturn(34L);
         when(userProfileRepository.countActiveSignedUpUsersByGender()).thenReturn(List.of(
@@ -54,6 +59,7 @@ class StatisticsServiceTest {
         ));
         when(matchingConnectionRepository.countByStatus(ConnectionStatus.ACCEPTED)).thenReturn(40L);
         when(finalGroupChatRoomRepository.countByStatusIn(any())).thenReturn(10L);
+        when(stompSessionRegistry.onlineUserCount()).thenReturn(17);
         when(departmentRepository.findAllRankedByMatchingRequests()).thenReturn(List.of(
                 departmentCount(1L, "항공운항학과", "항공학부", "ACTIVE", 23L),
                 departmentCount(2L, "간호학과", "보건학부", "ACTIVE", 23L),
@@ -62,8 +68,9 @@ class StatisticsServiceTest {
 
         MainStatisticsResponse response = statisticsService.getMainStatistics();
 
-        assertThat(response.getTotalRegisteredUsers()).isEqualTo(120L);
+        assertThat(response.getTotalRegisteredUsers()).isEqualTo(135L);
         assertThat(response.getDailyActiveUsers()).isEqualTo(34L);
+        assertThat(response.getOnlineUserCount()).isEqualTo(17);
         assertThat(response.getGenderRatio().getMaleUsers()).isEqualTo(70L);
         assertThat(response.getGenderRatio().getFemaleUsers()).isEqualTo(50L);
         assertThat(response.getGenderRatio().getUnknownUsers()).isZero();
