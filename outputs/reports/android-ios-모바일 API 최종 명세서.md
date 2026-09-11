@@ -4,9 +4,9 @@
 
 대상: Android / iOS
 
-범위: 그룹매칭, 메인페이지 통계, 마이페이지 추천인, 축제 쿠폰 등록
+범위: 1:1 매칭, 그룹매칭, 메인페이지 통계, 마이페이지 추천인, 축제 쿠폰 등록
 
-이 문서는 기존 그룹매칭 및 추천인 명세를 최신 백엔드 구현 기준으로 합친 최종본이다. 앱 개발자는 이 문서를 우선 기준으로 사용한다.
+이 문서는 지금까지 Android/iOS에 전달한 기능 변경 사항을 최신 백엔드 구현 기준으로 합친 최종본이다. 앱 개발자는 다른 개별 변경 문서 대신 이 문서만 사용한다.
 
 ## 1. 공통 규칙
 
@@ -26,7 +26,8 @@ Authorization: Bearer {accessToken}
 ```
 
 - Android/iOS 네이티브 앱은 SockJS가 아닌 `/ws-stomp`를 사용한다.
-- 이 문서의 API에는 `Idempotency-Key`가 필요하지 않다.
+- `Idempotency-Key`는 1:1 추천 조회 2종과 1:1 요청 전송에만 필요하다.
+- 그룹매칭, 통계, 추천인, 쿠폰 API에는 `Idempotency-Key`가 필요하지 않다.
 - 날짜·시간 문자열은 서버 로컬 날짜·시간을 ISO-8601 형식으로 반환한다.
 
 ### 1.2 공통 성공 응답
@@ -73,9 +74,245 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 2. 그룹매칭
+## 2. 1:1 매칭
 
-### 2.1 최종 사용자 흐름
+### 2.1 변경 핵심
+
+- 추천 조회와 요청 전송에 `Idempotency-Key`를 반드시 보낸다.
+- 상대방의 소셜 로그인 ID, 전체 학번, 계정 상태, 보유 티켓은 응답에서 제거됐다.
+- 전체 학번 대신 nullable `admissionYear`를 사용한다.
+- 보낸 요청을 취소할 수 있다.
+- 요청 상태에 `CANCELLED`, `EXPIRED`가 추가됐다.
+- 수락·거절·취소의 동일 동작 재시도는 안전하게 기존 결과를 반환한다.
+
+### 2.2 API 목록
+
+모든 API에 로그인 인증이 필요하다.
+
+| 기능 | 메서드 | 경로 | `Idempotency-Key` |
+|---|---|---|---|
+| 이성 추천 | GET | `/api/v1/matching/recommendations` | 필수 |
+| 동성 추천 | GET | `/api/v1/matching/recommendations/same-gender` | 필수 |
+| 매칭 요청 전송 | POST | `/api/v1/matching/connect/{targetUserId}` | 필수 |
+| 보낸·받은 요청 조회 | GET | `/api/v1/matching/requests` | 불필요 |
+| 요청 수락 | POST | `/api/v1/matching/accept/{connectionId}` | 불필요 |
+| 요청 거절 | POST | `/api/v1/matching/reject/{connectionId}` | 불필요 |
+| 보낸 요청 취소 | DELETE | `/api/v1/matching/requests/{connectionId}` | 불필요 |
+
+### 2.3 `Idempotency-Key` 규칙
+
+```http
+Authorization: Bearer {accessToken}
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+```
+
+- UUID 사용을 권장하며 최대 100자다.
+- 추천 화면을 새로 불러오거나 새로운 요청을 보낼 때마다 새 키를 생성한다.
+- 네트워크 오류나 타임아웃으로 같은 동작을 재시도할 때는 기존 키를 그대로 사용한다.
+- 같은 키를 이성 추천, 동성 추천 또는 서로 다른 상대 요청에 재사용하면 안 된다.
+
+| HTTP | 코드 | 앱 처리 |
+|---|---|---|
+| 400 | `IDEMPOTENCY_KEY_REQUIRED` | 키 생성 후 재시도 |
+| 409 | `IDEMPOTENCY_KEY_REUSED` | 새 사용자 동작으로 판단되는 경우에만 새 키 생성 |
+
+### 2.4 추천 조회
+
+```http
+GET /api/v1/matching/recommendations
+GET /api/v1/matching/recommendations/same-gender
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "recommendationRequestId": "550e8400-e29b-41d4-a716-446655440000",
+    "count": 1,
+    "candidates": [
+      {
+        "userId": 27,
+        "admissionYear": 2024,
+        "onboardingStatus": "FULL",
+        "emailVerified": true,
+        "profileExists": true,
+        "profileImageUploaded": true,
+        "age": 22,
+        "nickname": "에어냥",
+        "deptName": "항공소프트웨어공학과",
+        "profileImage": "https://api.example.com/api/v1/users/profile-images/example.jpg",
+        "gender": "FEMALE",
+        "profile": {
+          "userId": 27,
+          "height": 165,
+          "age": 22,
+          "mbti": "ENFP",
+          "smoking": "NON_SMOKER",
+          "gender": "FEMALE",
+          "military": null,
+          "religion": "NONE",
+          "residence": "서산",
+          "intro": "안녕하세요",
+          "instagram": "airconnect",
+          "profileImagePath": "https://api.example.com/api/v1/users/profile-images/example.jpg",
+          "updatedAt": "2026-09-11T12:00:00"
+        }
+      }
+    ],
+    "userTicketsRemaining": 8
+  },
+  "error": null,
+  "traceId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+후보 모델 변경:
+
+| 구분 | 필드 |
+|---|---|
+| 제거 | `socialId`, `studentNum`, 상대방 `status`, 상대방 `tickets` |
+| 추가 | `admissionYear: Integer?` |
+| 유지 | `onboardingStatus`, `emailVerified`, `profileExists`, `profileImageUploaded`, `profile.instagram` 등 위 응답 필드 |
+
+- `admissionYear=2024`이면 앱에서 `24학번`으로 표시한다.
+- `admissionYear=null`이면 학번 영역을 숨긴다.
+- Instagram은 `profile.instagram`을 사용한다.
+
+### 2.5 매칭 요청 전송
+
+```http
+POST /api/v1/matching/connect/{targetUserId}
+Authorization: Bearer {accessToken}
+Idempotency-Key: {UUID}
+```
+
+요청 본문은 없다. 새 요청에는 티켓 2장이 사용된다.
+
+```json
+{
+  "success": true,
+  "data": {
+    "connectionId": 123,
+    "chatRoomId": null,
+    "targetUserId": 27,
+    "alreadyConnected": false,
+    "userTicketsRemaining": 8
+  },
+  "error": null,
+  "traceId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+- `alreadyConnected=false`: 신규 요청이며 `userTicketsRemaining`으로 티켓 UI를 갱신한다.
+- `alreadyConnected=true`: 추가 차감 없이 기존 연결을 반환한다. `chatRoomId`가 있으면 기존 채팅방으로 이동할 수 있다.
+- 취소·거절·만료되어도 사용한 티켓은 환불되지 않는다.
+
+### 2.6 보낸·받은 요청 조회
+
+```http
+GET /api/v1/matching/requests
+Authorization: Bearer {accessToken}
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "sentCount": 1,
+    "receivedCount": 1,
+    "sent": [
+      {
+        "connectionId": 123,
+        "userId": 27,
+        "nickname": "에어냥",
+        "deptName": "항공소프트웨어공학과",
+        "admissionYear": 2024,
+        "onboardingStatus": "FULL",
+        "emailVerified": true,
+        "profileExists": true,
+        "profileImageUploaded": true,
+        "age": 22,
+        "profile": {},
+        "status": "PENDING",
+        "requestedAt": "2026-09-11T12:00:00",
+        "respondedAt": null
+      }
+    ],
+    "received": []
+  },
+  "error": null,
+  "traceId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+- 목록에는 현재 응답 가능한 `PENDING` 요청만 반환한다.
+- 앱 새로고침 후 사라진 항목은 취소·만료·차단·탈퇴·제재 등으로 더 이상 유효하지 않은 요청이므로 로컬에서도 제거한다.
+- 요청 상대 모델에도 `socialId`, `studentNum`, `userStatus`, `tickets`가 없으며 `admissionYear`를 사용한다.
+
+### 2.7 수락·거절·취소
+
+```http
+POST   /api/v1/matching/accept/{connectionId}
+POST   /api/v1/matching/reject/{connectionId}
+DELETE /api/v1/matching/requests/{connectionId}
+```
+
+공통 성공 응답:
+
+```json
+{
+  "success": true,
+  "data": {
+    "connectionId": 123,
+    "targetUserId": 27,
+    "chatRoomId": 456,
+    "status": "ACCEPTED"
+  },
+  "error": null,
+  "traceId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+상태 enum:
+
+```text
+PENDING, ACCEPTED, REJECTED, CANCELLED, EXPIRED
+```
+
+| `status` | 앱 처리 |
+|---|---|
+| `PENDING` | 요청 대기 상태 유지 |
+| `ACCEPTED` | `chatRoomId`가 있을 때만 채팅방 이동 |
+| `REJECTED` | 요청 카드 제거 |
+| `CANCELLED` | 요청 카드 제거 |
+| `EXPIRED` | 카드 제거 후 “응답 기한이 지난 요청이에요” 표시 |
+
+- 만료된 요청은 HTTP 200과 `status=EXPIRED`로 반환될 수 있으므로 HTTP 상태만 보고 채팅방으로 이동하면 안 된다.
+- 같은 수락·거절·취소를 반복하면 기존 결과를 반환하므로 동일 동작을 안전하게 재시도할 수 있다.
+- 이미 처리된 요청에 반대 동작을 수행하면 `INVALID_REQUEST`가 반환된다.
+- 요청 취소는 요청을 보낸 사용자만 할 수 있다.
+- 요청은 7일 후 만료되며 서버가 수락 시점에도 만료 여부를 다시 확인한다.
+- 취소·만료된 요청도 학과 랭킹 집계에서는 빠지지 않는다. 랭킹은 생성된 요청 기록의 송신·수신 횟수를 집계한다.
+
+### 2.8 주요 1:1 오류
+
+| HTTP | 코드 | 의미 |
+|---|---|---|
+| 400 | `PROFILE_REQUIRED`, `PROFILE_GENDER_REQUIRED` | 프로필 또는 성별 정보 필요 |
+| 403 | `MATCHING_RESTRICTED` | 매칭 제한 계정 |
+| 400 | `INSUFFICIENT_TICKETS` | 티켓 부족 |
+| 400 | `INVALID_TARGET` | 올바르지 않은 상대 |
+| 400 | `CANDIDATE_NOT_EXPOSED` | 현재 추천으로 노출되지 않은 상대 |
+| 403 | `BLOCKED_USER_INTERACTION` | 차단 관계 사용자 |
+| 404 | `CONNECTION_NOT_FOUND` | 요청 정보 없음 |
+| 400 | `INVALID_REQUEST` | 권한 또는 현재 요청 상태와 맞지 않는 동작 |
+| 400 | `ALREADY_CONNECTED` | 이미 대기 중인 요청 존재 |
+
+---
+
+## 3. 그룹매칭
+
+### 3.1 최종 사용자 흐름
 
 1. 사용자가 `2:2` 또는 `3:3`을 선택해 팀을 만든다.
 2. 서버가 생성한 숫자 6자리 초대 코드를 같은 성별 친구에게 공유한다.
@@ -96,7 +333,7 @@ Authorization: Bearer {accessToken}
 
 대기방 제목은 별도 서버 필드가 없다. 앱에서 `teamSize`에 따라 `2:2 대기방` 또는 `3:3 대기방`으로 표시한다.
 
-### 2.2 enum 및 핵심 규칙
+### 3.2 enum 및 핵심 규칙
 
 | 항목 | 값 | 의미 |
 |---|---|---|
@@ -111,7 +348,7 @@ Authorization: Bearer {accessToken}
 - 팀을 생성하거나 참가한 사용자는 동시에 다른 활성 임시 팀에 참여할 수 없다.
 - 티켓은 대기 시작 시 확인하고 실제 매칭 성사 시 각 팀원에게서 차감한다.
 
-### 2.3 API 목록
+### 3.3 API 목록
 
 기본 경로:
 
@@ -137,7 +374,7 @@ Authorization: Bearer {accessToken}
 
 팀 생성 요청이 타임아웃되면 바로 다시 생성하지 말고 `GET /me/state`로 생성 여부를 먼저 확인한다.
 
-### 2.4 팀 응답
+### 3.4 팀 응답
 
 ```json
 {
@@ -188,7 +425,7 @@ Authorization: Bearer {accessToken}
 - 다른 팀원의 실제 티켓 잔액은 제공하지 않는다. `members[].hasEnoughTickets`만 사용한다.
 - 프로필 이미지는 `null`일 수 있다.
 
-### 2.5 앱 상태 복구
+### 3.5 앱 상태 복구
 
 앱 실행, 그룹매칭 화면 재진입, 앱 foreground 복귀, STOMP 재연결 시 호출한다.
 
@@ -223,7 +460,7 @@ Authorization: Bearer {accessToken}
 | `MATCHED` | 최종 채팅 생성 중 표시, 조작 버튼 숨김 |
 | `CLOSED`, `CANCELLED` | 현재 화면 종료 후 `/me/state` 재조회 |
 
-### 2.6 대기 순번
+### 3.6 대기 순번
 
 ```json
 {
@@ -246,7 +483,7 @@ Authorization: Bearer {accessToken}
 - `matched=true`이고 `finalChatRoomId`가 존재하면 최종 그룹 채팅방으로 이동한다.
 - 비대기 상태에서는 순번 필드가 `0`일 수 있다. 화면 상태는 반드시 `status`와 `matched`로 판단한다.
 
-### 2.7 그룹매칭 실시간 구독
+### 3.7 그룹매칭 실시간 구독
 
 구독 경로는 `/me/state`의 `matchingSubscriptionDestination`을 우선 사용한다.
 
@@ -285,7 +522,7 @@ Authorization: Bearer {accessToken}
 
 WebSocket이 주 갱신 수단이다. 화면 최초 진입·foreground 복귀·재연결 때 REST를 반드시 사용하고, 필요하면 10~15초 간격 REST 조회를 보조 수단으로 둘 수 있다.
 
-### 2.8 최종 그룹 채팅방 응답
+### 3.8 최종 그룹 채팅방 응답
 
 ```json
 {
@@ -306,7 +543,7 @@ WebSocket이 주 갱신 수단이다. 화면 최초 진입·foreground 복귀·�
 
 `status` 값은 `ACTIVE`, `ENDED`, `CANCELLED`다. 채팅 화면 이동에는 `id`가 아닌 `chatRoomId`를 사용한다.
 
-### 2.9 주요 그룹매칭 오류
+### 3.9 주요 그룹매칭 오류
 
 | HTTP | 코드 | 의미 |
 |---|---|---|
@@ -332,7 +569,7 @@ WebSocket이 주 갱신 수단이다. 화면 최초 진입·foreground 복귀·�
 
 상태 충돌 오류를 받으면 임의로 로컬 상태를 고치지 말고 `GET /me/state`를 재호출한다.
 
-### 2.10 제거된 API와 필드
+### 3.10 제거된 API와 필드
 
 앱에서 다음 API 호출을 제거한다.
 
@@ -362,9 +599,9 @@ members[].ready
 
 ---
 
-## 3. 메인페이지 통계
+## 4. 메인페이지 통계
 
-### 3.1 메인 통계 조회
+### 4.1 메인 통계 조회
 
 인증 없이 호출할 수 있다.
 
@@ -412,7 +649,7 @@ GET /api/v1/statistics/main
 }
 ```
 
-### 3.2 메인 노출 필드 기준
+### 4.2 메인 노출 필드 기준
 
 | 필드 | 화면 의미 | 서버 집계 기준 |
 |---|---|---|
@@ -428,7 +665,7 @@ GET /api/v1/statistics/main
 - 학과 점수 `requestCount`는 해당 학과 사용자가 보낸 1:1 요청 수 + 받은 1:1 요청 수다.
 - 점수 내림차순이며 동점은 공동 순위와 건너뛰기 방식이다. 예: `1, 2, 2, 4`.
 
-### 3.3 실시간 접속자 초기값 조회
+### 4.3 실시간 접속자 초기값 조회
 
 ```http
 GET /api/v1/statistics/online
@@ -446,7 +683,7 @@ GET /api/v1/statistics/online
 }
 ```
 
-### 3.4 실시간 접속자 STOMP 구독
+### 4.4 실시간 접속자 STOMP 구독
 
 ```text
 /sub/statistics/online
@@ -473,9 +710,9 @@ STOMP 연결 시점의 증가 이벤트는 구독 이전에 발생할 수 있으
 
 ---
 
-## 4. 마이페이지 추천인
+## 5. 마이페이지 추천인
 
-### 4.1 기능 규칙
+### 5.1 기능 규칙
 
 - 추천인 기능은 온보딩이 아니라 마이페이지에 배치한다.
 - 추천 코드는 영문 대문자와 숫자를 모두 포함하는 6자리다. 예: `A7B2C9`.
@@ -487,7 +724,7 @@ STOMP 연결 시점의 증가 이벤트는 구독 이전에 발생할 수 있으
 - 내 코드를 사용할 수 있는 친구 수와 코드 유효기간에는 제한이 없다.
 - 추천인과 코드 입력자 모두 `ACTIVE` 및 온보딩 `FULL` 상태여야 한다.
 
-### 4.2 내 추천 정보 조회
+### 5.2 내 추천 정보 조회
 
 ```http
 GET /api/v1/referrals/me
@@ -519,7 +756,7 @@ Authorization: Bearer {accessToken}
 
 기존 사용자에게 코드가 없으면 첫 조회 시 생성되며 이후 동일한 코드가 유지된다.
 
-### 4.3 추천 코드 입력
+### 5.3 추천 코드 입력
 
 ```http
 POST /api/v1/referrals/redeem
@@ -569,7 +806,7 @@ Content-Type: application/json
 
 성공 시 앱의 티켓 잔액을 `myTickets`로 즉시 교체한다.
 
-### 4.4 추천인 오류
+### 5.4 추천인 오류
 
 | HTTP | 코드 | 앱 표시 권장 문구 |
 |---|---|---|
@@ -580,7 +817,7 @@ Content-Type: application/json
 | 409 | `REFERRAL-004` | 서로의 추천인 코드를 입력할 수 없어요. |
 | 403 | `REFERRAL-005` | 현재 계정에서는 추천인 기능을 사용할 수 없어요. |
 
-### 4.5 마이페이지 구현 흐름
+### 5.5 마이페이지 구현 흐름
 
 1. 추천인 메뉴 진입 시 `GET /referrals/me`를 호출한다.
 2. 내 코드와 “친구와 나 모두 티켓 5장” 문구를 표시한다.
@@ -592,9 +829,9 @@ Content-Type: application/json
 
 ---
 
-## 5. 축제 쿠폰 500개 등록 기능
+## 6. 축제 쿠폰 500개 등록 기능
 
-### 5.1 기능 규칙
+### 6.1 기능 규칙
 
 - 서버에는 서로 다른 숫자 6자리 쿠폰 코드 500개가 미리 등록되어 있다.
 - 쿠폰 한 개는 전체 사용자 중 한 명만 한 번 사용할 수 있다.
@@ -604,7 +841,7 @@ Content-Type: application/json
 - 쿠폰 코드는 앞자리 `0`이 있을 수 있으므로 반드시 문자열로 보관한다.
 - 실제 500개 쿠폰 코드 목록은 앱 리소스나 모바일 명세에 포함하지 않는다. 서버 배포 리소스와 오프라인 배포 자료에서만 관리한다.
 
-### 5.2 쿠폰 입력
+### 6.2 쿠폰 입력
 
 ```http
 POST /api/v1/tickets/coupons/redeem
@@ -620,7 +857,7 @@ Content-Type: application/json
 
 입력값은 숫자 6자리 문자열이어야 한다.
 
-### 5.3 성공 응답
+### 6.3 성공 응답
 
 ```json
 {
@@ -645,7 +882,7 @@ Content-Type: application/json
 
 성공 시 앱의 티켓 잔액을 `afterTickets`로 즉시 교체한다.
 
-### 5.4 쿠폰 오류
+### 6.4 쿠폰 오류
 
 | HTTP | 코드 | 앱 표시 권장 문구 | 조건 |
 |---|---|---|---|
@@ -656,7 +893,7 @@ Content-Type: application/json
 
 쿠폰 API는 같은 요청 재시도에 대해 멱등 성공을 반환하지 않는다. 네트워크 타임아웃 후 재시도에서 `COUPON-002`를 받았다면 앱은 “이미 사용된 쿠폰”으로 안내하고 `GET /api/v1/users/me`의 `data.tickets`로 잔액을 다시 동기화한다.
 
-### 5.5 쿠폰 화면 구현 흐름
+### 6.5 쿠폰 화면 구현 흐름
 
 1. 숫자 키패드와 6자리 입력칸을 제공한다.
 2. 6자리가 아니면 등록 버튼을 비활성화한다.
@@ -666,7 +903,18 @@ Content-Type: application/json
 
 ---
 
-## 6. Android/iOS 최종 체크리스트
+## 7. Android/iOS 최종 체크리스트
+
+### 1:1 매칭
+
+- [ ] 추천 2종과 요청 전송에 `Idempotency-Key`를 추가한다.
+- [ ] 같은 동작 재시도에는 같은 키, 새 동작에는 새 키를 사용한다.
+- [ ] 상대 모델에서 `socialId`, `studentNum`, 계정 상태, 보유 티켓 의존 코드를 제거한다.
+- [ ] nullable `admissionYear`를 추가하고 `2024`를 `24학번`으로 표시한다.
+- [ ] 보낸 요청 취소 API를 연결한다.
+- [ ] 요청 상태에 `CANCELLED`, `EXPIRED`를 추가한다.
+- [ ] HTTP 200이어도 `status`를 확인하며 `ACCEPTED`와 유효한 `chatRoomId`일 때만 채팅으로 이동한다.
+- [ ] 요청 전송 성공 후 `userTicketsRemaining`으로 티켓 잔액을 갱신한다.
 
 ### 그룹매칭
 
