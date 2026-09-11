@@ -38,6 +38,8 @@ public class StompHandler implements ChannelInterceptor {
     private static final Pattern MATCHING_TEAM_ROOM_SUB_DESTINATION = Pattern.compile("^/sub/matching/team-room/([1-9]\\d*)$");
     private static final String ONLINE_USERS_SUB_DESTINATION = StompSessionRegistry.ONLINE_USERS_DESTINATION;
     private static final String MAIN_STATISTICS_SUB_DESTINATION = StompSessionRegistry.MAIN_STATISTICS_DESTINATION;
+    private static final String DEPARTMENT_RANKINGS_SUB_DESTINATION =
+            StompSessionRegistry.DEPARTMENT_RANKINGS_DESTINATION;
     private static final Set<String> ALLOWED_SEND_DESTINATIONS = Set.of(CHAT_SEND_DESTINATION);
 
     private final JwtProvider jwtProvider;
@@ -176,7 +178,8 @@ public class StompHandler implements ChannelInterceptor {
         }
 
         if (ONLINE_USERS_SUB_DESTINATION.equals(destination)
-                || MAIN_STATISTICS_SUB_DESTINATION.equals(destination)) {
+                || MAIN_STATISTICS_SUB_DESTINATION.equals(destination)
+                || DEPARTMENT_RANKINGS_SUB_DESTINATION.equals(destination)) {
             stompOpsMonitor.recordSubscribeSuccess();
             return;
         }

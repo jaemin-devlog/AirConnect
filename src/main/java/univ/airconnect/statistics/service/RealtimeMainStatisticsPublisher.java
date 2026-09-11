@@ -6,7 +6,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.statistics.dto.response.OnlinePresenceResponse;
+import univ.airconnect.statistics.dto.response.DepartmentRankingResponse;
 import univ.airconnect.statistics.dto.response.RealtimeMainStatisticsResponse;
+
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -14,48 +17,57 @@ public class RealtimeMainStatisticsPublisher {
 
     private final StatisticsService statisticsService;
     private final SimpMessageSendingOperations messagingTemplate;
+    private final StompSessionRegistry stompSessionRegistry;
+    private final DepartmentRankingSnapshotService departmentRankingSnapshotService;
 
     private Snapshot lastPublishedSnapshot;
+    private Integer lastPublishedOnlineUserCount;
+    private List<DepartmentRankingResponse> lastPublishedDepartmentRankings;
 
     @Scheduled(
-            fixedDelayString = "${app.statistics.realtime-interval-ms:10000}",
-            initialDelayString = "${app.statistics.realtime-initial-delay-ms:10000}"
+            fixedDelayString = "${app.statistics.realtime-interval-ms:60000}",
+            initialDelayString = "${app.statistics.realtime-initial-delay-ms:1000}"
     )
     public synchronized void publishIfChanged() {
-        RealtimeMainStatisticsResponse response = statisticsService.getRealtimeMainStatistics();
-        Snapshot currentSnapshot = Snapshot.from(response);
-        if (currentSnapshot.equals(lastPublishedSnapshot)) {
-            return;
+        List<DepartmentRankingResponse> departmentRankings = departmentRankingSnapshotService.refresh();
+        if (!departmentRankings.equals(lastPublishedDepartmentRankings)) {
+            messagingTemplate.convertAndSend(
+                    StompSessionRegistry.DEPARTMENT_RANKINGS_DESTINATION,
+                    departmentRankings
+            );
+            lastPublishedDepartmentRankings = departmentRankings;
         }
 
-        messagingTemplate.convertAndSend(StompSessionRegistry.MAIN_STATISTICS_DESTINATION, response);
-        if (lastPublishedSnapshot == null
-                || lastPublishedSnapshot.onlineUserCount() != currentSnapshot.onlineUserCount()) {
+        RealtimeMainStatisticsResponse response = statisticsService.getRealtimeMainStatistics();
+        Snapshot currentSnapshot = Snapshot.from(response);
+        if (!currentSnapshot.equals(lastPublishedSnapshot)) {
+            messagingTemplate.convertAndSend(StompSessionRegistry.MAIN_STATISTICS_DESTINATION, response);
+            lastPublishedSnapshot = currentSnapshot;
+        }
+
+        int currentOnlineUserCount = stompSessionRegistry.onlineUserCount();
+        if (lastPublishedOnlineUserCount == null
+                || lastPublishedOnlineUserCount != currentOnlineUserCount) {
             messagingTemplate.convertAndSend(
                     StompSessionRegistry.ONLINE_USERS_DESTINATION,
-                    new OnlinePresenceResponse(response.onlineUserCount(), response.updatedAt())
+                    new OnlinePresenceResponse(currentOnlineUserCount, response.updatedAt())
             );
+            lastPublishedOnlineUserCount = currentOnlineUserCount;
         }
-        lastPublishedSnapshot = currentSnapshot;
     }
 
     private record Snapshot(
             long totalRegisteredUsers,
             long totalMatchSuccessCount,
-            int onlineUserCount,
-            Long topDepartmentId,
-            String topDepartmentName,
-            long topDepartmentRequestCount
+            long last24HoursActiveUserCount,
+            List<RealtimeMainStatisticsResponse.TopDepartment> topDepartments
     ) {
         private static Snapshot from(RealtimeMainStatisticsResponse response) {
-            RealtimeMainStatisticsResponse.TopDepartment top = response.topDepartment();
             return new Snapshot(
                     response.totalRegisteredUsers(),
                     response.totalMatchSuccessCount(),
-                    response.onlineUserCount(),
-                    top == null ? null : top.departmentId(),
-                    top == null ? null : top.deptName(),
-                    top == null ? 0L : top.requestCount()
+                    response.last24HoursActiveUserCount(),
+                    List.copyOf(response.topDepartments())
             );
         }
     }

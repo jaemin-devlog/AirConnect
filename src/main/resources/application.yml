@@ -27,8 +27,8 @@ spring:
 
 app:
   statistics:
-    realtime-interval-ms: ${STATISTICS_REALTIME_INTERVAL_MS:10000}
-    realtime-initial-delay-ms: ${STATISTICS_REALTIME_INITIAL_DELAY_MS:10000}
+    realtime-interval-ms: ${STATISTICS_REALTIME_INTERVAL_MS:60000}
+    realtime-initial-delay-ms: ${STATISTICS_REALTIME_INITIAL_DELAY_MS:1000}
   festival-coupons:
     seed-enabled: ${FESTIVAL_COUPON_SEED_ENABLED:true}
   cors:

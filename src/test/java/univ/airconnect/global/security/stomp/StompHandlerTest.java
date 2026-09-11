@@ -125,6 +125,16 @@ class StompHandlerTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    void subscribeToDepartmentRankingsIsAllowedForActiveSession() {
+        allowActiveSession("session-rankings", 1L);
+
+        assertThatCode(() -> handler.preSend(frame(StompCommand.SUBSCRIBE,
+                "session-rankings", "sub-rankings",
+                "/sub/statistics/departments/rankings", 1L), messageChannel))
+                .doesNotThrowAnyException();
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "/sub/**", "/sub/chat/**", "/sub/chat/room/*", "/sub/chat/room/**",

@@ -5,8 +5,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import univ.airconnect.department.repository.DepartmentRankingProjection;
-import univ.airconnect.department.repository.DepartmentRepository;
 import univ.airconnect.groupmatching.domain.GFinalGroupRoomStatus;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
 import univ.airconnect.global.security.stomp.StompSessionRegistry;
@@ -42,7 +40,7 @@ class StatisticsServiceTest {
     private GFinalGroupChatRoomRepository finalGroupChatRoomRepository;
 
     @Mock
-    private DepartmentRepository departmentRepository;
+    private DepartmentRankingSnapshotService departmentRankingSnapshotService;
 
     @Mock
     private StompSessionRegistry stompSessionRegistry;
@@ -77,32 +75,41 @@ class StatisticsServiceTest {
     }
 
     @Test
-    void getRealtimeMainStatistics_returnsLightweightCountsAndTopDepartment() {
-        DepartmentRankingProjection top = departmentCount(
-                1L, "시각디자인학과", "디자인융합학부", "ACTIVE", 56L);
+    void getRealtimeMainStatistics_returnsLightweightCountsAndTopThreeDepartments() {
         when(userRepository.countRegisteredUsersExcludingDeleted()).thenReturn(135L);
+        when(userRepository.countLast24HoursActiveUsersExcludingDeleted(any())).thenReturn(42L);
         when(matchingConnectionRepository.countByStatus(ConnectionStatus.ACCEPTED)).thenReturn(40L);
         when(finalGroupChatRoomRepository.countByStatusIn(any())).thenReturn(10L);
-        when(stompSessionRegistry.onlineUserCount()).thenReturn(17);
-        when(departmentRepository.findTopRankedByMatchingRequests()).thenReturn(java.util.Optional.of(top));
+        when(departmentRankingSnapshotService.getTopThree()).thenReturn(List.of(
+                new RealtimeMainStatisticsResponse.TopDepartment(1, 1L, "시각디자인학과", 56L),
+                new RealtimeMainStatisticsResponse.TopDepartment(2, 2L, "항공운항학과", 41L),
+                new RealtimeMainStatisticsResponse.TopDepartment(3, 3L, "간호학과", 32L)
+        ));
 
         RealtimeMainStatisticsResponse response = statisticsService.getRealtimeMainStatistics();
 
         assertThat(response.totalRegisteredUsers()).isEqualTo(135L);
         assertThat(response.totalMatchSuccessCount()).isEqualTo(50L);
-        assertThat(response.onlineUserCount()).isEqualTo(17);
-        assertThat(response.topDepartment().deptName()).isEqualTo("시각디자인학과");
-        assertThat(response.topDepartment().requestCount()).isEqualTo(56L);
+        assertThat(response.last24HoursActiveUserCount()).isEqualTo(42L);
+        assertThat(response.topDepartments()).hasSize(3);
+        assertThat(response.topDepartments().get(0).rank()).isEqualTo(1);
+        assertThat(response.topDepartments().get(0).deptName()).isEqualTo("시각디자인학과");
+        assertThat(response.topDepartments().get(0).requestCount()).isEqualTo(56L);
+        assertThat(response.topDepartments().get(2).rank()).isEqualTo(3);
         assertThat(response.updatedAt()).isNotNull();
     }
 
     @Test
     void getDepartmentRankings_returnsAllDepartmentsWithCompetitionRanks() {
-        when(departmentRepository.findAllRankedByMatchingRequests()).thenReturn(List.of(
-                departmentCount(1L, "항공운항학과", "항공학부", "ACTIVE", 23L),
-                departmentCount(2L, "간호학과", "보건학부", "ACTIVE", 23L),
-                departmentCount(3L, "항공컴퓨터학과", "항공융합학부(이전)", "LEGACY", 0L)
-        ));
+        List<DepartmentRankingResponse> expected = List.of(
+                DepartmentRankingResponse.builder().rank(1).departmentId(1L)
+                        .deptName("항공운항학과").requestCount(23L).build(),
+                DepartmentRankingResponse.builder().rank(1).departmentId(2L)
+                        .deptName("간호학과").requestCount(23L).build(),
+                DepartmentRankingResponse.builder().rank(3).departmentId(3L)
+                        .deptName("항공컴퓨터학과").requestCount(0L).build()
+        );
+        when(departmentRankingSnapshotService.getRankings()).thenReturn(expected);
 
         List<DepartmentRankingResponse> rankings = statisticsService.getDepartmentRankings();
 
@@ -127,34 +134,4 @@ class StatisticsServiceTest {
         };
     }
 
-    private DepartmentRankingProjection departmentCount(Long departmentId, String deptName,
-                                                        String collegeName, String status,
-                                                        long requestCount) {
-        return new DepartmentRankingProjection() {
-            @Override
-            public Long getDepartmentId() {
-                return departmentId;
-            }
-
-            @Override
-            public String getDeptName() {
-                return deptName;
-            }
-
-            @Override
-            public String getCollegeName() {
-                return collegeName;
-            }
-
-            @Override
-            public String getStatus() {
-                return status;
-            }
-
-            @Override
-            public long getRequestCount() {
-                return requestCount;
-            }
-        };
-    }
 }

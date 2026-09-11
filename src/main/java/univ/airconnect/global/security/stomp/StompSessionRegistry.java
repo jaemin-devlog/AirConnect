@@ -18,6 +18,7 @@ public class StompSessionRegistry {
 
     public static final String ONLINE_USERS_DESTINATION = "/sub/statistics/online";
     public static final String MAIN_STATISTICS_DESTINATION = "/sub/statistics/main";
+    public static final String DEPARTMENT_RANKINGS_DESTINATION = "/sub/statistics/departments/rankings";
 
     private final Map<String, Long> userIdBySessionId = new ConcurrentHashMap<>();
     private final Object mutationMonitor = new Object();

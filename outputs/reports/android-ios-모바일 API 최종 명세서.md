@@ -615,12 +615,27 @@ GET /api/v1/statistics/main/realtime
   "data": {
     "totalRegisteredUsers": 135,
     "totalMatchSuccessCount": 50,
-    "onlineUserCount": 17,
-    "topDepartment": {
-      "departmentId": 1,
-      "deptName": "시각디자인학과",
-      "requestCount": 56
-    },
+    "last24HoursActiveUserCount": 42,
+    "topDepartments": [
+      {
+        "rank": 1,
+        "departmentId": 1,
+        "deptName": "시각디자인학과",
+        "requestCount": 56
+      },
+      {
+        "rank": 2,
+        "departmentId": 2,
+        "deptName": "항공운항학과",
+        "requestCount": 41
+      },
+      {
+        "rank": 3,
+        "departmentId": 3,
+        "deptName": "간호학과",
+        "requestCount": 32
+      }
+    ],
     "updatedAt": "2026-09-11T15:00:00"
   },
   "error": null,
@@ -628,19 +643,20 @@ GET /api/v1/statistics/main/realtime
 }
 ```
 
-등록된 학과가 하나도 없으면 `topDepartment`는 `null`이다.
+`topDepartments`는 정렬된 상위 3개 학과 배열이다. 등록된 학과가 하나도 없으면 빈 배열 `[]`이다.
 
 | 필드 | 화면 의미 | 서버 집계 기준 |
 |---|---|---|
 | `totalRegisteredUsers` | 총 가입자 수 | 온보딩 미완료·정지·제한 계정 포함, 탈퇴 계정만 제외 |
 | `totalMatchSuccessCount` | 매칭 수 | `ACCEPTED` 상태 1:1 + `ACTIVE/ENDED` 상태 최종 그룹매칭 |
-| `onlineUserCount` | 현재 접속자 수 | 현재 서버에 인증된 STOMP 연결을 유지 중인 고유 사용자 수 |
-| `topDepartment` | 메인에 표시할 현재 1위 학과 | 1:1 요청을 보낸 횟수 + 받은 횟수가 가장 많은 학과 한 곳 |
+| `last24HoursActiveUserCount` | 최근 24시간 앱 접속자 수 | 현재 시각부터 24시간 전까지 앱에서 인증 요청을 보낸 고유 사용자 수 |
+| `topDepartments` | 메인에 순환 표시할 현재 1~3위 학과 | 1:1 요청을 보낸 횟수 + 받은 횟수 기준 상위 세 학과 |
 
-- 한 사용자가 여러 기기 또는 여러 화면에서 연결해도 접속자 한 명으로 집계한다.
-- 앱이 STOMP 연결을 하지 않으면 접속자로 집계되지 않는다.
-- 현재 접속자 수는 실행 중인 애플리케이션 서버 인스턴스 기준이다.
-- 공동 1위가 있으면 학과명 오름차순으로 가장 앞선 한 학과를 메인에 표시한다.
+- 한 사용자가 여러 번 접속하거나 여러 기기에서 이용해도 한 명으로 집계한다.
+- 자정 기준 일간 수치가 아니라 현재 시각 기준으로 매분 움직이는 최근 24시간 수치다.
+- 탈퇴 계정은 제외하며 온보딩 미완료 계정은 포함한다.
+- 배열 순서대로 카드 내용을 일정 시간마다 교체해 보여준다.
+- 동점은 공동 순위로 내려오므로 `rank`가 중복될 수 있다. 같은 점수 안에서는 학과명 오름차순이다.
 
 ### 4.2 메인 실시간 통계 STOMP 구독
 
@@ -648,18 +664,33 @@ GET /api/v1/statistics/main/realtime
 /sub/statistics/main
 ```
 
-STOMP 연결과 구독에는 액세스 토큰 인증이 필요하다. 서버는 10초마다 값을 확인하고, 네 값 중 하나라도 달라졌을 때만 다음 payload를 전송한다.
+STOMP 연결과 구독에는 액세스 토큰 인증이 필요하다. 서버는 1분마다 값을 확인하고, 통계 또는 학과 순위가 달라졌을 때만 다음 payload를 전송한다.
 
 ```json
 {
   "totalRegisteredUsers": 136,
   "totalMatchSuccessCount": 51,
-  "onlineUserCount": 18,
-  "topDepartment": {
-    "departmentId": 1,
-    "deptName": "시각디자인학과",
-    "requestCount": 57
-  },
+  "last24HoursActiveUserCount": 43,
+  "topDepartments": [
+    {
+      "rank": 1,
+      "departmentId": 1,
+      "deptName": "시각디자인학과",
+      "requestCount": 57
+    },
+    {
+      "rank": 2,
+      "departmentId": 2,
+      "deptName": "항공운항학과",
+      "requestCount": 41
+    },
+    {
+      "rank": 3,
+      "departmentId": 3,
+      "deptName": "간호학과",
+      "requestCount": 32
+    }
+  ],
   "updatedAt": "2026-09-11T15:00:10"
 }
 ```
@@ -668,15 +699,15 @@ STOMP 연결과 구독에는 액세스 토큰 인증이 필요하다. 서버는 
 
 1. STOMP 연결 후 `/sub/statistics/main`을 구독한다.
 2. 구독 직후 `GET /api/v1/statistics/main/realtime`을 한 번 호출해 초기값을 표시한다.
-3. 이후 STOMP payload를 받을 때 세 통계 숫자와 1위 학과를 한 번에 교체한다.
+3. 이후 최대 1분 간격으로 오는 STOMP payload를 받을 때 세 통계 숫자와 상위 3개 학과를 한 번에 교체한다.
 4. 값이 같으면 애니메이션을 다시 실행하지 않는다.
 5. STOMP 재연결 시 재구독하고 초기값 API를 다시 호출한다.
 
-기존 `GET /api/v1/statistics/online`과 `/sub/statistics/online`은 이전 앱 호환을 위해 유지하지만, 새 앱은 사용하지 않는다.
+기존 현재 동시 접속자용 `GET /api/v1/statistics/online`과 `/sub/statistics/online`은 이전 앱 호환을 위해 유지하지만, 새 메인 화면은 사용하지 않는다.
 
 ### 4.3 전체 학과 순위 페이지 조회
 
-전체 학과 순위는 메인 API에 포함되지 않는다. 사용자가 `랭킹 현황 바로가기`를 눌러 별도 페이지에 들어갈 때 한 번 호출한다.
+전체 학과 순위는 메인 API에 포함되지 않는다. 서버는 사용자 화면 여부와 관계없이 1분마다 전체 순위를 다시 집계해 최신 스냅샷으로 보관한다. 사용자가 `랭킹 현황 바로가기`를 눌러 별도 페이지에 들어가면 다음 API로 현재 스냅샷을 즉시 조회한다.
 
 ```http
 GET /api/v1/statistics/departments/rankings
@@ -711,7 +742,43 @@ GET /api/v1/statistics/departments/rankings
 - 모든 DB 학과를 반환하며 실적 0회 학과도 포함한다.
 - `requestCount`는 해당 학과 사용자가 보낸 1:1 요청 수 + 받은 1:1 요청 수다.
 - 점수 내림차순이며 동점은 공동 순위와 건너뛰기 방식이다. 예: `1, 2, 2, 4`.
-- 별도 랭킹 페이지에서 새로고침하거나 화면에 다시 진입할 때 재호출한다.
+- 서버가 매분 자동 집계하므로 앱에서 60초 REST 타이머를 만들지 않는다.
+- 랭킹 화면 진입 시 아래 STOMP 목적지를 먼저 구독하고 REST 초기값을 조회한다.
+
+```text
+/sub/statistics/departments/rankings
+```
+
+전체 순위가 바뀌면 서버가 다음과 같은 배열을 자동 전송한다. STOMP payload에는 `ApiResponse` 래퍼가 없다.
+
+```json
+[
+  {
+    "rank": 1,
+    "departmentId": 1,
+    "deptName": "시각디자인학과",
+    "collegeName": "디자인융합학부",
+    "status": "ACTIVE",
+    "requestCount": 57
+  },
+  {
+    "rank": 2,
+    "departmentId": 2,
+    "deptName": "항공운항학과",
+    "collegeName": "항공학부",
+    "status": "ACTIVE",
+    "requestCount": 41
+  }
+]
+```
+
+권장 연결 순서:
+
+1. STOMP 연결 후 `/sub/statistics/departments/rankings` 구독
+2. `GET /api/v1/statistics/departments/rankings` 호출로 초기 화면 표시
+3. 이후 STOMP 배열을 받을 때 전체 목록 교체
+4. STOMP 재연결 시 재구독 후 REST 초기값 재조회
+5. 화면을 벗어나면 해당 목적지만 구독 해제할 수 있으며 서버의 매분 집계는 계속된다.
 
 ### 4.4 기존 확장 통계 API
 
@@ -937,11 +1004,14 @@ Content-Type: application/json
 
 ### 메인 통계
 
-- [ ] 메인 진입 시 `/statistics/main/realtime`로 통계 3개와 1위 학과를 표시한다.
+- [ ] 메인 진입 시 `/statistics/main/realtime`로 통계 3개와 상위 3개 학과를 표시한다.
 - [ ] 전역 STOMP 연결에서 `/sub/statistics/main`을 구독한다.
-- [ ] 10초 단위 이벤트를 받을 때 통계 3개와 1위 학과를 한 번에 갱신한다.
+- [ ] 1분 단위 이벤트를 받을 때 통계 3개와 상위 3개 학과를 한 번에 갱신한다.
 - [ ] 재연결 시 재구독하고 REST 초기값을 다시 조회한다.
-- [ ] 전체 학과 목록은 랭킹 페이지 진입 시 `/statistics/departments/rankings`로만 조회한다.
+- [ ] 랭킹 페이지 진입 시 `/sub/statistics/departments/rankings`를 구독한다.
+- [ ] 구독 직후 `/statistics/departments/rankings`로 전체 순위 초기값을 조회한다.
+- [ ] 서버가 매분 보내는 변경 배열로 전체 목록을 교체하며 앱 자체 60초 타이머는 만들지 않는다.
+- [ ] 재연결 시 랭킹 목적지를 다시 구독하고 REST 초기값을 재조회한다.
 
 ### 추천인
 

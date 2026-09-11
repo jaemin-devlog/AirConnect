@@ -45,11 +45,6 @@ class DepartmentRankingRepositoryTest {
         assertThat(counts).containsEntry("디지털산업디자인학과", 3L)
                 .containsEntry("항공운항학과", 1L)
                 .containsEntry("항공컴퓨터학과", 0L);
-
-        DepartmentRankingProjection top = departmentRepository.findTopRankedByMatchingRequests()
-                .orElseThrow();
-        assertThat(top.getDeptName()).isEqualTo("디지털산업디자인학과");
-        assertThat(top.getRequestCount()).isEqualTo(3L);
     }
 
     private Department saveDepartment(String code, String name, String college, int order) {
