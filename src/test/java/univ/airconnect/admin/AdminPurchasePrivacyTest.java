@@ -194,6 +194,7 @@ class AdminPurchasePrivacyTest {
     void administratorRestorePatch_returnsSameSanitizedHistoryWithoutExternalSideEffects() throws Exception {
         var purchases = stubPurchases(UserStatus.SUSPENDED);
         var member = users.findById(MEMBER_ID).orElseThrow();
+        when(users.findByIdForTicketUpdate(MEMBER_ID)).thenReturn(Optional.of(member));
         authenticate(UserRole.ADMIN);
 
         var result = mvc.perform(request("PATCH"))

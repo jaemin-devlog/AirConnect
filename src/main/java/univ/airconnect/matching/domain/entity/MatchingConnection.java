@@ -12,7 +12,8 @@ import java.util.Objects;
 @Entity
 @Table(name = "matching_connections", indexes = {
         @Index(name = "idx_matching_connection_pair", columnList = "user1_id,user2_id,connected_at"),
-        @Index(name = "idx_matching_connection_status", columnList = "status")
+        @Index(name = "idx_matching_connection_status", columnList = "status"),
+        @Index(name = "idx_matching_connection_status_connected", columnList = "status,connected_at")
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -56,18 +57,29 @@ public class MatchingConnection {
     public static MatchingConnection createPending(Long requesterUserId, Long targetUserId) {
         Long user1 = Math.min(requesterUserId, targetUserId);
         Long user2 = Math.max(requesterUserId, targetUserId);
-        return new MatchingConnection(user1, user2, requesterUserId, null, ConnectionStatus.PENDING, LocalDateTime.now());
+        return new MatchingConnection(user1, user2, requesterUserId, null, ConnectionStatus.PENDING,
+                LocalDateTime.now(java.time.Clock.systemUTC()));
     }
 
     public void accept(Long chatRoomId) {
         this.status = ConnectionStatus.ACCEPTED;
         this.chatRoomId = chatRoomId;
-        this.respondedAt = LocalDateTime.now();
+        this.respondedAt = LocalDateTime.now(java.time.Clock.systemUTC());
     }
 
     public void reject() {
         this.status = ConnectionStatus.REJECTED;
-        this.respondedAt = LocalDateTime.now();
+        this.respondedAt = LocalDateTime.now(java.time.Clock.systemUTC());
+    }
+
+    public void cancel() {
+        this.status = ConnectionStatus.CANCELLED;
+        this.respondedAt = LocalDateTime.now(java.time.Clock.systemUTC());
+    }
+
+    public void expire() {
+        this.status = ConnectionStatus.EXPIRED;
+        this.respondedAt = LocalDateTime.now(java.time.Clock.systemUTC());
     }
 
     public boolean isParticipant(Long userId) {

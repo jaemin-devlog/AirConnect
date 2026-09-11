@@ -105,6 +105,23 @@ class MatchingServiceTest {
     }
 
     @Test
+    @DisplayName("recommendation retry returns the current ticket balance")
+    void recommend_retryReturnsCurrentTicketBalance() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        saveUserWithProfile("u2", Gender.FEMALE, 100);
+        saveUserWithProfile("u3", Gender.FEMALE, 100);
+        String requestKey = UUID.randomUUID().toString();
+
+        MatchingRecommendationResponse first = matchingService.recommend(requester.getId(), requestKey);
+        requester.consumeTickets(5);
+        userRepository.flush();
+        MatchingRecommendationResponse retried = matchingService.recommend(requester.getId(), requestKey);
+
+        assertThat(first.getUserTicketsRemaining()).isEqualTo(99);
+        assertThat(retried.getUserTicketsRemaining()).isEqualTo(94);
+    }
+
+    @Test
     @DisplayName("1 candidate does not cost a ticket")
     void recommend_returnsOneAndDoesNotConsumeTicket() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
@@ -298,6 +315,81 @@ class MatchingServiceTest {
     }
 
     @Test
+    @DisplayName("an active connection is returned before ticket and exposure validation")
+    void connect_activeConnectionWithNoTickets_returnsExistingRoom() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 0);
+        User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        MatchingConnection conn = matchingConnectionRepository.save(
+                MatchingConnection.createPending(requester.getId(), target.getId())
+        );
+        ChatRoom room = chatRoomRepository.save(ChatRoom.create("r", ChatRoomType.PERSONAL));
+        chatRoomMemberRepository.save(ChatRoomMember.create(room, requester));
+        chatRoomMemberRepository.save(ChatRoomMember.create(room, target));
+        conn.accept(room.getId());
+
+        MatchingConnectResponse response = matchingService.connect(
+                requester.getId(), target.getId(), UUID.randomUUID().toString()
+        );
+
+        assertThat(response.isAlreadyConnected()).isTrue();
+        assertThat(response.getConnectionId()).isEqualTo(conn.getId());
+        assertThat(response.getChatRoomId()).isEqualTo(room.getId());
+        assertThat(response.getUserTicketsRemaining()).isZero();
+    }
+
+    @Test
+    @DisplayName("only the requester can cancel a pending request")
+    void cancelRequest_requesterCancelsPendingRequest() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        MatchingConnection conn = matchingConnectionRepository.save(
+                MatchingConnection.createPending(requester.getId(), receiver.getId())
+        );
+
+        MatchingResponseResponse response = matchingService.cancelRequest(requester.getId(), conn.getId());
+
+        assertThat(response.getStatus()).isEqualTo(ConnectionStatus.CANCELLED);
+        assertThatThrownBy(() -> matchingService.cancelRequest(receiver.getId(), conn.getId()))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.INVALID_REQUEST);
+    }
+
+    @Test
+    @DisplayName("connect rejects a target whose onboarding is no longer complete")
+    void connect_revalidatesTargetOnboarding() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        matchingExposureRepository.save(MatchingExposure.create(requester.getId(), target.getId()));
+        target.resetOnboarding();
+        userRepository.flush();
+
+        assertThatThrownBy(() -> matchingService.connect(
+                requester.getId(), target.getId(), UUID.randomUUID().toString()
+        ))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.INVALID_TARGET);
+    }
+
+    @Test
+    @DisplayName("connect idempotency retry still enforces the current requester eligibility")
+    void connect_retryRevalidatesRequesterEligibility() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User target = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        matchingExposureRepository.save(MatchingExposure.create(requester.getId(), target.getId()));
+        String requestKey = UUID.randomUUID().toString();
+        matchingService.connect(requester.getId(), target.getId(), requestKey);
+        requester.restrictMatching(null, "admin restriction");
+        userRepository.flush();
+
+        assertThatThrownBy(() -> matchingService.connect(requester.getId(), target.getId(), requestKey))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.MATCHING_RESTRICTED);
+    }
+
+    @Test
     @DisplayName("requesting a non-exposed candidate fails without spending tickets")
     void connect_notExposed_noTicketConsumed() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
@@ -384,8 +476,8 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("request list excludes only name email and provider")
-    void requestList_excludesOnlyNameEmailProvider() {
+    @DisplayName("request list excludes private and internal account fields")
+    void requestList_excludesPrivateAndInternalFields() {
         User me = saveUserWithProfile("u1", Gender.MALE, 100);
         User requester = saveUserWithProfile("u2", Gender.FEMALE, 100);
         matchingConnectionRepository.save(MatchingConnection.createPending(requester.getId(), me.getId()));
@@ -394,14 +486,19 @@ class MatchingServiceTest {
         MatchingRequestResponse received = response.getReceived().get(0);
 
         assertThat(response.getReceivedCount()).isEqualTo(1);
-        assertThat(received.getSocialId()).isNotBlank();
-        assertThat(received.getOnboardingStatus()).isNotNull();
         assertThat(received.getStatus()).isEqualTo(ConnectionStatus.PENDING);
 
         List<String> fields = Arrays.stream(MatchingRequestResponse.class.getDeclaredFields())
                 .map(field -> field.getName())
                 .toList();
-        assertThat(fields).doesNotContain("name", "email", "provider");
+        assertThat(fields).doesNotContain(
+                "name", "email", "provider", "socialId", "tickets", "userStatus",
+                "studentNum"
+        );
+        assertThat(received.getAdmissionYear()).isEqualTo(2024);
+        assertThat(received.getOnboardingStatus()).isEqualTo(OnboardingStatus.FULL);
+        assertThat(received.isProfileExists()).isTrue();
+        assertThat(received.getProfile().getInstagram()).isEqualTo("insta");
     }
 
     @Test
@@ -433,22 +530,25 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("recommendation dto excludes only name email and provider")
-    void recommendationDto_excludesOnlyNameEmailProvider() {
+    @DisplayName("recommendation dto excludes private and internal account fields")
+    void recommendationDto_excludesPrivateAndInternalFields() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         saveUserWithProfile("u2", Gender.FEMALE, 100);
 
         MatchingRecommendationResponse response = matchingService.recommend(requester.getId());
-        MatchingCandidateResponse candidate = response.getCandidates().get(0);
-
-        assertThat(candidate.getSocialId()).isNotBlank();
-        assertThat(candidate.getTickets()).isNotNull();
-        assertThat(candidate.getOnboardingStatus()).isNotNull();
+        assertThat(response.getCandidates()).hasSize(1);
 
         List<String> fields = Arrays.stream(MatchingCandidateResponse.class.getDeclaredFields())
                 .map(field -> field.getName())
                 .toList();
-        assertThat(fields).doesNotContain("name", "email", "provider");
+        assertThat(fields).doesNotContain(
+                "name", "email", "provider", "socialId", "tickets", "status",
+                "studentNum"
+        );
+        assertThat(response.getCandidates().get(0).getAdmissionYear()).isEqualTo(2024);
+        assertThat(response.getCandidates().get(0).getOnboardingStatus()).isEqualTo(OnboardingStatus.FULL);
+        assertThat(response.getCandidates().get(0).isProfileExists()).isTrue();
+        assertThat(response.getCandidates().get(0).getProfile().getInstagram()).isEqualTo("insta");
     }
 
     @Test
@@ -555,5 +655,68 @@ class MatchingServiceTest {
 
         userProfileRepository.save(profile);
         return savedUser;
+    }
+
+    @Test
+    void repeatedAcceptReturnsSameRoomAndCreatesOnlyOneEvent() {
+        User sender = saveUserWithProfile("s", Gender.MALE, 10);
+        User receiver = saveUserWithProfile("r", Gender.FEMALE, 10);
+        MatchingConnection connection = matchingConnectionRepository.save(
+                MatchingConnection.createPending(sender.getId(), receiver.getId()));
+        Mockito.when(chatService.createOrGetPersonalRoomForConnection(any(), any(), any(), any()))
+                .thenReturn(ChatRoomResponse.builder().id(91L).build());
+        var first = matchingService.acceptRequest(receiver.getId(), connection.getId());
+        var second = matchingService.acceptRequest(receiver.getId(), connection.getId());
+        assertThat(second.getStatus()).isEqualTo(ConnectionStatus.ACCEPTED);
+        assertThat(second.getChatRoomId()).isEqualTo(first.getChatRoomId());
+        Mockito.verify(chatService, Mockito.times(1)).createOrGetPersonalRoomForConnection(any(), any(), any(), any());
+        assertThat(notificationEvents.count()).isEqualTo(1);
+    }
+
+    @Autowired
+    private univ.airconnect.matching.repository.MatchingNotificationEventRepository notificationEvents;
+
+    @Test
+    void missingIdempotencyHeaderReturnsStructured400WithoutCharge() throws Exception {
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders
+                .standaloneSetup(new univ.airconnect.matching.controller.MatchingController(matchingService))
+                .setControllerAdvice(new univ.airconnect.global.error.GlobalExceptionHandler())
+                .build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/v1/matching/recommendations"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.error.code").value("IDEMPOTENCY_KEY_REQUIRED"));
+    }
+
+    @Test
+    void expiredRequestCannotCreateChatEvenBeforeWorkerRuns() {
+        User sender = saveUserWithProfile("s", Gender.MALE, 10);
+        User receiver = saveUserWithProfile("r", Gender.FEMALE, 10);
+        MatchingConnection connection = MatchingConnection.createPending(sender.getId(), receiver.getId());
+        org.springframework.test.util.ReflectionTestUtils.setField(connection, "connectedAt",
+                LocalDateTime.now(java.time.Clock.systemUTC()).minusDays(7).minusSeconds(1));
+        matchingConnectionRepository.saveAndFlush(connection);
+        var response = matchingService.acceptRequest(receiver.getId(), connection.getId());
+        assertThat(response.getStatus()).isEqualTo(ConnectionStatus.EXPIRED);
+        assertThat(matchingConnectionRepository.findById(connection.getId()).orElseThrow().getStatus())
+                .isEqualTo(ConnectionStatus.EXPIRED);
+        assertThat(response.getChatRoomId()).isNull();
+        Mockito.verifyNoInteractions(chatService);
+        assertThat(notificationEvents.count()).isZero();
+    }
+
+    @Test
+    void sameRejectionReturnsPreviousResultButOppositeDecisionIsRejected() {
+        User sender = saveUserWithProfile("s", Gender.MALE, 10);
+        User receiver = saveUserWithProfile("r", Gender.FEMALE, 10);
+        MatchingConnection connection = matchingConnectionRepository.save(
+                MatchingConnection.createPending(sender.getId(), receiver.getId()));
+        matchingService.rejectRequest(receiver.getId(), connection.getId());
+        assertThat(matchingService.rejectRequest(receiver.getId(), connection.getId()).getStatus())
+                .isEqualTo(ConnectionStatus.REJECTED);
+        assertThatThrownBy(() -> matchingService.acceptRequest(receiver.getId(), connection.getId()))
+                .isInstanceOf(MatchingException.class);
+        assertThat(notificationEvents.count()).isEqualTo(1);
     }
 }

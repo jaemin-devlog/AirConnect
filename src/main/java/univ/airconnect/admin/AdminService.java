@@ -278,11 +278,13 @@ public class AdminService {
                 throw new BusinessException(ErrorCode.INVALID_REQUEST, "신고 대상과 조치 대상이 일치하지 않습니다.");
             }
         }
-        User user = getRequiredUser(userId);
+        User user = userRepository.findByIdForTicketUpdate(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
         String reason = trimToNull(request.reason());
         switch (request.action()) {
             case SUSPEND -> {
                 user.suspend(request.until(), reason);
+                matchingConnectionRepository.cancelPendingForUser(userId, LocalDateTime.now(java.time.Clock.systemUTC()));
                 sendAdminAnnouncementToUser(
                         user.getId(),
                         adminUserId,
@@ -316,6 +318,7 @@ public class AdminService {
             }
             case RESTRICT_MATCHING -> {
                 user.restrictMatching(request.until(), reason);
+                matchingConnectionRepository.cancelPendingForUser(userId, LocalDateTime.now(java.time.Clock.systemUTC()));
                 sendAdminAnnouncementToUser(
                         user.getId(),
                         adminUserId,

@@ -245,6 +245,27 @@ class AdminReportHandlingSecurityTest {
         reset(notifications);
     }
 
+    @ParameterizedTest
+    @EnumSource(value = AdminRequests.UserActionType.class, names = {"SUSPEND", "RESTRICT_MATCHING"})
+    void moderationCancelsBothDirectionsButPreservesAcceptedAndUnrelatedRequests(AdminRequests.UserActionType action) {
+        Long[] pending = inTransaction(() -> new Long[] {
+                connections.saveAndFlush(MatchingConnection.createPending(subjectId, reporterId)).getId(),
+                connections.saveAndFlush(MatchingConnection.createPending(outsiderId, subjectId)).getId(),
+                connections.saveAndFlush(MatchingConnection.createPending(reporterId, outsiderId)).getId()
+        });
+        adminService.applyUserAction(adminId, subjectId,
+                new AdminRequests.UserActionRequest(action, "moderation", null));
+        assertThat(connections.findById(pending[0]).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
+        assertThat(connections.findById(pending[1]).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
+        assertThat(connections.findById(pending[2]).orElseThrow().getStatus().name()).isEqualTo("PENDING");
+        assertThat(connections.findById(connectionId).orElseThrow().getStatus().name()).isEqualTo("ACCEPTED");
+        adminService.applyUserAction(adminId, subjectId, new AdminRequests.UserActionRequest(
+                action == AdminRequests.UserActionType.SUSPEND
+                    ? AdminRequests.UserActionType.REACTIVATE : AdminRequests.UserActionType.CLEAR_MATCHING_RESTRICTION,
+                "restore", null));
+        assertThat(connections.findById(pending[0]).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
+    }
+
     @Test
     void memoAndReplyOnlyEditIsVersionedAndPrivateWithoutNotification() throws Exception {
         var result = updateHttp(reportId, change(0, ReportStatus.OPEN, "  " + MEMO + "  ", "  " + REPLY + "  "));

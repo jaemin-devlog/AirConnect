@@ -26,7 +26,11 @@ import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.user.domain.UserStatus;
+import univ.airconnect.user.domain.OnboardingStatus;
+import univ.airconnect.user.domain.Gender;
+import univ.airconnect.user.domain.MilitaryStatus;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
@@ -66,6 +70,8 @@ class MatchingServiceRaceTest {
     @Mock
     private NotificationService notificationService;
     @Mock
+    private univ.airconnect.matching.repository.MatchingNotificationEventRepository matchingNotificationEventRepository;
+    @Mock
     private UserBlockPolicyService userBlockPolicyService;
     @Mock
     private TicketLedgerRepository ticketLedgerRepository;
@@ -92,7 +98,6 @@ class MatchingServiceRaceTest {
         when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(requester));
         when(userRepository.findByIdForTicketUpdate(targetUserId)).thenReturn(Optional.of(target));
         when(userBlockPolicyService.hasBlockRelation(userId, targetUserId)).thenReturn(false);
-        when(matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, targetUserId)).thenReturn(true);
         when(matchingConnectionRepository.findByUser1IdAndUser2IdOrderByConnectedAtDescIdDesc(1L, 2L))
                 .thenReturn(List.of(MatchingConnection.createPending(userId, targetUserId)));
 
@@ -139,13 +144,20 @@ class MatchingServiceRaceTest {
     }
 
     private User testUser(Long id, int tickets) {
-        return User.builder()
+        User user = User.builder()
                 .id(id)
                 .provider(univ.airconnect.auth.domain.entity.SocialProvider.KAKAO)
                 .socialId("s-" + id)
                 .status(UserStatus.ACTIVE)
+                .onboardingStatus(OnboardingStatus.FULL)
                 .createdAt(LocalDateTime.now())
                 .tickets(tickets)
                 .build();
+        UserProfile profile = UserProfile.create(
+                user, 175, 22, "INTJ", "NO", Gender.MALE,
+                MilitaryStatus.NOT_APPLICABLE, "NONE", "Seosan", "intro", null
+        );
+        when(userProfileRepository.findByUserId(id)).thenReturn(Optional.of(profile));
+        return user;
     }
 }

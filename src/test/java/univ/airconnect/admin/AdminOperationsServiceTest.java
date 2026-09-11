@@ -175,8 +175,8 @@ class AdminOperationsServiceTest {
                 eq(ConnectionStatus.ACCEPTED),
                 org.mockito.ArgumentMatchers.any(LocalDateTime.class)
         )).thenReturn(6L);
-        when(matchingConnectionRepository.countByStatusAndRespondedAtGreaterThanEqual(
-                eq(ConnectionStatus.REJECTED),
+        when(matchingConnectionRepository.countByStatusInAndRespondedAtGreaterThanEqual(
+                eq(List.of(ConnectionStatus.REJECTED, ConnectionStatus.CANCELLED, ConnectionStatus.EXPIRED)),
                 org.mockito.ArgumentMatchers.any(LocalDateTime.class)
         )).thenReturn(4L);
         when(matchingConnectionRepository.averageResponseSecondsSince(any(LocalDateTime.class))).thenReturn(42.0);

@@ -22,6 +22,10 @@ import univ.airconnect.moderation.exception.ModerationErrorCode;
 import univ.airconnect.moderation.exception.ModerationException;
 import univ.airconnect.moderation.infrastructure.ModerationConfig;
 import univ.airconnect.moderation.infrastructure.ModerationProperties;
+import univ.airconnect.matching.service.MatchingLifecycleService;
+import univ.airconnect.matching.domain.ConnectionStatus;
+import univ.airconnect.matching.domain.entity.MatchingConnection;
+import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
@@ -40,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         ModerationConfig.class,
         UserReportService.class,
         UserBlockService.class,
+        MatchingLifecycleService.class,
         UserBlockPolicyService.class,
         ModerationSupportService.class
 })
@@ -63,6 +68,8 @@ class ModerationServiceTest {
     private ChatRoomRepository chatRoomRepository;
     @Autowired
     private ChatRoomMemberRepository chatRoomMemberRepository;
+    @Autowired
+    private MatchingConnectionRepository matchingConnectionRepository;
 
     @Test
     @DisplayName("신고 생성 성공")
@@ -109,6 +116,22 @@ class ModerationServiceTest {
         assertThat(first.isAlreadyBlocked()).isFalse();
         assertThat(second.isAlreadyBlocked()).isTrue();
         assertThat(second.getBlockedUserId()).isEqualTo(blocked.getId());
+    }
+
+    @Test
+    @DisplayName("차단하면 두 사용자 사이의 대기 중인 1:1 요청도 취소된다")
+    void block_cancelsPendingOneToOneRequest() {
+        User blocker = saveUser("blocker-pending");
+        User blocked = saveUser("blocked-pending");
+        MatchingConnection pending = matchingConnectionRepository.save(
+                MatchingConnection.createPending(blocked.getId(), blocker.getId())
+        );
+
+        userBlockService.block(blocker.getId(), blocked.getId());
+
+        MatchingConnection reloaded = matchingConnectionRepository.findById(pending.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(ConnectionStatus.CANCELLED);
+        assertThat(reloaded.getRespondedAt()).isNotNull();
     }
 
     @Test

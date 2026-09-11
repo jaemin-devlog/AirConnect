@@ -98,5 +98,16 @@ public class MatchingController {
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
+    @DeleteMapping("/requests/{connectionId}")
+    public ResponseEntity<ApiResponse<MatchingResponseResponse>> cancelRequest(
+            @CurrentUserId Long userId,
+            @PathVariable @Positive Long connectionId,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        MatchingResponseResponse response = matchingService.cancelRequest(userId, connectionId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
 
 }

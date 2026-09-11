@@ -12,6 +12,11 @@ import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.service.ChatService;
+import univ.airconnect.user.domain.AdmissionYear;
+import univ.airconnect.matching.domain.entity.MatchingNotificationEvent;
+import univ.airconnect.matching.repository.MatchingNotificationEventRepository;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
 import univ.airconnect.matching.domain.entity.MatchingConnectRequest;
@@ -29,13 +34,11 @@ import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.iap.domain.entity.TicketLedger;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
-import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
 import univ.airconnect.user.dto.response.UserProfileResponse;
-import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -57,10 +60,9 @@ public class MatchingService {
     private final MatchingRecommendationRequestRepository matchingRecommendationRequestRepository;
     private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final UserRepository userRepository;
-    private final UserMilestoneRepository userMilestoneRepository;
     private final UserProfileRepository userProfileRepository;
     private final ChatService chatService;
-    private final NotificationService notificationService;
+    private final MatchingNotificationEventRepository matchingNotificationEventRepository;
     private final ObjectMapper objectMapper;
     private final AnalyticsService analyticsService;
     private final UserBlockPolicyService userBlockPolicyService;
@@ -68,6 +70,9 @@ public class MatchingService {
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
+
+    @Value("${matching.one-to-one.request-expiration-days:7}")
+    private long requestExpirationDays = 7;
 
     @Transactional
     public MatchingRecommendationResponse recommend(Long userId, String recommendationRequestId) {
@@ -96,13 +101,13 @@ public class MatchingService {
         User user = userRepository.findByIdForTicketUpdate(userId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
 
-        validateActiveUser(user);
+        validateMatchingRequester(user);
         UserProfile requesterProfile = requireProfileGender(userId);
 
         Optional<MatchingRecommendationRequest> previous =
                 matchingRecommendationRequestRepository.findByUserIdAndRequestKey(userId, requestKey);
         if (previous.isPresent()) {
-            return restoreRecommendation(previous.get(), userId, requesterProfile, sameGenderOnly);
+            return restoreRecommendation(previous.get(), userId, requesterProfile, sameGenderOnly, user.getTickets());
         }
 
         // 티켓 검증 (차감은 나중에)
@@ -237,7 +242,8 @@ public class MatchingService {
     private MatchingRecommendationResponse restoreRecommendation(MatchingRecommendationRequest request,
                                                                  Long userId,
                                                                  UserProfile requesterProfile,
-                                                                 boolean sameGenderOnly) {
+                                                                 boolean sameGenderOnly,
+                                                                 int currentTickets) {
         if (request.isSameGenderOnly() != sameGenderOnly) {
             throw new MatchingException(MatchingErrorCode.IDEMPOTENCY_KEY_REUSED);
         }
@@ -263,7 +269,7 @@ public class MatchingService {
                 .recommendationRequestId(request.getRequestKey())
                 .count(candidates.size())
                 .candidates(candidates)
-                .userTicketsRemaining(request.getTicketsRemaining())
+                .userTicketsRemaining(currentTickets)
                 .build();
     }
 
@@ -320,6 +326,11 @@ public class MatchingService {
         User user = Objects.equals(userId, user1) ? lockedUser1 : lockedUser2;
         User targetUser = Objects.equals(targetUserId, user1) ? lockedUser1 : lockedUser2;
 
+        // 멱등 재시도라도 현재 계정/온보딩/차단 상태를 우회할 수 없어야 한다.
+        validateMatchingRequester(user);
+        validateMatchingTarget(targetUser);
+        validateNotBlockedForMatching(userId, targetUserId);
+
         Optional<MatchingConnectRequest> previous =
                 matchingConnectRequestRepository.findByUserIdAndRequestKey(userId, requestKey);
         if (previous.isPresent()) {
@@ -327,30 +338,18 @@ public class MatchingService {
                 throw new MatchingException(MatchingErrorCode.IDEMPOTENCY_KEY_REUSED);
             }
             return new MatchingConnectResponse(
+                    previous.get().getConnectionId(),
                     previous.get().getChatRoomId(),
                     targetUserId,
-                    previous.get().isAlreadyConnected()
+                    previous.get().isAlreadyConnected(),
+                    user.getTickets()
             );
-        }
-
-        validateActiveUser(user);
-        validateActiveUser(targetUser);
-        validateNotBlockedForMatching(userId, targetUserId);
-
-        if (!matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, targetUserId)) {
-            log.warn("⚠️ 노출되지 않은 사용자: userId={}, targetUserId={}", userId, targetUserId);
-            throw new MatchingException(MatchingErrorCode.CANDIDATE_NOT_EXPOSED);
-        }
-
-        // 티켓 검증 (차감은 나중에)
-        if (user.getTickets() < 2) {
-            log.warn("⚠️ 티켓 부족: userId={}, 현재 티켓={}", userId, user.getTickets());
-            throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
         }
 
         List<MatchingConnection> existingConnections =
                 matchingConnectionRepository.findByUser1IdAndUser2IdOrderByConnectedAtDescIdDesc(user1, user2);
         for (MatchingConnection connection : existingConnections) {
+            expireIfOverdue(connection);
             if (connection.getStatus() == ConnectionStatus.PENDING) {
                 log.warn("⚠️ 이미 요청 중인 연결: userId={}, targetUserId={}, connectionId={}",
                         userId, targetUserId, connection.getId());
@@ -367,8 +366,25 @@ public class MatchingService {
                         connection.getChatRoomId(),
                         true
                 ));
-                return new MatchingConnectResponse(connection.getChatRoomId(), targetUserId, true);
+                return new MatchingConnectResponse(
+                        connection.getId(),
+                        connection.getChatRoomId(),
+                        targetUserId,
+                        true,
+                        user.getTickets()
+                );
             }
+        }
+
+        if (!matchingExposureRepository.existsByUserIdAndCandidateUserId(userId, targetUserId)) {
+            log.warn("⚠️ 노출되지 않은 사용자: userId={}, targetUserId={}", userId, targetUserId);
+            throw new MatchingException(MatchingErrorCode.CANDIDATE_NOT_EXPOSED);
+        }
+
+        // 새 요청을 만드는 경우에만 티켓이 필요하다.
+        if (user.getTickets() < 2) {
+            log.warn("⚠️ 티켓 부족: userId={}, 현재 티켓={}", userId, user.getTickets());
+            throw new MatchingException(MatchingErrorCode.INSUFFICIENT_TICKETS);
         }
 
         // 재요청도 새 행으로 생성해 과거 accept/reject 재시도가 최신 요청을 변경하지 못하게 한다.
@@ -406,7 +422,7 @@ public class MatchingService {
                 )
         );
 
-        return new MatchingConnectResponse(null, targetUserId, false);
+        return new MatchingConnectResponse(connection.getId(), null, targetUserId, false, user.getTickets());
     }
 
     @Transactional
@@ -418,12 +434,15 @@ public class MatchingService {
     public MatchingRequestsResponse getRequests(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
-        validateActiveAccount(user);
+        validateRequestListViewer(user);
 
         List<MatchingConnection> sentConnections = matchingConnectionRepository
                 .findByRequesterIdAndStatus(userId, ConnectionStatus.PENDING);
         List<MatchingConnection> receivedConnections = matchingConnectionRepository
                 .findReceivedRequestsByStatus(userId, ConnectionStatus.PENDING);
+        // Read-only filtering: mutation here without a row lock could overwrite concurrent acceptance.
+        sentConnections = sentConnections.stream().filter(connection -> !isOverdue(connection)).toList();
+        receivedConnections = receivedConnections.stream().filter(connection -> !isOverdue(connection)).toList();
         sentConnections = excludeBlockedConnections(userId, sentConnections);
         receivedConnections = excludeBlockedConnections(userId, receivedConnections);
 
@@ -464,9 +483,9 @@ public class MatchingService {
                     conn.getId(), otherUserId);
             return Optional.empty();
         }
-        if (otherUser.get().getStatus() != UserStatus.ACTIVE) {
-            log.info("비활성 사용자 매칭 요청을 목록에서 제외합니다. connectionId={}, userId={}, status={}",
-                    conn.getId(), otherUserId, otherUser.get().getStatus());
+        if (!isEligibleMatchingTarget(otherUser.get())) {
+            log.info("매칭 자격이 없는 사용자 요청을 목록에서 제외합니다. connectionId={}, userId={}, status={}, onboardingStatus={}",
+                    conn.getId(), otherUserId, otherUser.get().getStatus(), otherUser.get().getOnboardingStatus());
             return Optional.empty();
         }
         return Optional.of(toMatchingRequestResponse(conn, otherUser.get()));
@@ -474,28 +493,21 @@ public class MatchingService {
 
     private MatchingRequestResponse toMatchingRequestResponse(MatchingConnection conn, User otherUser) {
         Long otherUserId = otherUser.getId();
-        UserProfile profile = otherUser.getUserProfile();
+        UserProfile profile = userProfileRepository.findByUserId(otherUserId).orElse(null);
         UserProfileResponse profileResponse = (profile != null) ? UserProfileResponse.from(profile, imageUrlBase) : null;
-
-        boolean profileImageUploaded = userMilestoneRepository.existsByUserIdAndMilestoneType(
-                otherUserId, MilestoneType.PROFILE_IMAGE_UPLOADED
-        );
-        boolean emailVerified = otherUser.hasVerifiedSchoolEmail();
 
         return MatchingRequestResponse.builder()
                 .connectionId(conn.getId())
                 .userId(otherUserId)
-                .socialId(otherUser.getSocialId())
                 .nickname(otherUser.getNickname())
                 .deptName(otherUser.getDeptName())
-                .studentNum(otherUser.getStudentNum())
-                .age(profile != null ? profile.getAge() : null)
-                .userStatus(otherUser.getStatus())
+                .admissionYear(AdmissionYear.from(otherUser.getStudentNum()))
                 .onboardingStatus(otherUser.getOnboardingStatus())
+                .emailVerified(otherUser.hasVerifiedSchoolEmail())
                 .profileExists(profile != null)
-                .profileImageUploaded(profileImageUploaded)
-                .emailVerified(emailVerified)
-                .tickets(otherUser.getTickets())
+                .profileImageUploaded(profile != null && profile.getProfileImagePath() != null
+                        && !profile.getProfileImagePath().isBlank())
+                .age(profile != null ? profile.getAge() : null)
                 .profile(profileResponse)
                 .status(conn.getStatus())
                 .requestedAt(conn.getConnectedAt())
@@ -512,14 +524,21 @@ public class MatchingService {
 
         validateReceiver(snapshot, userId);
         Map<Long, User> lockedUsers = lockUsersForPair(snapshot.getUser1Id(), snapshot.getUser2Id());
-        validateActiveUser(lockedUsers.get(userId));
-        validateActiveUser(lockedUsers.get(snapshot.getOtherUserId(userId)));
+        validateMatchingRequester(lockedUsers.get(userId));
+        validateMatchingTarget(lockedUsers.get(snapshot.getOtherUserId(userId)));
 
         MatchingConnection connection = matchingConnectionRepository.findByIdForUpdate(connectionId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.CONNECTION_NOT_FOUND));
 
         validateReceiver(connection, userId);
 
+        if (connection.getStatus() == ConnectionStatus.ACCEPTED) {
+            validateNotBlockedForMatching(userId, connection.getOtherUserId(userId));
+            return toMatchingResponse(connection, connection.getOtherUserId(userId));
+        }
+        if (expireIfOverdue(connection) || connection.getStatus() == ConnectionStatus.EXPIRED) {
+            return toMatchingResponse(connection, connection.getOtherUserId(userId));
+        }
         if (connection.getStatus() != ConnectionStatus.PENDING) {
             log.warn("⚠️ 요청 상태 불일치: connectionId={}, status={}", connectionId, connection.getStatus());
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
@@ -578,6 +597,12 @@ public class MatchingService {
 
         validateReceiver(connection, userId);
 
+        if (connection.getStatus() == ConnectionStatus.REJECTED) {
+            return toMatchingResponse(connection, connection.getOtherUserId(userId));
+        }
+        if (expireIfOverdue(connection) || connection.getStatus() == ConnectionStatus.EXPIRED) {
+            return toMatchingResponse(connection, connection.getOtherUserId(userId));
+        }
         if (connection.getStatus() != ConnectionStatus.PENDING) {
             log.warn("⚠️ 요청 상태 불일치: connectionId={}, status={}", connectionId, connection.getStatus());
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
@@ -600,34 +625,80 @@ public class MatchingService {
                 .build();
     }
 
+    @Transactional
+    public MatchingResponseResponse cancelRequest(Long userId, Long connectionId) {
+        MatchingConnection snapshot = matchingConnectionRepository.findById(connectionId)
+                .orElseThrow(() -> new MatchingException(MatchingErrorCode.CONNECTION_NOT_FOUND));
+
+        if (!snapshot.isParticipant(userId) || !snapshot.isRequester(userId)) {
+            throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
+        }
+
+        lockUsersForPair(snapshot.getUser1Id(), snapshot.getUser2Id());
+        MatchingConnection connection = matchingConnectionRepository.findByIdForUpdate(connectionId)
+                .orElseThrow(() -> new MatchingException(MatchingErrorCode.CONNECTION_NOT_FOUND));
+
+        if (!connection.isParticipant(userId) || !connection.isRequester(userId)) {
+            throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
+        }
+        if (connection.getStatus() == ConnectionStatus.CANCELLED) {
+            return toMatchingResponse(connection, connection.getOtherUserId(userId));
+        }
+        if (expireIfOverdue(connection) || connection.getStatus() == ConnectionStatus.EXPIRED) {
+            return toMatchingResponse(connection, connection.getOtherUserId(userId));
+        }
+        if (connection.getStatus() != ConnectionStatus.PENDING) {
+            throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
+        }
+
+        connection.cancel();
+        return toMatchingResponse(connection, connection.getOtherUserId(userId));
+    }
+
+    private boolean isOverdue(MatchingConnection connection) {
+        return connection.getStatus() == ConnectionStatus.PENDING
+                && !connection.getConnectedAt().plusDays(requestExpirationDays)
+                    .isAfter(LocalDateTime.now(Clock.systemUTC()));
+    }
+
+    private boolean expireIfOverdue(MatchingConnection connection) {
+        if (isOverdue(connection)) {
+            connection.expire();
+            return true;
+        }
+        return false;
+    }
+
+    private MatchingResponseResponse toMatchingResponse(MatchingConnection connection, Long targetUserId) {
+        return MatchingResponseResponse.builder()
+                .connectionId(connection.getId())
+                .targetUserId(targetUserId)
+                .chatRoomId(connection.getChatRoomId())
+                .status(connection.getStatus())
+                .build();
+    }
+
     private MatchingCandidateResponse toMatchingCandidateResponse(User user) {
-        UserProfile profile = user.getUserProfile();
+        UserProfile profile = userProfileRepository.findByUserId(user.getId()).orElse(null);
 
         UserProfileResponse profileResponse = null;
         if (profile != null) {
             profileResponse = UserProfileResponse.from(profile, imageUrlBase);
         }
 
-        boolean profileImageUploaded = userMilestoneRepository.existsByUserIdAndMilestoneType(
-                user.getId(), MilestoneType.PROFILE_IMAGE_UPLOADED
-        );
-        boolean emailVerified = user.hasVerifiedSchoolEmail();
-
         return MatchingCandidateResponse.builder()
                 .userId(user.getId())
-                .socialId(user.getSocialId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
-                .profileImage(profile != null ? profile.getProfileImagePath() : null)
+                .profileImage(profile != null ? toFullImageUrl(profile.getProfileImagePath()) : null)
                 .gender(profile != null ? profile.getGender() : null)
-                .studentNum(user.getStudentNum())
-                .age(profile != null ? profile.getAge() : null)
-                .status(user.getStatus())
+                .admissionYear(AdmissionYear.from(user.getStudentNum()))
                 .onboardingStatus(user.getOnboardingStatus())
+                .emailVerified(user.hasVerifiedSchoolEmail())
                 .profileExists(profile != null)
-                .profileImageUploaded(profileImageUploaded)
-                .emailVerified(emailVerified)
-                .tickets(user.getTickets())
+                .profileImageUploaded(profile != null && profile.getProfileImagePath() != null
+                        && !profile.getProfileImagePath().isBlank())
+                .age(profile != null ? profile.getAge() : null)
                 .profile(profileResponse)
                 .build();
     }
@@ -667,7 +738,7 @@ public class MatchingService {
             payload.put("requesterUserId", requesterUserId);
             payload.put("requesterNickname", requesterNickname);
 
-            notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+            enqueueMatchingNotification(new NotificationService.CreateCommand(
                     targetUserId,
                     NotificationType.MATCH_REQUEST_RECEIVED,
                     "새 매칭 요청",
@@ -679,8 +750,7 @@ public class MatchingService {
                     buildMatchDedupeKey(connection, "received", connection.getConnectedAt())
             ));
         } catch (Exception e) {
-            log.error("매칭 요청 수신 알림 저장에 실패했습니다. requesterUserId={}, targetUserId={}, connectionId={}",
-                    requesterUserId, targetUserId, connection.getId(), e);
+            throw new IllegalStateException("매칭 요청 알림 이벤트 저장 실패", e);
         }
     }
 
@@ -699,7 +769,7 @@ public class MatchingService {
             payload.put("partnerUserId", acceptedUserId);
             payload.put("partnerNickname", acceptedNickname);
 
-            notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+            enqueueMatchingNotification(new NotificationService.CreateCommand(
                     connection.getRequesterId(),
                     NotificationType.MATCH_REQUEST_ACCEPTED,
                     "매칭이 수락되었어요",
@@ -711,8 +781,7 @@ public class MatchingService {
                     buildMatchDedupeKey(connection, "accepted", connection.getRespondedAt())
             ));
         } catch (Exception e) {
-            log.error("매칭 수락 알림 저장에 실패했습니다. connectionId={}, requesterUserId={}, acceptedUserId={}",
-                    connection.getId(), connection.getRequesterId(), acceptedUserId, e);
+            throw new IllegalStateException("매칭 수락 알림 이벤트 저장 실패", e);
         }
     }
 
@@ -728,7 +797,7 @@ public class MatchingService {
             payload.put("rejectedUserId", rejectedUserId);
             payload.put("rejectedNickname", rejectedNickname);
 
-            notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+            enqueueMatchingNotification(new NotificationService.CreateCommand(
                     connection.getRequesterId(),
                     NotificationType.MATCH_REQUEST_REJECTED,
                     "매칭 요청이 거절되었어요",
@@ -740,9 +809,14 @@ public class MatchingService {
                     buildMatchDedupeKey(connection, "rejected", connection.getRespondedAt())
             ));
         } catch (Exception e) {
-            log.error("매칭 거절 알림 저장에 실패했습니다. connectionId={}, requesterUserId={}, rejectedUserId={}",
-                    connection.getId(), connection.getRequesterId(), rejectedUserId, e);
+            throw new IllegalStateException("매칭 거절 알림 이벤트 저장 실패", e);
         }
+    }
+
+    private void enqueueMatchingNotification(NotificationService.CreateCommand command)
+            throws com.fasterxml.jackson.core.JsonProcessingException {
+        matchingNotificationEventRepository.save(MatchingNotificationEvent.create(
+                command.userId(), command.actorUserId(), objectMapper.writeValueAsString(command)));
     }
 
     private String buildMatchDedupeKey(MatchingConnection connection, String action, Object timestamp) {
@@ -771,19 +845,52 @@ public class MatchingService {
         return imageUrlBase + "/" + profileImagePath;
     }
 
-    private void validateActiveUser(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new MatchingException(MatchingErrorCode.USER_NOT_FOUND));
-        validateActiveUser(user);
-    }
-
     private void validateActiveUser(User user) {
+        if (user == null) {
+            throw new MatchingException(MatchingErrorCode.USER_NOT_FOUND);
+        }
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new MatchingException(MatchingErrorCode.INVALID_TARGET);
         }
         if (user.isMatchingRestricted()) {
             throw new MatchingException(MatchingErrorCode.MATCHING_RESTRICTED);
         }
+    }
+
+    private void validateMatchingRequester(User user) {
+        validateActiveUser(user);
+        if (user.getOnboardingStatus() != OnboardingStatus.FULL) {
+            throw new MatchingException(MatchingErrorCode.PROFILE_REQUIRED);
+        }
+        requireProfileGender(user.getId());
+    }
+
+    private void validateMatchingTarget(User user) {
+        validateActiveUser(user);
+        UserProfile profile = userProfileRepository.findByUserId(user.getId()).orElse(null);
+        if (user.getOnboardingStatus() != OnboardingStatus.FULL || profile == null || profile.getGender() == null) {
+            throw new MatchingException(MatchingErrorCode.INVALID_TARGET);
+        }
+    }
+
+    private boolean isEligibleMatchingTarget(User user) {
+        if (user == null
+                || user.getStatus() != UserStatus.ACTIVE
+                || user.getOnboardingStatus() != OnboardingStatus.FULL
+                || user.isMatchingRestricted()) {
+            return false;
+        }
+        return userProfileRepository.findByUserId(user.getId())
+                .map(UserProfile::getGender)
+                .isPresent();
+    }
+
+    private void validateRequestListViewer(User user) {
+        validateActiveAccount(user);
+        if (user.getOnboardingStatus() != OnboardingStatus.FULL) {
+            throw new MatchingException(MatchingErrorCode.PROFILE_REQUIRED);
+        }
+        requireProfileGender(user.getId());
     }
 
     private UserProfile requireProfileGender(Long userId) {

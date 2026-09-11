@@ -1,6 +1,20 @@
 -- 1:1 매칭 재요청을 별도 행으로 보존하고 추천/연결 요청의 멱등성 결과를 저장한다.
 -- 애플리케이션 배포 전에 대상 DB에서 1회 실행한다.
 
+-- Matching changes and delivery intent are committed atomically.
+CREATE TABLE IF NOT EXISTS matching_notification_events (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    actor_user_id BIGINT NULL,
+    command_json TEXT NOT NULL,
+    next_attempt_at DATETIME(6) NOT NULL,
+    attempts INT NOT NULL DEFAULT 0,
+    INDEX idx_matching_notification_due (next_attempt_at, id)
+) ENGINE=InnoDB;
+
+-- Support new states whether the previous Hibernate column was VARCHAR or ENUM.
+ALTER TABLE matching_connections MODIFY COLUMN status VARCHAR(32) NOT NULL;
+
 CREATE TABLE IF NOT EXISTS matching_recommendation_requests (
     id BIGINT NOT NULL AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
@@ -86,3 +100,19 @@ SET @create_matching_status_index_sql = IF(
 PREPARE create_matching_status_index_stmt FROM @create_matching_status_index_sql;
 EXECUTE create_matching_status_index_stmt;
 DEALLOCATE PREPARE create_matching_status_index_stmt;
+
+SET @matching_status_connected_index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'matching_connections'
+      AND index_name = 'idx_matching_connection_status_connected'
+);
+SET @create_matching_status_connected_index_sql = IF(
+    @matching_status_connected_index_exists > 0,
+    'SELECT 1',
+    'CREATE INDEX idx_matching_connection_status_connected ON matching_connections (status, connected_at)'
+);
+PREPARE create_matching_status_connected_index_stmt FROM @create_matching_status_connected_index_sql;
+EXECUTE create_matching_status_connected_index_stmt;
+DEALLOCATE PREPARE create_matching_status_connected_index_stmt;

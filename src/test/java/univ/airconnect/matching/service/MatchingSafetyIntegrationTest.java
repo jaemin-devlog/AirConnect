@@ -28,6 +28,7 @@ import univ.airconnect.matching.repository.MatchingRecommendationRequestReposito
 import univ.airconnect.moderation.domain.entity.UserBlock;
 import univ.airconnect.moderation.repository.UserBlockRepository;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
+import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.*;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
@@ -48,10 +49,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 @DataJpaTest
 @ActiveProfiles("test")
-@Import({MatchingService.class, UserBlockPolicyService.class, TestNotificationConfig.class})
+@Import({MatchingService.class, MatchingNotificationDispatcher.class, UserBlockPolicyService.class, TestNotificationConfig.class})
 class MatchingSafetyIntegrationTest {
 
     @Autowired MatchingService matchingService;
@@ -63,9 +65,44 @@ class MatchingSafetyIntegrationTest {
     @Autowired MatchingRecommendationRequestRepository recommendationRequestRepository;
     @Autowired UserBlockRepository userBlockRepository;
     @Autowired PlatformTransactionManager transactionManager;
+    @Autowired NotificationService notificationService;
+    @Autowired MatchingNotificationDispatcher dispatcher;
+    @Autowired univ.airconnect.matching.repository.MatchingNotificationEventRepository events;
 
     @MockitoBean ChatService chatService;
     @MockitoBean AnalyticsService analyticsService;
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void notificationFailureAfterCommitDoesNotRollbackCreatedRequest() {
+        Long[] userIds = new TransactionTemplate(transactionManager).execute(status -> {
+            User requester = saveUserWithProfile(Gender.MALE, 10);
+            User target = saveUserWithProfile(Gender.FEMALE, 10);
+            matchingExposureRepository.save(MatchingExposure.create(requester.getId(), target.getId()));
+            return new Long[]{requester.getId(), target.getId()};
+        });
+        Long requesterId = userIds[0];
+        Long targetId = userIds[1];
+        doThrow(new RuntimeException("notification unavailable"))
+                .when(notificationService).createAndEnqueue(any());
+
+        matchingService.connect(requesterId, targetId, UUID.randomUUID().toString());
+
+        Long eventId = events.findAll().get(0).getId();
+        assertThatThrownBy(() -> dispatcher.dispatch(eventId)).isInstanceOf(RuntimeException.class);
+        assertThat(events.existsById(eventId)).isTrue();
+        org.mockito.Mockito.reset(notificationService);
+        dispatcher.dispatch(eventId);
+        assertThat(events.existsById(eventId)).isFalse();
+
+        assertThat(matchingConnectionRepository
+                .findByUser1IdAndUser2IdOrderByConnectedAtDescIdDesc(requesterId, targetId))
+                .singleElement()
+                .extracting(MatchingConnection::getStatus)
+                .isEqualTo(ConnectionStatus.PENDING);
+        assertThat(userRepository.findById(requesterId).orElseThrow().getTickets()).isEqualTo(8);
+    }
 
     @Test
     void recommendationRequiresIdempotencyKey() {
@@ -235,10 +272,8 @@ class MatchingSafetyIntegrationTest {
                 .orElseThrow();
 
         assertThat(newRequest.getId()).isNotEqualTo(oldRequest.getId());
-        assertThatThrownBy(() -> matchingService.rejectRequest(receiver.getId(), oldRequest.getId()))
-                .isInstanceOf(MatchingException.class)
-                .extracting("errorCode")
-                .isEqualTo(MatchingErrorCode.INVALID_REQUEST);
+        assertThat(matchingService.rejectRequest(receiver.getId(), oldRequest.getId()).getStatus())
+                .isEqualTo(ConnectionStatus.REJECTED);
         assertThat(matchingConnectionRepository.findById(newRequest.getId()).orElseThrow().getStatus())
                 .isEqualTo(ConnectionStatus.PENDING);
     }

@@ -14,6 +14,7 @@ import univ.airconnect.auth.service.oauth.apple.AppleAccountRevocationService;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.department.domain.DepartmentNames;
 import univ.airconnect.department.repository.DepartmentRepository;
+import univ.airconnect.matching.service.MatchingLifecycleService;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.PushDeviceRepository;
 import univ.airconnect.user.domain.MilestoneType;
@@ -59,6 +60,7 @@ public class UserService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final AppleAccountRevocationService appleAccountRevocationService;
     private final DepartmentRepository departmentRepository;
+    private final MatchingLifecycleService matchingLifecycleService;
 
     private static final String USER_ACTIVITY_TOUCH_KEY_PREFIX = "analytics:user:last-active:";
     private static final int NICKNAME_MAX_LENGTH = 100;
@@ -349,6 +351,7 @@ public class UserService {
             user.markDeleted();
         }
         anonymizeProfileAndDeleteImage(userId);
+        matchingLifecycleService.cleanupOnAccountDeletion(userId);
 
         int refreshTokensRevoked = purgeRefreshTokens(userId);
         int chatSessionsRevoked = purgeChatSessions(userId);

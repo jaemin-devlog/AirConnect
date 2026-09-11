@@ -1523,27 +1523,31 @@ public class GMatchingService {
         UserProfile profile = user.getUserProfile();
         UserProfileResponse profileResponse = profile != null ? UserProfileResponse.from(profile, imageUrlBase) : null;
 
-        boolean profileImageUploaded = profile != null
-                && profile.getProfileImagePath() != null
-                && !profile.getProfileImagePath().isBlank();
-
         return MatchingCandidateResponse.builder()
                 .userId(user.getId())
-                .socialId(user.getSocialId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
-                .profileImage(profile != null ? profile.getProfileImagePath() : null)
+                .profileImage(profile != null ? toFullImageUrl(profile.getProfileImagePath()) : null)
                 .gender(profile != null ? profile.getGender() : null)
-                .studentNum(user.getStudentNum())
-                .age(profile != null ? profile.getAge() : null)
-                .status(user.getStatus())
+                .admissionYear(univ.airconnect.user.domain.AdmissionYear.from(user.getStudentNum()))
                 .onboardingStatus(user.getOnboardingStatus())
+                .emailVerified(user.hasVerifiedSchoolEmail())
                 .profileExists(profile != null)
-                .profileImageUploaded(profileImageUploaded)
-                .emailVerified(false)
-                .tickets(user.getTickets())
+                .profileImageUploaded(profile != null && profile.getProfileImagePath() != null
+                        && !profile.getProfileImagePath().isBlank())
+                .age(profile != null ? profile.getAge() : null)
                 .profile(profileResponse)
                 .build();
+    }
+
+    private String toFullImageUrl(String profileImagePath) {
+        if (profileImagePath == null || profileImagePath.isBlank()) {
+            return null;
+        }
+        if (profileImagePath.startsWith("http://") || profileImagePath.startsWith("https://")) {
+            return profileImagePath;
+        }
+        return imageUrlBase + "/" + profileImagePath;
     }
 
     private void validateUserTeamGender(Long userId, GTeamGender teamGender) {

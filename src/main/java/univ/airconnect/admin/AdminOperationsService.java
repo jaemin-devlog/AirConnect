@@ -217,8 +217,8 @@ public class AdminOperationsService {
                 AnalyticsEventType.MATCH_REQUEST_ACCEPTED,
                 since
         );
-        long rejectedOrExpired = matchingConnectionRepository.countByStatusAndRespondedAtGreaterThanEqual(
-                ConnectionStatus.REJECTED,
+        long rejectedOrExpired = matchingConnectionRepository.countByStatusInAndRespondedAtGreaterThanEqual(
+                List.of(ConnectionStatus.REJECTED, ConnectionStatus.CANCELLED, ConnectionStatus.EXPIRED),
                 since
         );
         long chatRoomsCreated = matchingConnectionRepository
@@ -229,7 +229,7 @@ public class AdminOperationsService {
                 new AdminDtos.FunnelStep("recommendation_refreshed", "추천 새로고침", recommendationRefreshes, null),
                 new AdminDtos.FunnelStep("request_sent", "매칭 요청", requestsSent, percentage(requestsSent, recommendationRefreshes)),
                 new AdminDtos.FunnelStep("request_accepted", "요청 수락", requestsAccepted, percentage(requestsAccepted, requestsSent)),
-                new AdminDtos.FunnelStep("request_rejected_or_expired", "거절/만료", rejectedOrExpired, percentage(rejectedOrExpired, requestsSent)),
+                new AdminDtos.FunnelStep("request_rejected_or_expired", "거절/취소/만료", rejectedOrExpired, percentage(rejectedOrExpired, requestsSent)),
                 new AdminDtos.FunnelStep("chat_room_created", "채팅방 생성", chatRoomsCreated, percentage(chatRoomsCreated, requestsAccepted))
         );
 

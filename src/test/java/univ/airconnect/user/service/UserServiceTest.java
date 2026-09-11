@@ -14,6 +14,7 @@ import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.service.oauth.apple.AppleAccountRevocationService;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.department.repository.DepartmentRepository;
+import univ.airconnect.matching.service.MatchingLifecycleService;
 import univ.airconnect.notification.domain.PushPlatform;
 import univ.airconnect.notification.domain.PushProvider;
 import univ.airconnect.notification.domain.entity.PushDevice;
@@ -69,6 +70,8 @@ class UserServiceTest {
     private AppleAccountRevocationService appleAccountRevocationService;
     @Mock
     private DepartmentRepository departmentRepository;
+    @Mock
+    private MatchingLifecycleService matchingLifecycleService;
 
     @Test
     void signUp_rejectsDepartmentThatIsNotInCatalog() {
@@ -395,7 +398,8 @@ class UserServiceTest {
                 pushDeviceRepository,
                 redisTemplate,
                 appleAccountRevocationService,
-                departmentRepository
+                departmentRepository,
+                matchingLifecycleService
         );
         ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
         ReflectionTestUtils.setField(service, "profileImageDir", "/tmp/airconnect-test-profile-images");

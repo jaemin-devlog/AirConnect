@@ -4,10 +4,12 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface MatchingConnectionRepository extends JpaRepository<MatchingConnection, Long>, MatchingConnectionLockRepository {
@@ -15,6 +17,41 @@ public interface MatchingConnectionRepository extends JpaRepository<MatchingConn
     List<MatchingConnection> findByUser1IdAndUser2IdOrderByConnectedAtDescIdDesc(Long user1Id, Long user2Id);
 
     long deleteByUser1IdOrUser2Id(Long user1Id, Long user2Id);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+        UPDATE MatchingConnection mc
+        SET mc.status = univ.airconnect.matching.domain.ConnectionStatus.CANCELLED,
+            mc.respondedAt = :endedAt
+        WHERE mc.status = univ.airconnect.matching.domain.ConnectionStatus.PENDING
+          AND ((mc.user1Id = :userAId AND mc.user2Id = :userBId)
+            OR (mc.user1Id = :userBId AND mc.user2Id = :userAId))
+    """)
+    int cancelPendingBetweenUsers(@Param("userAId") Long userAId,
+                                  @Param("userBId") Long userBId,
+                                  @Param("endedAt") java.time.LocalDateTime endedAt);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+        UPDATE MatchingConnection mc
+        SET mc.status = univ.airconnect.matching.domain.ConnectionStatus.CANCELLED,
+            mc.respondedAt = :endedAt
+        WHERE mc.status = univ.airconnect.matching.domain.ConnectionStatus.PENDING
+          AND (mc.user1Id = :userId OR mc.user2Id = :userId)
+    """)
+    int cancelPendingForUser(@Param("userId") Long userId,
+                             @Param("endedAt") java.time.LocalDateTime endedAt);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+        UPDATE MatchingConnection mc
+        SET mc.status = univ.airconnect.matching.domain.ConnectionStatus.EXPIRED,
+            mc.respondedAt = :expiredAt
+        WHERE mc.status = univ.airconnect.matching.domain.ConnectionStatus.PENDING
+          AND mc.connectedAt < :cutoff
+    """)
+    int expirePendingBefore(@Param("cutoff") java.time.LocalDateTime cutoff,
+                            @Param("expiredAt") java.time.LocalDateTime expiredAt);
 
     // 요청 보낸 목록
     List<MatchingConnection> findByRequesterId(Long requesterId);
@@ -48,6 +85,9 @@ public interface MatchingConnectionRepository extends JpaRepository<MatchingConn
     long countByStatus(ConnectionStatus status);
 
     long countByStatusAndRespondedAtGreaterThanEqual(ConnectionStatus status, java.time.LocalDateTime since);
+
+    long countByStatusInAndRespondedAtGreaterThanEqual(Collection<ConnectionStatus> statuses,
+                                                       java.time.LocalDateTime since);
 
     long countByStatusAndChatRoomIdIsNotNullAndRespondedAtGreaterThanEqual(ConnectionStatus status, java.time.LocalDateTime since);
 

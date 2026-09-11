@@ -7,8 +7,10 @@ import lombok.Getter;
 @AllArgsConstructor
 public class MatchingConnectResponse {
 
+    private Long connectionId;
     private Long chatRoomId;
     private Long targetUserId;
     private boolean alreadyConnected;
+    private Integer userTicketsRemaining;
 }
 

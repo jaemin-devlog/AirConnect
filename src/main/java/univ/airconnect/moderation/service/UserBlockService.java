@@ -12,6 +12,7 @@ import univ.airconnect.moderation.dto.response.UserBlockStatusResponse;
 import univ.airconnect.moderation.exception.ModerationErrorCode;
 import univ.airconnect.moderation.exception.ModerationException;
 import univ.airconnect.moderation.repository.UserBlockRepository;
+import univ.airconnect.matching.service.MatchingLifecycleService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
@@ -27,27 +28,32 @@ public class UserBlockService {
     private final UserRepository userRepository;
     private final UserBlockRepository userBlockRepository;
     private final ChatRoomMemberRepository chatRoomMemberRepository;
+    private final MatchingLifecycleService matchingLifecycleService;
 
     private static final String HIDDEN_REASON_BLOCKED_USER = "BLOCKED_USER";
 
     @Transactional
     public UserBlockCreateResponse block(Long blockerUserId, Long blockedUserId) {
         validateBlockUsers(blockerUserId, blockedUserId);
+        lockUsersInStableOrder(blockerUserId, blockedUserId);
 
         UserBlock existing = userBlockRepository.findByBlockerUserIdAndBlockedUserId(blockerUserId, blockedUserId)
                 .orElse(null);
         if (existing != null) {
+            matchingLifecycleService.cancelPendingBetweenUsers(blockerUserId, blockedUserId);
             hidePersonalRoomsForBlocker(blockerUserId, blockedUserId);
             return UserBlockCreateResponse.alreadyExists(existing);
         }
 
         try {
             UserBlock created = userBlockRepository.save(UserBlock.create(blockerUserId, blockedUserId));
+            matchingLifecycleService.cancelPendingBetweenUsers(blockerUserId, blockedUserId);
             hidePersonalRoomsForBlocker(blockerUserId, blockedUserId);
             return UserBlockCreateResponse.created(created);
         } catch (DataIntegrityViolationException e) {
             UserBlock recovered = userBlockRepository.findByBlockerUserIdAndBlockedUserId(blockerUserId, blockedUserId)
                     .orElseThrow(() -> e);
+            matchingLifecycleService.cancelPendingBetweenUsers(blockerUserId, blockedUserId);
             hidePersonalRoomsForBlocker(blockerUserId, blockedUserId);
             return UserBlockCreateResponse.alreadyExists(recovered);
         }
@@ -123,6 +129,15 @@ public class UserBlockService {
         if (blocked.getStatus() == UserStatus.DELETED) {
             throw new ModerationException(ModerationErrorCode.BLOCK_TARGET_NOT_FOUND);
         }
+    }
+
+    private void lockUsersInStableOrder(Long userAId, Long userBId) {
+        Long firstId = Math.min(userAId, userBId);
+        Long secondId = Math.max(userAId, userBId);
+        userRepository.findByIdForTicketUpdate(firstId)
+                .orElseThrow(() -> new ModerationException(ModerationErrorCode.BLOCK_TARGET_NOT_FOUND));
+        userRepository.findByIdForTicketUpdate(secondId)
+                .orElseThrow(() -> new ModerationException(ModerationErrorCode.BLOCK_TARGET_NOT_FOUND));
     }
 
     private void hidePersonalRoomsForBlocker(Long blockerUserId, Long blockedUserId) {

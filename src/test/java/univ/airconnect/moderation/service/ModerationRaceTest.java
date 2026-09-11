@@ -18,6 +18,7 @@ import univ.airconnect.moderation.dto.response.UserBlockCreateResponse;
 import univ.airconnect.moderation.dto.response.UserReportResponse;
 import univ.airconnect.moderation.infrastructure.ModerationProperties;
 import univ.airconnect.moderation.repository.UserBlockRepository;
+import univ.airconnect.matching.service.MatchingLifecycleService;
 import univ.airconnect.moderation.repository.UserReportRepository;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserStatus;
@@ -52,6 +53,7 @@ class ModerationRaceTest {
     @Mock private UserReportRepository userReportRepository;
     @Mock private UserBlockRepository userBlockRepository;
     @Mock private ChatRoomMemberRepository chatRoomMemberRepository;
+    @Mock private MatchingLifecycleService matchingLifecycleService;
 
     private final ModerationProperties moderationProperties = new ModerationProperties();
 
@@ -62,7 +64,12 @@ class ModerationRaceTest {
     @BeforeEach
     void setUp() {
         userReportService = new UserReportService(userRepository, userReportRepository, moderationProperties);
-        userBlockService = new UserBlockService(userRepository, userBlockRepository, chatRoomMemberRepository);
+        userBlockService = new UserBlockService(
+                userRepository,
+                userBlockRepository,
+                chatRoomMemberRepository,
+                matchingLifecycleService
+        );
     }
 
     @Test
@@ -159,6 +166,8 @@ class ModerationRaceTest {
 
         when(userRepository.findById(blockerId)).thenReturn(Optional.of(blocker));
         when(userRepository.findById(blockedId)).thenReturn(Optional.of(blocked));
+        when(userRepository.findByIdForTicketUpdate(blockerId)).thenReturn(Optional.of(blocker));
+        when(userRepository.findByIdForTicketUpdate(blockedId)).thenReturn(Optional.of(blocked));
         when(userBlockRepository.findByBlockerUserIdAndBlockedUserId(blockerId, blockedId)).thenAnswer(invocation -> {
             int call = lookupCount.incrementAndGet();
             if (call > 1) {

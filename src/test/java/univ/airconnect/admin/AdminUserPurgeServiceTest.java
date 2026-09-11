@@ -13,7 +13,7 @@ import univ.airconnect.auth.repository.SocialLoginDeviceBindingRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
-import univ.airconnect.matching.repository.MatchingExposureRepository;
+import univ.airconnect.matching.service.MatchingLifecycleService;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
 import univ.airconnect.notification.repository.NotificationPreferenceRepository;
 import univ.airconnect.notification.repository.NotificationRepository;
@@ -52,7 +52,7 @@ class AdminUserPurgeServiceTest {
     @Mock
     private MatchingConnectionRepository matchingConnectionRepository;
     @Mock
-    private MatchingExposureRepository matchingExposureRepository;
+    private MatchingLifecycleService matchingLifecycleService;
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
@@ -82,7 +82,7 @@ class AdminUserPurgeServiceTest {
                 userSchoolConsentRepository,
                 chatRoomMemberRepository,
                 matchingConnectionRepository,
-                matchingExposureRepository,
+                matchingLifecycleService,
                 refreshTokenRepository,
                 socialLoginDeviceBindingRepository,
                 pushDeviceRepository,
@@ -126,7 +126,7 @@ class AdminUserPurgeServiceTest {
 
         verify(refreshTokenRepository).deleteAllById(List.of(refreshToken.getId()));
         verify(matchingConnectionRepository).deleteByUser1IdOrUser2Id(7L, 7L);
-        verify(matchingExposureRepository).deleteByUserIdOrCandidateUserId(7L, 7L);
+        verify(matchingLifecycleService).deleteUserMatchingArtifacts(7L);
         verify(userRepository).delete(user);
         verify(userRepository).flush();
         verify(adminAuditLogService).record(any(), any(), any(), any(), any(), any(), any());

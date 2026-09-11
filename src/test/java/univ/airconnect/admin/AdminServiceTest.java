@@ -161,6 +161,7 @@ class AdminServiceTest {
         User admin = adminUser(999L, "운영 매니저");
         when(userRepository.findById(999L)).thenReturn(Optional.of(admin));
         when(userRepository.findById(2L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForTicketUpdate(2L)).thenReturn(Optional.of(user));
         when(userReportRepository.countByReportedUserIdAndStatus(2L, ReportStatus.OPEN)).thenReturn(0L);
 
         AdminDtos.UserDetail response = adminService.applyUserAction(
@@ -177,6 +178,7 @@ class AdminServiceTest {
                 ArgumentCaptor.forClass(NotificationService.CreateCommand.class);
         verify(notificationService).createAndEnqueue(notificationCaptor.capture());
         assertThat(user.isMatchingRestricted()).isTrue();
+        verify(matchingConnectionRepository).cancelPendingForUser(org.mockito.ArgumentMatchers.eq(2L), any());
         assertThat(response.restrictedReason()).isEqualTo("abuse");
         assertThat(notificationCaptor.getValue().userId()).isEqualTo(2L);
         assertThat(notificationCaptor.getValue().title()).isEqualTo("운영 매니저");
@@ -249,6 +251,7 @@ class AdminServiceTest {
         user.anonymizeForDeletion();
         user.markDeleted();
         when(userRepository.findById(3L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForTicketUpdate(3L)).thenReturn(Optional.of(user));
 
         AdminDtos.UserDetail response = adminService.applyUserAction(
                 999L,
@@ -275,7 +278,7 @@ class AdminServiceTest {
         ReflectionTestUtils.setField(user, "id", 4L);
         user.anonymizeForDeletion();
         user.markDeleted();
-        when(userRepository.findById(4L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForTicketUpdate(4L)).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> adminService.applyUserAction(
                 999L,
