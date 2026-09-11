@@ -10,7 +10,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import univ.airconnect.global.error.BusinessException;
@@ -40,6 +39,8 @@ import java.util.Objects;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class GTemporaryTeamRoom {
 
+    private static final String DEFAULT_TEAM_NAME = "그룹매칭 팀";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -67,13 +68,16 @@ public class GTemporaryTeamRoom {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "opponent_gender_filter", nullable = false, length = 10)
+    @Getter(AccessLevel.NONE)
     private GGenderFilter opponentGenderFilter;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "visibility", nullable = false, length = 10)
+    @Getter(AccessLevel.NONE)
     private GTeamVisibility visibility;
 
-    @Column(name = "temp_chat_room_id", nullable = false, unique = true)
+    // Legacy link only: new invite-only teams have no temporary chat room.
+    @Column(name = "temp_chat_room_id", unique = true)
     private Long tempChatRoomId;
 
     @Column(name = "invite_code", unique = true, length = 20)
@@ -100,74 +104,34 @@ public class GTemporaryTeamRoom {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    @Builder
     private GTemporaryTeamRoom(
             Long leaderId,
-            String teamName,
             GTeamGender teamGender,
-            GTeamSize teamSize,
-            GGenderFilter opponentGenderFilter,
-            GTeamVisibility visibility,
-            Long tempChatRoomId
+            GTeamSize teamSize
     ) {
-        validateCreateArgs(leaderId, teamName, teamGender, teamSize, opponentGenderFilter, visibility, tempChatRoomId);
+        validateCreateArgs(leaderId, teamGender, teamSize);
 
         this.leaderId = leaderId;
-        this.teamName = teamName.trim();
+        this.teamName = DEFAULT_TEAM_NAME;
         this.teamGender = teamGender;
         this.teamSize = teamSize;
         this.currentMemberCount = 1;
         this.status = GTemporaryTeamRoomStatus.OPEN;
-        this.opponentGenderFilter = opponentGenderFilter;
-        this.visibility = visibility;
-        this.tempChatRoomId = tempChatRoomId;
+        this.opponentGenderFilter = teamGender == GTeamGender.M ? GGenderFilter.F : GGenderFilter.M;
+        this.visibility = GTeamVisibility.PRIVATE;
+        this.tempChatRoomId = null;
         this.inviteCode = null;
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
     }
 
-    public static GTemporaryTeamRoom create(
-            Long leaderId,
-            String teamName,
-            GTeamGender teamGender,
-            GTeamSize teamSize,
-            GGenderFilter opponentGenderFilter,
-            GTeamVisibility visibility,
-            Long tempChatRoomId
-    ) {
-        return GTemporaryTeamRoom.builder()
-                .leaderId(leaderId)
-                .teamName(teamName)
-                .teamGender(teamGender)
-                .teamSize(teamSize)
-                .opponentGenderFilter(opponentGenderFilter)
-                .visibility(visibility)
-                .tempChatRoomId(tempChatRoomId)
-                .build();
+    public static GTemporaryTeamRoom createInviteOnly(Long leaderId, GTeamGender teamGender, GTeamSize teamSize) {
+        return new GTemporaryTeamRoom(leaderId, teamGender, teamSize);
     }
 
-    public void updateTeamName(Long requestUserId, String newTeamName) {
-        validateLeader(requestUserId);
-        if (newTeamName == null || newTeamName.isBlank()) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "팀 이름은 비어 있을 수 없습니다.");
-        }
-        if (status.isTerminal() || status.isQueueing()) {
-            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "현재 상태에서는 팀 이름을 수정할 수 없습니다.");
-        }
-        this.teamName = newTeamName.trim();
-        touch();
-    }
-
-    public void updateVisibility(Long requestUserId, GTeamVisibility visibility) {
-        validateLeader(requestUserId);
-        if (visibility == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "공개 여부는 필수입니다.");
-        }
-        if (!status.canModifyMembers()) {
-            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "공개 여부는 큐 진입 전까지만 변경할 수 있습니다.");
-        }
-        this.visibility = visibility;
-        touch();
+    /** 기존 READY_CHECK 데이터도 준비 절차 없이 OPEN으로 노출한다. */
+    public GTemporaryTeamRoomStatus getDisplayStatus() {
+        return status == GTemporaryTeamRoomStatus.READY_CHECK ? GTemporaryTeamRoomStatus.OPEN : status;
     }
 
     public void addMember() {
@@ -194,39 +158,14 @@ public class GTemporaryTeamRoom {
         touch();
     }
 
-    public void enterReadyCheck(Long requestUserId) {
-        validateLeader(requestUserId);
-        if (status.isTerminal() || status.isQueueing()) {
-            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "현재 상태에서는 준비 확인 단계로 전환할 수 없습니다.");
-        }
-        if (!isFull()) {
-            throw new BusinessException(ErrorCode.TEAM_ROOM_NOT_FULL, "정원이 모두 차야 준비 확인을 시작할 수 있습니다.");
-        }
-        this.status = GTemporaryTeamRoomStatus.READY_CHECK;
-        touch();
-    }
-
-    public void reopenForRecruiting(Long requestUserId) {
-        validateLeader(requestUserId);
-        if (status == GTemporaryTeamRoomStatus.CLOSED || status == GTemporaryTeamRoomStatus.CANCELLED) {
-            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "종료된 방은 다시 모집 상태로 되돌릴 수 없습니다.");
-        }
-        clearQueueMetadata();
-        this.status = GTemporaryTeamRoomStatus.OPEN;
-        touch();
-    }
-
-    public void startQueue(Long requestUserId, boolean allMembersReady, String queueToken) {
+    public void startQueue(Long requestUserId, String queueToken) {
         validateLeader(requestUserId);
 
         if (!status.canEnterQueue()) {
-            throw new BusinessException(ErrorCode.READY_CHECK_REQUIRED, "준비 확인 상태에서만 큐에 진입할 수 있습니다.");
+            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "팀 구성 상태에서만 매칭을 시작할 수 있습니다.");
         }
         if (!isFull()) {
             throw new BusinessException(ErrorCode.TEAM_ROOM_NOT_FULL, "정원이 모두 차야 큐에 진입할 수 있습니다.");
-        }
-        if (!allMembersReady) {
-            throw new BusinessException(ErrorCode.TEAM_NOT_ALL_READY, "모든 팀원이 준비 완료 상태여야 합니다.");
         }
         if (queueToken == null || queueToken.isBlank()) {
             throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "큐 토큰은 비어 있을 수 없습니다.");
@@ -243,7 +182,7 @@ public class GTemporaryTeamRoom {
             throw new BusinessException(ErrorCode.QUEUE_WAITING_REQUIRED, "큐 대기 중인 팀만 큐에서 나갈 수 있습니다.");
         }
         clearQueueMetadata();
-        this.status = GTemporaryTeamRoomStatus.READY_CHECK;
+        this.status = GTemporaryTeamRoomStatus.OPEN;
         touch();
     }
 
@@ -296,6 +235,9 @@ public class GTemporaryTeamRoom {
         if (status.isTerminal()) {
             throw new BusinessException(ErrorCode.TEAM_ROOM_TERMINATED, "이미 종료된 팀방입니다.");
         }
+        if (status == GTemporaryTeamRoomStatus.MATCHED) {
+            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID, "매칭 완료 후에는 팀을 해산할 수 없습니다.");
+        }
         this.status = GTemporaryTeamRoomStatus.CANCELLED;
         this.cancelledAt = LocalDateTime.now();
         clearQueueMetadata();
@@ -340,14 +282,6 @@ public class GTemporaryTeamRoom {
         return Objects.equals(this.leaderId, userId);
     }
 
-    public boolean isPublicRoom() {
-        return visibility == GTeamVisibility.PUBLIC;
-    }
-
-    public boolean isPrivateRoom() {
-        return visibility == GTeamVisibility.PRIVATE;
-    }
-
     private void validateLeader(Long requestUserId) {
         if (!isLeader(requestUserId)) {
             throw new BusinessException(ErrorCode.LEADER_ONLY_ACTION, "방장만 수행할 수 있습니다.");
@@ -365,33 +299,17 @@ public class GTemporaryTeamRoom {
 
     private static void validateCreateArgs(
             Long leaderId,
-            String teamName,
             GTeamGender teamGender,
-            GTeamSize teamSize,
-            GGenderFilter opponentGenderFilter,
-            GTeamVisibility visibility,
-            Long tempChatRoomId
+            GTeamSize teamSize
     ) {
         if (leaderId == null) {
             throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "방장 사용자 ID는 필수입니다.");
-        }
-        if (teamName == null || teamName.isBlank()) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "팀 이름은 필수입니다.");
         }
         if (teamGender == null) {
             throw new BusinessException(ErrorCode.TEAM_GENDER_REQUIRED, "팀 성별은 필수입니다.");
         }
         if (teamSize == null) {
             throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED, "팀 인원 수는 필수입니다.");
-        }
-        if (opponentGenderFilter == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "상대 성별 조건은 필수입니다.");
-        }
-        if (visibility == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "공개 여부는 필수입니다.");
-        }
-        if (tempChatRoomId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "임시 채팅방 ID는 필수입니다.");
         }
     }
 }

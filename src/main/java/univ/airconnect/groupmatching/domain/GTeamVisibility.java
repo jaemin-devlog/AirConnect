@@ -7,9 +7,5 @@ package univ.airconnect.groupmatching.domain;
  */
 public enum GTeamVisibility {
     PUBLIC,
-    PRIVATE;
-
-    public boolean isPrivate() {
-        return this == PRIVATE;
-    }
+    PRIVATE
 }

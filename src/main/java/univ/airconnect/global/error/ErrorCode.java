@@ -24,7 +24,6 @@ public enum ErrorCode {
     INVALID_INVITE_CODE(HttpStatus.BAD_REQUEST, "GMATCH-004", "유효하지 않은 초대 코드입니다."),
     INVITE_CODE_REQUIRED(HttpStatus.BAD_REQUEST, "GMATCH-005", "초대 코드는 필수입니다."),
     PUBLIC_ROOM_ONLY(HttpStatus.BAD_REQUEST, "GMATCH-006", "공개 방만 공개 입장이 가능합니다."),
-    READY_CHECK_REQUIRED(HttpStatus.BAD_REQUEST, "GMATCH-007", "준비 확인 상태에서만 요청할 수 있습니다."),
     TEAM_ROOM_FULL(HttpStatus.BAD_REQUEST, "GMATCH-008", "팀방 정원이 가득 찼습니다."),
     TEAM_ROOM_JOIN_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "GMATCH-009", "현재 상태에서는 팀방에 입장할 수 없습니다."),
     TEAM_ROOM_TERMINATED(HttpStatus.BAD_REQUEST, "GMATCH-010", "종료된 팀방에는 입장할 수 없습니다."),

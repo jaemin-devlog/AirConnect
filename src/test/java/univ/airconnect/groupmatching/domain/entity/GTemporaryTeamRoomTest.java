@@ -2,10 +2,8 @@ package univ.airconnect.groupmatching.domain.entity;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import univ.airconnect.groupmatching.domain.GGenderFilter;
 import univ.airconnect.groupmatching.domain.GTeamGender;
 import univ.airconnect.groupmatching.domain.GTeamSize;
-import univ.airconnect.groupmatching.domain.GTeamVisibility;
 import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,8 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GTemporaryTeamRoomTest {
 
     @Test
-    void assignInviteCode_allowsPublicRoomInOpenState() {
-        GTemporaryTeamRoom teamRoom = createRoom(1L, GTeamGender.M, GGenderFilter.ANY, GTeamVisibility.PUBLIC);
+    void assignInviteCode_allowsInviteOnlyRoomInOpenState() {
+        GTemporaryTeamRoom teamRoom = createRoom(1L, GTeamGender.M);
 
         assertThat(teamRoom.getInviteCode()).isNull();
 
@@ -24,60 +22,48 @@ class GTemporaryTeamRoomTest {
     }
 
     @Test
-    void leaveQueue_returnsRoomToReadyCheck() {
-        GTemporaryTeamRoom teamRoom = createQueueWaitingRoom(1L, GTeamGender.M, GGenderFilter.F);
+    void leaveQueue_returnsRoomToOpen() {
+        GTemporaryTeamRoom teamRoom = createQueueWaitingRoom(1L, GTeamGender.M);
 
         teamRoom.leaveQueue();
 
-        assertThat(teamRoom.getStatus()).isEqualTo(GTemporaryTeamRoomStatus.READY_CHECK);
+        assertThat(teamRoom.getStatus()).isEqualTo(GTemporaryTeamRoomStatus.OPEN);
         assertThat(teamRoom.getQueueToken()).isNull();
         assertThat(teamRoom.getQueuedAt()).isNull();
     }
 
     @Test
     void canMatchWith_returnsFalseWhenTeamGenderIsSame() {
-        GTemporaryTeamRoom first = createQueueWaitingRoom(1L, GTeamGender.M, GGenderFilter.ANY);
-        GTemporaryTeamRoom second = createQueueWaitingRoom(2L, GTeamGender.M, GGenderFilter.ANY);
+        GTemporaryTeamRoom first = createQueueWaitingRoom(1L, GTeamGender.M);
+        GTemporaryTeamRoom second = createQueueWaitingRoom(2L, GTeamGender.M);
 
         assertThat(first.canMatchWith(second)).isFalse();
     }
 
     @Test
-    void canMatchWith_returnsTrueWhenTeamGenderDiffersEvenIfFiltersWouldBlock() {
-        GTemporaryTeamRoom first = createQueueWaitingRoom(1L, GTeamGender.M, GGenderFilter.M);
-        GTemporaryTeamRoom second = createQueueWaitingRoom(2L, GTeamGender.F, GGenderFilter.F);
+    void canMatchWith_returnsTrueWhenTeamGenderDiffers() {
+        GTemporaryTeamRoom first = createQueueWaitingRoom(1L, GTeamGender.M);
+        GTemporaryTeamRoom second = createQueueWaitingRoom(2L, GTeamGender.F);
 
         assertThat(first.canMatchWith(second)).isTrue();
     }
 
     private GTemporaryTeamRoom createRoom(
             Long leaderId,
-            GTeamGender teamGender,
-            GGenderFilter opponentGenderFilter,
-            GTeamVisibility visibility
+            GTeamGender teamGender
     ) {
-        GTemporaryTeamRoom teamRoom = GTemporaryTeamRoom.create(
-                leaderId,
-                "team-" + leaderId,
-                teamGender,
-                GTeamSize.TWO,
-                opponentGenderFilter,
-                visibility,
-                1000L + leaderId
-        );
+        GTemporaryTeamRoom teamRoom = GTemporaryTeamRoom.createInviteOnly(leaderId, teamGender, GTeamSize.TWO);
         ReflectionTestUtils.setField(teamRoom, "id", leaderId);
         return teamRoom;
     }
 
     private GTemporaryTeamRoom createQueueWaitingRoom(
             Long leaderId,
-            GTeamGender teamGender,
-            GGenderFilter opponentGenderFilter
+            GTeamGender teamGender
     ) {
-        GTemporaryTeamRoom teamRoom = createRoom(leaderId, teamGender, opponentGenderFilter, GTeamVisibility.PUBLIC);
+        GTemporaryTeamRoom teamRoom = createRoom(leaderId, teamGender);
         teamRoom.addMember();
-        teamRoom.enterReadyCheck(leaderId);
-        teamRoom.startQueue(leaderId, true, "queue-" + leaderId);
+        teamRoom.startQueue(leaderId, "queue-" + leaderId);
         return teamRoom;
     }
 }

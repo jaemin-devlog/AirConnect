@@ -1,28 +1,19 @@
 package univ.airconnect.groupmatching.controller;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import univ.airconnect.chat.dto.request.SendMessageRequest;
-import univ.airconnect.chat.dto.request.ChatReadRequest;
-import univ.airconnect.chat.dto.response.ChatMessageResponse;
-import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
-import univ.airconnect.groupmatching.domain.entity.GTeamReadyState;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamMember;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamRoom;
 import univ.airconnect.groupmatching.dto.request.GMatchingRequest;
 import univ.airconnect.groupmatching.dto.response.GMatchingResponse;
-import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.service.GMatchingService;
 import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
@@ -44,9 +35,7 @@ public class GMatchingController {
     private static final String MATCHING_TEAM_ROOM_SUB_PREFIX = "/sub/matching/team-room/";
 
     private final GMatchingService matchingService;
-    private final ChatService chatService;
     private final GTemporaryTeamMemberRepository temporaryTeamMemberRepository;
-    private final GTeamReadyStateRepository teamReadyStateRepository;
     private final UserRepository userRepository;
 
     /**
@@ -61,42 +50,10 @@ public class GMatchingController {
 
         GTemporaryTeamRoom teamRoom = matchingService.createTemporaryTeamRoom(
                 userId,
-                request.getTeamName(),
-                request.getTeamGender(),
-                request.getTeamSize(),
-                request.getOpponentGenderFilter(),
-                request.getVisibility()
+                request.getTeamSize()
         );
 
         return ResponseEntity.status(HttpStatus.CREATED).body(toRoomResponse(teamRoom, userId));
-    }
-
-    /**
-     * 공개 모집 중인 임시 팀방 목록을 조회한다.
-     * 현재는 teamSize 기준으로만 직접 필터링한다.
-     */
-    @GetMapping({"/public", "/recruitable"})
-    public ResponseEntity<GMatchingResponse.RecruitableTeamRoomPageResponse> getRecruitableTeamRooms(
-            @RequestParam("teamSize") univ.airconnect.groupmatching.domain.GTeamSize teamSize,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
-            Authentication authentication
-    ) {
-        Long userId = currentUserId(authentication);
-        return ResponseEntity.ok(matchingService.findRecruitableTeamRooms(userId, teamSize, page, size));
-    }
-
-    /**
-     * 공개방에 입장한다.
-     */
-    @PostMapping("/{teamRoomId}/join")
-    public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> joinPublicRoom(
-            @PathVariable Long teamRoomId,
-            Authentication authentication
-    ) {
-        Long userId = currentUserId(authentication);
-        GTemporaryTeamRoom teamRoom = matchingService.joinPublicRoom(teamRoomId, userId);
-        return ResponseEntity.ok(toRoomResponse(teamRoom, userId));
     }
 
     /**
@@ -104,7 +61,7 @@ public class GMatchingController {
      */
     @PostMapping("/join-by-invite")
     public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> joinRoomByInviteCode(
-            @Valid @RequestBody GMatchingRequest.JoinPrivateRoomRequest request,
+            @Valid @RequestBody GMatchingRequest.JoinByInviteCodeRequest request,
             Authentication authentication
     ) {
         Long userId = currentUserId(authentication);
@@ -113,7 +70,7 @@ public class GMatchingController {
     }
 
     /**
-     * 공개방과 비공개방 모두 초대 코드를 생성할 수 있다.
+     * 방장이 초대 코드를 재발급한다.
      */
     @PostMapping("/{teamRoomId}/invite-code")
     public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> generateInviteCode(
@@ -133,54 +90,6 @@ public class GMatchingController {
     ) {
         Long userId = currentUserId(authentication);
         return ResponseEntity.ok(matchingService.getTeamMemberProfile(teamRoomId, userId, targetUserId));
-    }
-
-    /**
-     * 임시방 내부 채팅 메시지를 조회한다.
-     */
-    @GetMapping({"/{teamRoomId}/chat/messages", "/{teamRoomId}/chat/messages/"})
-    public ResponseEntity<List<ChatMessageResponse>> getTeamRoomMessages(
-            @PathVariable Long teamRoomId,
-            @RequestParam(required = false) @Positive Long lastMessageId,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
-            Authentication authentication
-    ) {
-        Long userId = currentUserId(authentication);
-        Long chatRoomId = matchingService.getTempChatRoomId(teamRoomId, userId);
-        return ResponseEntity.ok(chatService.findMessagesByRoomId(chatRoomId, userId, lastMessageId, size));
-    }
-
-    /**
-     * 임시방 내부 채팅 메시지를 전송한다.
-     */
-    @PostMapping({"/{teamRoomId}/chat/messages", "/{teamRoomId}/chat/messages/"})
-    public ResponseEntity<ChatMessageResponse> sendTeamRoomMessage(
-            @PathVariable Long teamRoomId,
-            @Valid @RequestBody SendMessageRequest request,
-            Authentication authentication
-    ) {
-        Long userId = currentUserId(authentication);
-        Long chatRoomId = matchingService.getTempChatRoomId(teamRoomId, userId);
-        return ResponseEntity.ok(chatService.sendMessage(userId, chatRoomId, request));
-    }
-
-    /**
-     * 임시방 내부 채팅 읽음 상태를 갱신한다.
-     */
-    @PatchMapping({"/{teamRoomId}/chat/read", "/{teamRoomId}/chat/read/"})
-    public ResponseEntity<Void> updateTeamRoomChatRead(
-            @PathVariable Long teamRoomId,
-            @RequestBody(required = false) @Valid ChatReadRequest request,
-            Authentication authentication
-    ) {
-        Long userId = currentUserId(authentication);
-        Long chatRoomId = matchingService.getTempChatRoomId(teamRoomId, userId);
-        if (request == null || request.getLastReadMessageId() == null) {
-            chatService.updateLastRead(chatRoomId, userId);
-        } else {
-            chatService.markMessagesReadThrough(chatRoomId, userId, request.getLastReadMessageId());
-        }
-        return ResponseEntity.ok().build();
     }
 
     /**
@@ -208,11 +117,9 @@ public class GMatchingController {
             Authentication authentication
     ) {
         Long userId = currentUserId(authentication);
-        long recruitableTeamRoomCount = matchingService.countRecruitableTeamRooms(userId);
 
         return matchingService.findMyActiveTeamRoom(userId)
                 .map(room -> {
-                    GMatchingResponse.TemporaryTeamRoomResponse teamRoomResponse = toRoomResponse(room, userId);
                     GMatchingResponse.QueueSnapshotResponse queueSnapshotResponse = null;
 
                     if (room.getStatus() == GTemporaryTeamRoomStatus.QUEUE_WAITING) {
@@ -222,43 +129,21 @@ public class GMatchingController {
 
                     return ResponseEntity.ok(
                             GMatchingResponse.MyMatchingStateResponse.inTemporaryTeamRoom(
-                                    teamRoomResponse,
+                                    toRoomResponse(room, userId),
                                     queueSnapshotResponse,
-                                    matchingSubscriptionDestination(room.getId()),
-                                    recruitableTeamRoomCount
+                                    matchingSubscriptionDestination(room.getId())
                             )
                     );
                 })
                 .orElseGet(() -> matchingService.findMyActiveFinalRoom(userId)
                         .map(finalRoom -> ResponseEntity.ok(
                                 GMatchingResponse.MyMatchingStateResponse.inFinalGroupRoom(
-                                        GMatchingResponse.FinalGroupChatRoomResponse.from(finalRoom),
-                                        recruitableTeamRoomCount
+                                        GMatchingResponse.FinalGroupChatRoomResponse.from(finalRoom)
                                 )
                         ))
                         .orElseGet(() -> ResponseEntity.ok(
-                                GMatchingResponse.MyMatchingStateResponse.idle(recruitableTeamRoomCount)
+                                GMatchingResponse.MyMatchingStateResponse.idle()
                         )));
-    }
-
-    /**
-     * 팀원 준비 상태를 변경한다.
-     */
-    @PatchMapping("/{teamRoomId}/ready")
-    public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> updateReadyState(
-            @PathVariable Long teamRoomId,
-            @Valid @RequestBody GMatchingRequest.UpdateReadyStateRequest request,
-            Authentication authentication
-    ) {
-        Long userId = currentUserId(authentication);
-
-        matchingService.updateReadyState(teamRoomId, userId, request.getReady());
-
-        GTemporaryTeamRoom room = matchingService.findMyActiveTeamRoom(userId)
-                .filter(r -> Objects.equals(r.getId(), teamRoomId))
-                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
-
-        return ResponseEntity.ok(toRoomResponse(room, userId));
     }
 
     /**
@@ -304,13 +189,13 @@ public class GMatchingController {
      * 팀원이 임시 팀방에서 나간다.
      */
     @PostMapping("/{teamRoomId}/leave")
-    public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> leaveTeamRoom(
+    public ResponseEntity<Void> leaveTeamRoom(
             @PathVariable Long teamRoomId,
             Authentication authentication
     ) {
         Long userId = currentUserId(authentication);
-        GTemporaryTeamRoom teamRoom = matchingService.leaveTeamRoom(teamRoomId, userId);
-        return ResponseEntity.ok(toRoomResponse(teamRoom, userId));
+        matchingService.leaveTeamRoom(teamRoomId, userId);
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{teamRoomId}/members/{targetUserId}")
@@ -324,28 +209,17 @@ public class GMatchingController {
         return ResponseEntity.ok(toRoomResponse(teamRoom, userId));
     }
 
-    @PatchMapping("/{teamRoomId}/visibility")
-    public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> updateVisibility(
-            @PathVariable Long teamRoomId,
-            @Valid @RequestBody GMatchingRequest.UpdateVisibilityRequest request,
-            Authentication authentication
-    ) {
-        Long userId = currentUserId(authentication);
-        GTemporaryTeamRoom teamRoom = matchingService.updateVisibility(teamRoomId, userId, request.getVisibility());
-        return ResponseEntity.ok(toRoomResponse(teamRoom, userId));
-    }
-
     /**
      * 방장이 임시 팀방을 해산한다.
      */
     @DeleteMapping("/{teamRoomId}")
-    public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> cancelTeamRoom(
+    public ResponseEntity<Void> cancelTeamRoom(
             @PathVariable Long teamRoomId,
             Authentication authentication
     ) {
         Long userId = currentUserId(authentication);
-        GTemporaryTeamRoom teamRoom = matchingService.cancelTeamRoom(teamRoomId, userId);
-        return ResponseEntity.ok(toRoomResponse(teamRoom, userId));
+        matchingService.cancelTeamRoom(teamRoomId, userId);
+        return ResponseEntity.noContent().build();
     }
 
     /**
@@ -365,60 +239,36 @@ public class GMatchingController {
     }
 
     private GMatchingResponse.TemporaryTeamRoomResponse toRoomResponse(GTemporaryTeamRoom room, Long currentUserId) {
-        List<GTemporaryTeamMember> members = temporaryTeamMemberRepository.findByTeamRoomIdOrderByJoinedAtAsc(room.getId());
-
-        Map<Long, Boolean> readyMap = teamReadyStateRepository.findByTeamRoomIdOrderByIdAsc(room.getId())
-                .stream()
-                .collect(Collectors.toMap(
-                        GTeamReadyState::getUserId,
-                        GTeamReadyState::isReady,
-                        (left, right) -> right
-                ));
-
-        List<Long> userIds = members.stream()
-                .map(GTemporaryTeamMember::getUserId)
-                .distinct()
-                .toList();
-
-        Map<Long, User> userMap = userRepository.findAllByIdWithProfile(userIds)
-                .stream()
-                .collect(Collectors.toMap(
-                        User::getId,
-                        user -> user,
-                        (left, right) -> left
-                ));
-
+        List<GTemporaryTeamMember> members = temporaryTeamMemberRepository
+                .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(room.getId());
+        List<Long> userIds = members.stream().map(GTemporaryTeamMember::getUserId).toList();
+        Map<Long, User> userMap = userRepository.findAllByIdWithProfile(userIds).stream()
+                .collect(Collectors.toMap(User::getId, user -> user));
+        int requiredTickets = room.getTeamSize().getValue();
         List<GMatchingResponse.TeamMemberSummaryResponse> memberResponses = members.stream()
-                .map(member -> GMatchingResponse.TeamMemberSummaryResponse.from(
-                        member,
-                        userMap.containsKey(member.getUserId()) ? userMap.get(member.getUserId()).getNickname() : null,
-                        extractProfileImage(userMap.get(member.getUserId())),
-                        Boolean.TRUE.equals(readyMap.get(member.getUserId()))
-                ))
-                .toList();
-
-        int readyMemberCount = (int) members.stream()
-                .filter(GTemporaryTeamMember::isActiveMember)
-                .filter(member -> Boolean.TRUE.equals(readyMap.get(member.getUserId())))
-                .count();
-
-        boolean allMembersReady = room.getCurrentMemberCount() == room.getTeamSize().getValue()
-                && readyMemberCount == room.getTeamSize().getValue();
-
-        boolean meLeader = Objects.equals(room.getLeaderId(), currentUserId);
-
-        boolean canStartMatching = meLeader
-                && room.getStatus() == GTemporaryTeamRoomStatus.READY_CHECK
-                && allMembersReady;
-
-        return GMatchingResponse.TemporaryTeamRoomResponse.of(
-                room,
-                meLeader,
-                readyMemberCount,
-                allMembersReady,
-                canStartMatching,
-                memberResponses
-        );
+                .map(member -> {
+                    User user = userMap.get(member.getUserId());
+                    return new GMatchingResponse.TeamMemberSummaryResponse(member.getUserId(),
+                            user != null ? user.getNickname() : null, extractProfileImage(user),
+                            member.isLeader(), member.getJoinedAt(),
+                            user != null && user.getTickets() >= requiredTickets);
+                }).toList();
+        boolean meLeader = room.isLeader(currentUserId);
+        boolean allHaveTickets = members.size() == requiredTickets
+                && memberResponses.stream().allMatch(GMatchingResponse.TeamMemberSummaryResponse::hasEnoughTickets);
+        boolean active = members.stream().anyMatch(m -> Objects.equals(m.getUserId(), currentUserId));
+        boolean editable = room.getStatus().canModifyMembers();
+        boolean waiting = room.getStatus() == GTemporaryTeamRoomStatus.QUEUE_WAITING;
+        User me = userMap.get(currentUserId);
+        return new GMatchingResponse.TemporaryTeamRoomResponse(
+                room.getId(), room.getLeaderId(), meLeader, room.getTeamGender(), room.getTeamSize(),
+                requiredTickets, members.size(), members.size() == requiredTickets, room.getDisplayStatus(),
+                room.getInviteCode(), "airconnect://matching/join?inviteCode=" + room.getInviteCode(),
+                active && meLeader && editable && room.isFull() && allHaveTickets,
+                active && waiting, active && !meLeader && editable,
+                active && meLeader && (editable || waiting),
+                requiredTickets, me != null ? me.getTickets() : 0, allHaveTickets,
+                room.getQueuedAt(), room.getCreatedAt(), room.getUpdatedAt(), memberResponses);
     }
 
     private String matchingSubscriptionDestination(Long teamRoomId) {

@@ -70,9 +70,6 @@ public class AdminGroupMatchingService {
         int readyCount = (int) participants.stream().filter(p -> p.active() && Boolean.TRUE.equals(p.ready())).count();
         if (!team.getStatus().isTerminal()) {
             if (activeCount != team.getCurrentMemberCount()) observations.add("저장 인원과 현재 임시팀 참여 기록 수가 다릅니다.");
-            if (participants.stream().anyMatch(p -> p.active() && p.ready() == null)) observations.add("현재 참여자의 준비 기록 일부가 없습니다.");
-            if (readyRows.stream().anyMatch(r -> participants.stream().noneMatch(p -> p.active() && p.userId().equals(r.getUserId()))))
-                observations.add("현재 참여자가 아닌 회원의 준비 기록이 있습니다.");
         }
         if (participants.stream().anyMatch(p -> !p.userRecordPresent())) observations.add("회원 정보가 없어진 참여 기록이 있습니다.");
 
@@ -95,7 +92,8 @@ public class AdminGroupMatchingService {
                 f.getTeam1RoomId(), f.getTeam2RoomId(), f.getTeamSize().getValue(), f.getStatus().name(),
                 room(f.getChatRoomId()), f.getCreatedAt())).toList();
         Room temporary = room(team.getTempChatRoomId());
-        if (!temporary.exists() || !temporary.group()) observations.add("임시 채팅방 연결을 확인할 수 없습니다.");
+        if (team.getTempChatRoomId() != null && (!temporary.exists() || !temporary.group()))
+            observations.add("구버전 임시 채팅방 연결을 확인할 수 없습니다.");
         if (matches.stream().anyMatch(m -> !m.opponentExists())) observations.add("상대 팀 기록 일부를 찾을 수 없습니다.");
         boolean linksValid = true;
         for (var result : resultRows) {
@@ -116,9 +114,8 @@ public class AdminGroupMatchingService {
         if (!linksValid) observations.add("매칭 결과·최종방·실제 채팅방의 연결이 누락되었거나 서로 다릅니다.");
         var currentResults = resultRows.stream().filter(r -> r.getStatus() != GMatchResultStatus.CANCELLED).toList();
         String stage = switch (team.getStatus()) {
-            case OPEN -> "RECRUITING";
-            case READY_CHECK -> activeCount == team.getTeamSize().getValue() && readyCount == activeCount
-                    && readyRows.size() == activeCount ? "WAITING_FOR_START" : "CHECKING_READY";
+            case OPEN, READY_CHECK -> activeCount == team.getTeamSize().getValue()
+                    ? "WAITING_FOR_START" : "RECRUITING";
             case QUEUE_WAITING -> "WAITING";
             case CANCELLED -> "CANCELLED";
             case MATCHED -> currentResults.size() == 1 && currentResults.get(0).getStatus() == GMatchResultStatus.MATCHED

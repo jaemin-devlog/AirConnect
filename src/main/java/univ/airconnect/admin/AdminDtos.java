@@ -476,7 +476,6 @@ public final class AdminDtos {
             LocalDateTime since,
             long teamRoomCreatedCount,
             long teamRoomJoinCount,
-            long readyTeamCount,
             long queueEnteredCount,
             long matchSuccessCount,
             long finalGroupChatRoomCreatedCount,

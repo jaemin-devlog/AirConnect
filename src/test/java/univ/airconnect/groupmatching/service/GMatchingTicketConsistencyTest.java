@@ -43,11 +43,9 @@ import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.chat.service.RedisSubscriber;
 import univ.airconnect.global.security.stomp.StompSessionRegistry;
-import univ.airconnect.groupmatching.domain.GGenderFilter;
 import univ.airconnect.groupmatching.domain.GMatchResultStatus;
 import univ.airconnect.groupmatching.domain.GTeamGender;
 import univ.airconnect.groupmatching.domain.GTeamSize;
-import univ.airconnect.groupmatching.domain.GTeamVisibility;
 import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
 import univ.airconnect.groupmatching.domain.entity.GMatchResult;
 import univ.airconnect.groupmatching.domain.entity.GTeamReadyState;
@@ -170,10 +168,10 @@ class GMatchingTicketConsistencyTest {
         assertFinalized(fixture, fixture.beforeTickets());
 
         transaction.executeWithoutResult(status -> {
-            assertThat(rooms.count()).isEqualTo(3);
+            assertThat(rooms.count()).isEqualTo(1);
             assertThat(finalRooms.count()).isEqualTo(1);
             assertThat(ticketHistory.count()).isEqualTo(size.getValue() * 2L);
-            assertThat(messages.count()).isEqualTo(3);
+            assertThat(messages.count()).isEqualTo(1);
         });
         verify(matchingEvents, times(2)).publishMatched(any());
         verify(notifications, times(size.getValue() * 2)).createAndEnqueue(any());
@@ -187,7 +185,7 @@ class GMatchingTicketConsistencyTest {
         assertThat(matching.finalizePendingMatches()).isZero();
 
         assertPendingUnchanged(fixture);
-        assertOnlyTemporaryRooms(2);
+        assertOnlyTemporaryRooms(0);
         verify(matchingEvents, never()).publishMatched(any());
         verify(matchingPush, never()).notifyMatched(any(), any(), any());
     }
@@ -200,7 +198,7 @@ class GMatchingTicketConsistencyTest {
         assertThat(matching.finalizePendingMatches()).isZero();
 
         assertPendingUnchanged(fixture);
-        assertOnlyTemporaryRooms(2);
+        assertOnlyTemporaryRooms(0);
         verify(matchingEvents, never()).publishMatched(any());
         verify(matchingPush, never()).notifyMatched(any(), any(), any());
     }
@@ -216,7 +214,7 @@ class GMatchingTicketConsistencyTest {
         assertPendingUnchanged(failed);
         assertFinalized(succeeded, succeeded.beforeTickets());
         transaction.executeWithoutResult(status -> {
-            assertThat(rooms.count()).isEqualTo(5);
+            assertThat(rooms.count()).isEqualTo(1);
             assertThat(finalRooms.count()).isEqualTo(1);
             assertThat(ticketHistory.count()).isEqualTo(6);
         });
@@ -258,7 +256,7 @@ class GMatchingTicketConsistencyTest {
 
         assertFinalized(fixture, fixture.beforeTickets());
         transaction.executeWithoutResult(status -> {
-            assertThat(rooms.count()).isEqualTo(3);
+            assertThat(rooms.count()).isEqualTo(1);
             assertThat(finalRooms.count()).isEqualTo(1);
             assertThat(ticketHistory.count()).isEqualTo(4);
         });
@@ -347,18 +345,12 @@ class GMatchingTicketConsistencyTest {
     }
 
     private GTemporaryTeamRoom matchedTeam(GTeamSize size, GTeamGender gender, List<Long> memberIds) {
-        var tempChat = chat.createGroupRoomWithMembers("fixture temporary chat", memberIds);
-        var room = teamRooms.save(GTemporaryTeamRoom.create(memberIds.get(0), "fixture team " + UUID.randomUUID(),
-                gender, size, GGenderFilter.ANY, GTeamVisibility.PUBLIC, tempChat.getId()));
+        var room = teamRooms.save(GTemporaryTeamRoom.createInviteOnly(memberIds.get(0), gender, size));
         for (int i = 0; i < memberIds.size(); i++) {
             if (i > 0) room.addMember();
             teamMembers.save(GTemporaryTeamMember.create(room.getId(), memberIds.get(i), i == 0));
-            var ready = GTeamReadyState.create(room.getId(), memberIds.get(i));
-            ready.markReady();
-            readiness.save(ready);
         }
-        room.enterReadyCheck(room.getLeaderId());
-        room.startQueue(room.getLeaderId(), true, "synthetic-queue-" + UUID.randomUUID());
+        room.startQueue(room.getLeaderId(), "synthetic-queue-" + UUID.randomUUID());
         room.markMatched();
         return room;
     }
@@ -379,10 +371,10 @@ class GMatchingTicketConsistencyTest {
                 assertThat(teamRooms.findById(teamId).orElseThrow().getStatus())
                         .isEqualTo(GTemporaryTeamRoomStatus.MATCHED);
                 assertThat(teamMembers.countByTeamRoomIdAndLeftAtIsNull(teamId)).isEqualTo(fixture.size().getValue());
-                assertThat(readiness.countByTeamRoomId(teamId)).isEqualTo(fixture.size().getValue());
+                assertThat(readiness.findByTeamRoomIdOrderByIdAsc(teamId)).isEmpty();
             }
-            assertThat(chatMembers.countByChatRoomId(fixture.firstChatId())).isEqualTo(fixture.size().getValue());
-            assertThat(chatMembers.countByChatRoomId(fixture.secondChatId())).isEqualTo(fixture.size().getValue());
+            assertThat(fixture.firstChatId()).isNull();
+            assertThat(fixture.secondChatId()).isNull();
             for (Long id : fixture.userIds()) {
                 assertThat(users.findById(id).orElseThrow().getTickets()).isEqualTo(fixture.beforeTickets().get(id));
             }
@@ -402,10 +394,10 @@ class GMatchingTicketConsistencyTest {
             for (Long teamId : List.of(fixture.firstTeamId(), fixture.secondTeamId())) {
                 assertThat(teamRooms.findById(teamId).orElseThrow().getStatus()).isEqualTo(GTemporaryTeamRoomStatus.CLOSED);
                 assertThat(teamMembers.countByTeamRoomIdAndLeftAtIsNull(teamId)).isZero();
-                assertThat(readiness.countByTeamRoomId(teamId)).isZero();
+                assertThat(readiness.findByTeamRoomIdOrderByIdAsc(teamId)).isEmpty();
             }
-            assertThat(chatMembers.countByChatRoomId(fixture.firstChatId())).isZero();
-            assertThat(chatMembers.countByChatRoomId(fixture.secondChatId())).isZero();
+            assertThat(fixture.firstChatId()).isNull();
+            assertThat(fixture.secondChatId()).isNull();
             List<TicketLedger> history = historyFor(fixture);
             assertThat(history).hasSize(fixture.userIds().size());
             assertThat(history).extracting(TicketLedger::getUserId)

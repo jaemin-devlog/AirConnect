@@ -14,7 +14,6 @@ import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
 import univ.airconnect.groupmatching.repository.GMatchResultRepository;
-import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
@@ -77,8 +76,6 @@ class AdminOperationsServiceTest {
     @Mock
     private GTemporaryTeamMemberRepository gTemporaryTeamMemberRepository;
     @Mock
-    private GTeamReadyStateRepository gTeamReadyStateRepository;
-    @Mock
     private GMatchResultRepository gMatchResultRepository;
     @Mock
     private GFinalGroupChatRoomRepository gFinalGroupChatRoomRepository;
@@ -111,7 +108,6 @@ class AdminOperationsServiceTest {
                 userReportRepository,
                 gTemporaryTeamRoomRepository,
                 gTemporaryTeamMemberRepository,
-                gTeamReadyStateRepository,
                 gMatchResultRepository,
                 gFinalGroupChatRoomRepository,
                 ticketLedgerRepository,

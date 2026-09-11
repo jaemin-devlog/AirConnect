@@ -9,11 +9,8 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import univ.airconnect.global.error.BusinessException;
-import univ.airconnect.global.error.ErrorCode;
 
 import java.time.LocalDateTime;
 
@@ -54,48 +51,6 @@ public class GTeamReadyState {
 
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
-
-    @Builder
-    private GTeamReadyState(Long teamRoomId, Long userId) {
-        if (teamRoomId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "팀방 ID는 필수입니다.");
-        }
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "사용자 ID는 필수입니다.");
-        }
-        this.teamRoomId = teamRoomId;
-        this.userId = userId;
-        this.ready = false;
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    public static GTeamReadyState create(Long teamRoomId, Long userId) {
-        return GTeamReadyState.builder()
-                .teamRoomId(teamRoomId)
-                .userId(userId)
-                .build();
-    }
-
-    public void markReady() {
-        this.ready = true;
-        this.readyAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    public void markNotReady() {
-        this.ready = false;
-        this.readyAt = null;
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    public void setReady(boolean ready) {
-        if (ready) {
-            markReady();
-            return;
-        }
-        markNotReady();
-    }
 
     public boolean isReady() {
         return Boolean.TRUE.equals(ready);

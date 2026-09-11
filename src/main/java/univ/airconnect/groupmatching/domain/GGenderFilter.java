@@ -9,12 +9,5 @@ package univ.airconnect.groupmatching.domain;
 public enum GGenderFilter {
     M,
     F,
-    ANY;
-
-    public boolean allows(GTeamGender targetGender) {
-        if (this == ANY) {
-            return true;
-        }
-        return this.name().equals(targetGender.name());
-    }
+    ANY
 }

@@ -5,8 +5,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -20,26 +18,19 @@ import univ.airconnect.analytics.service.AnalyticsService;
 import univ.airconnect.auth.exception.AuthErrorCode;
 import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.chat.domain.entity.ChatRoom;
-import univ.airconnect.chat.domain.entity.ChatRoomMember;
-import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.groupmatching.domain.GMatchResultStatus;
 import univ.airconnect.groupmatching.domain.GTeamGender;
 import univ.airconnect.groupmatching.domain.GTeamSize;
-import univ.airconnect.groupmatching.domain.GTeamVisibility;
 import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
-import univ.airconnect.groupmatching.domain.GGenderFilter;
 import univ.airconnect.groupmatching.domain.entity.GFinalGroupChatRoom;
 import univ.airconnect.groupmatching.domain.entity.GMatchResult;
-import univ.airconnect.groupmatching.domain.entity.GTeamReadyState;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamMember;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamRoom;
-import univ.airconnect.groupmatching.dto.response.GMatchingResponse;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
 import univ.airconnect.groupmatching.repository.GMatchResultRepository;
-import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
 import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
@@ -65,7 +56,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
+import java.security.SecureRandom;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -88,6 +79,7 @@ public class GMatchingService {
     );
 
     private static final int FULL_QUEUE_SCAN = -1;
+    private static final SecureRandom INVITE_CODE_RANDOM = new SecureRandom();
     private static final Duration MATCH_PROCESS_LOCK_TTL = Duration.ofSeconds(5);
     private static final DefaultRedisScript<Long> RELEASE_PROCESS_LOCK_SCRIPT = new DefaultRedisScript<>("""
             if redis.call('get', KEYS[1]) == ARGV[1] then
@@ -100,21 +92,13 @@ public class GMatchingService {
     private static final Duration QUEUE_TOKEN_TTL = Duration.ofHours(12);
     private static final int PROCESS_LOCK_RETRY_COUNT = 20;
     private static final long PROCESS_LOCK_RETRY_DELAY_MS = 50L;
-    private static final String TEAM_ROOM_CREATED_MESSAGE_SUFFIX =
-            "\uB2D8\uC774 \uD300\uBC29\uC744 \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.";
-    private static final String TEAM_ROOM_JOINED_MESSAGE_SUFFIX =
-            "\uB2D8\uC774 \uD300\uBC29\uC5D0 \uC785\uC7A5\uD588\uC2B5\uB2C8\uB2E4.";
-    private static final String MATCH_COMPLETED_MOVE_TO_FINAL_CHAT_MESSAGE =
-            "\uB9E4\uCE6D\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uCD5C\uC885 \uADF8\uB8F9 \uCC44\uD305\uBC29\uC73C\uB85C \uC774\uB3D9\uD569\uB2C8\uB2E4.";
     private static final String MATCH_COMPLETED_FINAL_CHAT_CREATED_MESSAGE =
             "\uB9E4\uCE6D\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uCD5C\uC885 \uADF8\uB8F9 \uCC44\uD305\uBC29\uC774 \uC0DD\uC131\uB418\uC5C8\uC2B5\uB2C8\uB2E4.";
 
     private final GTemporaryTeamRoomRepository temporaryTeamRoomRepository;
     private final GTemporaryTeamMemberRepository temporaryTeamMemberRepository;
-    private final GTeamReadyStateRepository teamReadyStateRepository;
     private final GMatchResultRepository matchResultRepository;
     private final GFinalGroupChatRoomRepository finalGroupChatRoomRepository;
-    private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final ChatService chatService;
@@ -129,61 +113,20 @@ public class GMatchingService {
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
 
-    /**
-     * Step 1. 임시 팀방을 생성한다.
-     * - 팀 생성과 동시에 팀 전용 임시 채팅방도 함께 만든다.
-     * - 방장 멤버십, 채팅방 멤버십, 준비 상태를 같은 트랜잭션에서 저장한다.
-     */
+    /** 초대 코드 전용 팀을 생성한다. 채팅방은 매칭 성사 후에만 만든다. */
     @Transactional
-    public GTemporaryTeamRoom createTemporaryTeamRoom(
-            Long leaderUserId,
-            String teamName,
-            GTeamGender teamGender,
-            GTeamSize teamSize,
-            GGenderFilter opponentGenderFilter,
-            GTeamVisibility visibility
-    ) {
-        User leader = findUserOrThrow(leaderUserId);
+    public GTemporaryTeamRoom createTemporaryTeamRoom(Long leaderUserId, GTeamSize teamSize) {
+        userRepository.findByIdForUpdate(leaderUserId)
+                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
         ensureUserHasNoActiveTeamRoom(leaderUserId);
-        validateUserTeamGender(leaderUserId, teamGender);
-        String normalizedTeamName = normalizeTeamName(teamName);
-        ensureActiveTeamRoomNameAvailable(normalizedTeamName);
-
-        String tempChatRoomName = buildTempRoomName(normalizedTeamName, teamSize);
-        ChatRoom tempChatRoom = chatService.createGroupRoomWithMembers(tempChatRoomName, List.of(leaderUserId));
-
-        GTemporaryTeamRoom teamRoom = GTemporaryTeamRoom.create(
-                leaderUserId,
-                normalizedTeamName,
-                teamGender,
-                teamSize,
-                opponentGenderFilter,
-                visibility,
-                tempChatRoom.getId()
-        );
+        GTeamGender teamGender = resolveUserTeamGender(leaderUserId);
+        GTemporaryTeamRoom teamRoom = GTemporaryTeamRoom.createInviteOnly(leaderUserId, teamGender, teamSize);
         teamRoom.assignInviteCode(generateUniqueInviteCode());
         temporaryTeamRoomRepository.save(teamRoom);
-
         temporaryTeamMemberRepository.save(GTemporaryTeamMember.create(teamRoom.getId(), leaderUserId, true));
-        teamReadyStateRepository.save(GTeamReadyState.create(teamRoom.getId(), leaderUserId));
-
-        chatService.publishEnterMessage(
-                tempChatRoom.getId(),
-                leaderUserId,
-                leader.getNickname() + TEAM_ROOM_CREATED_MESSAGE_SUFFIX
-        );
-
-        analyticsService.trackServerEvent(
-                AnalyticsEventType.TEAM_ROOM_CREATED,
-                leaderUserId,
-                Map.of(
-                        "teamRoomId", teamRoom.getId(),
-                        "teamSize", teamRoom.getTeamSize().name(),
-                        "teamGender", teamRoom.getTeamGender().name(),
-                        "visibility", teamRoom.getVisibility().name()
-                )
-        );
-
+        analyticsService.trackServerEvent(AnalyticsEventType.TEAM_ROOM_CREATED, leaderUserId,
+                Map.of("teamRoomId", teamRoom.getId(), "teamSize", teamSize.name(),
+                        "teamGender", teamGender.name()));
         return teamRoom;
     }
 
@@ -210,22 +153,8 @@ public class GMatchingService {
         }
 
         User targetUser = findUserOrThrow(targetUserId);
-        Long tempChatRoomId = teamRoom.getTempChatRoomId();
-
-        if (chatService.isMember(tempChatRoomId, targetUserId)) {
-            chatService.publishExitMessage(
-                    tempChatRoomId,
-                    targetUserId,
-                    targetUser.getNickname() + "님이 팀방에서 추방되었습니다."
-            );
-        }
-
-        removeChatRoomMembership(tempChatRoomId, targetUserId);
         member.markExpelled();
-        teamReadyStateRepository.findByTeamRoomIdAndUserId(teamRoomId, targetUserId)
-                .ifPresent(teamReadyStateRepository::delete);
         teamRoom.removeMember();
-        resetReadyStatesForActiveMembers(teamRoomId);
 
         notifyTeamMemberLeft(teamRoom, targetUserId, targetUser.getNickname());
         matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
@@ -242,63 +171,6 @@ public class GMatchingService {
         return teamRoom;
     }
 
-    @Transactional
-    public GTemporaryTeamRoom updateVisibility(Long teamRoomId, Long requestUserId, GTeamVisibility visibility) {
-        GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
-
-        validateLeaderMembership(teamRoom, teamRoomId, requestUserId);
-        teamRoom.updateVisibility(requestUserId, visibility);
-        if (visibility == GTeamVisibility.PRIVATE
-                && (teamRoom.getInviteCode() == null || teamRoom.getInviteCode().isBlank())) {
-            teamRoom.assignInviteCode(generateUniqueInviteCode());
-        }
-        return teamRoom;
-    }
-
-    /** 공개 모집 중인 임시 팀방 목록을 조회한다. */
-
-    @Transactional(readOnly = true)
-    public GMatchingResponse.RecruitableTeamRoomPageResponse findRecruitableTeamRooms(
-            Long userId,
-            GTeamSize teamSize,
-            int page,
-            int size
-    ) {
-        GTeamGender userTeamGender = resolveUserTeamGender(userId);
-        Page<GTemporaryTeamRoom> roomsPage = temporaryTeamRoomRepository.findRecruitableRooms(
-                GTemporaryTeamRoomStatus.OPEN,
-                teamSize,
-                userTeamGender,
-                PageRequest.of(page, size)
-        );
-        return GMatchingResponse.RecruitableTeamRoomPageResponse.from(roomsPage);
-    }
-
-    @Transactional(readOnly = true)
-    public long countRecruitableTeamRooms(Long userId) {
-        return temporaryTeamRoomRepository.countRecruitableRooms(
-                GTemporaryTeamRoomStatus.OPEN,
-                resolveUserTeamGender(userId)
-        );
-    }
-
-    /**
-     * 공개방에 입장한다.
-     */
-    @Transactional
-    public GTemporaryTeamRoom joinPublicRoom(Long teamRoomId, Long userId) {
-        GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
-
-        if (!teamRoom.isPublicRoom()) {
-            throw new BusinessException(ErrorCode.PUBLIC_ROOM_ONLY);
-        }
-
-        return joinTeamRoomInternal(teamRoom, userId);
-    }
-
-
     /**
      * 초대 코드로 임시 팀방에 입장한다.
      */
@@ -308,12 +180,15 @@ public class GMatchingService {
             throw new BusinessException(ErrorCode.INVITE_CODE_REQUIRED);
         }
 
-        GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByInviteCode(inviteCode)
+        GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByInviteCode(inviteCode.trim().toUpperCase(java.util.Locale.ROOT))
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INVITE_CODE));
 
         teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoom.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
+        if (!Objects.equals(teamRoom.getInviteCode(), inviteCode.trim().toUpperCase(java.util.Locale.ROOT))) {
+            throw new BusinessException(ErrorCode.INVALID_INVITE_CODE);
+        }
         return joinTeamRoomInternal(teamRoom, userId);
     }
 
@@ -322,8 +197,9 @@ public class GMatchingService {
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
-        validateActiveMembership(teamRoomId, requestUserId);
+        validateLeaderMembership(teamRoom, teamRoomId, requestUserId);
         teamRoom.assignInviteCode(generateUniqueInviteCode());
+        matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getDisplayStatus().name());
         return teamRoom;
     }
 
@@ -354,57 +230,6 @@ public class GMatchingService {
     }
 
     /**
-     * 팀원의 준비 상태를 변경한다.
-     * - READY_CHECK 상태에서만 사용할 수 있다.
-     */
-    @Transactional
-    public GTeamReadyState updateReadyState(Long teamRoomId, Long userId, boolean ready) {
-        GTemporaryTeamRoom teamRoom = getTeamRoomForMemberAction(teamRoomId, userId);
-
-        if (teamRoom.getStatus() != GTemporaryTeamRoomStatus.READY_CHECK) {
-            throw new BusinessException(ErrorCode.READY_CHECK_REQUIRED);
-        }
-
-        if (ready) {
-            ensureUserHasEnoughGroupMatchTickets(
-                    findUserOrThrow(userId),
-                    requiredTicketsFor(teamRoom.getTeamSize()),
-                    "과팅 준비 완료 실패"
-            );
-        }
-
-        GTeamReadyState readyState = teamReadyStateRepository.findByTeamRoomIdAndUserId(teamRoomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.READY_STATE_NOT_FOUND));
-
-        boolean wasReady = readyState.isReady();
-        readyState.setReady(ready);
-        matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
-
-        boolean allReady = false;
-        if (!wasReady && ready) {
-            allReady = teamReadyStateRepository.areAllMembersReady(teamRoomId, teamRoom.getTeamSize().getValue());
-        }
-
-        if (wasReady != ready) {
-            Long skipRecipientId = allReady ? teamRoom.getLeaderId() : null;
-            notifyTeamMemberReadyChanged(teamRoom, userId, ready, skipRecipientId);
-            analyticsService.trackServerEvent(
-                    AnalyticsEventType.TEAM_READY_CHANGED,
-                    userId,
-                    Map.of(
-                            "teamRoomId", teamRoomId,
-                            "ready", ready
-                    )
-            );
-        }
-
-        if (allReady) {
-            notifyTeamAllReady(teamRoom, userId, readyState.getUpdatedAt());
-        }
-        return readyState;
-    }
-
-    /**
      * Step 3. 방장이 매칭을 시작하고 Redis 큐에 등록한다.
      * - DB 상태를 QUEUE_WAITING 으로 바꾼다.
      * - Redis 리스트에 teamRoomId 를 넣는다.
@@ -415,12 +240,27 @@ public class GMatchingService {
         GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
-        validateActiveMembership(teamRoomId, requestUserId);
-
-        boolean allReady = teamReadyStateRepository.areAllMembersReady(teamRoomId, teamRoom.getTeamSize().getValue());
+        validateLeaderMembership(teamRoom, teamRoomId, requestUserId);
+        if (teamRoom.getStatus() == GTemporaryTeamRoomStatus.QUEUE_WAITING) {
+            return buildQueueSnapshot(teamRoom);
+        }
+        if (!teamRoom.getStatus().canEnterQueue()) {
+            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID);
+        }
+        List<GTemporaryTeamMember> members = temporaryTeamMemberRepository
+                .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoomId);
+        if (!teamRoom.isFull() || members.size() != teamRoom.getTeamSize().getValue()) {
+            throw new BusinessException(ErrorCode.TEAM_ROOM_NOT_FULL);
+        }
+        // 시작 시 검증하고 실제 차감은 최종 채팅방 생성 트랜잭션에서 한다.
+        for (GTemporaryTeamMember member : members) {
+            validateUserTeamGender(member.getUserId(), teamRoom.getTeamGender());
+            ensureUserHasEnoughGroupMatchTickets(findUserOrThrow(member.getUserId()),
+                    requiredTicketsFor(teamRoom.getTeamSize()), "그룹매칭 시작 실패");
+        }
         String queueToken = UUID.randomUUID().toString();
 
-        teamRoom.startQueue(requestUserId, allReady, queueToken);
+        teamRoom.startQueue(requestUserId, queueToken);
 
         QueueSnapshot snapshot = withQueueLockOrThrow(teamRoom.getTeamSize(), () -> {
             enqueueRoom(teamRoom.getTeamSize(), teamRoom.getId(), queueToken);
@@ -452,6 +292,9 @@ public class GMatchingService {
 
         validateActiveMembership(teamRoomId, requestUserId);
 
+        if (teamRoom.getStatus().canModifyMembers()) {
+            return teamRoom;
+        }
         String queueToken = teamRoom.getQueueToken();
         teamRoom.leaveQueue();
 
@@ -460,6 +303,7 @@ public class GMatchingService {
             return null;
         });
         matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
+        notifyMatchingStopped(teamRoom, requestUserId, queueToken);
         return teamRoom;
     }
 
@@ -518,7 +362,12 @@ public class GMatchingService {
             return QueueSnapshot.statusOnly(teamRoomId, teamRoom.getStatus().name());
         }
 
-        List<Long> queueRoomIds = distinctQueueRoomIds(readQueueRoomIds(teamRoom.getTeamSize(), -1));
+        // 같은 인원/성별의 팀들이 상대 팀을 기다리는 순번. Redis 잔여 항목은 포함하지 않는다.
+        List<Long> queueRoomIds = temporaryTeamRoomRepository.findAllQueueWaitingRooms(teamRoom.getTeamSize())
+                .stream()
+                .filter(room -> room.getTeamGender() == teamRoom.getTeamGender())
+                .map(GTemporaryTeamRoom::getId)
+                .toList();
         int position = findQueuePosition(queueRoomIds, teamRoomId);
         int totalWaitingTeams = queueRoomIds.size();
 
@@ -627,37 +476,12 @@ public class GMatchingService {
         }
 
         User user = findUserOrThrow(userId);
-        Long tempChatRoomId = teamRoom.getTempChatRoomId();
-        GTemporaryTeamRoomStatus status = teamRoom.getStatus();
-
-        if (chatService.isMember(tempChatRoomId, userId)) {
-            chatService.publishExitMessage(
-                    tempChatRoomId,
-                    userId,
-                    user.getNickname() + "님이 팀에서 나갔습니다."
-            );
-        } else {
-            log.warn("채팅방 멤버십이 이미 없어 퇴장 메시지 발행을 건너뜁니다. teamRoomId={}, userId={}, chatRoomId={}",
-                    teamRoomId, userId, tempChatRoomId);
+        if (!teamRoom.getStatus().canModifyMembers()) {
+            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID,
+                    "매칭 대기를 먼저 중지한 후 팀에서 나갈 수 있습니다. 매칭 완료 후에는 나갈 수 없습니다.");
         }
-
-        removeChatRoomMembership(tempChatRoomId, userId);
         member.markLeft();
-        teamReadyStateRepository.findByTeamRoomIdAndUserId(teamRoomId, userId)
-                .ifPresent(teamReadyStateRepository::delete);
-
-        if (status.canModifyMembers()) {
-            if (teamRoom.getCurrentMemberCount() > 1) {
-                teamRoom.removeMember();
-                resetReadyStatesForActiveMembers(teamRoomId);
-            } else {
-                log.warn("팀방 나가기 중 현재 인원 수가 예상과 달라 인원 차감을 건너뜁니다. teamRoomId={}, userId={}, currentMemberCount={}",
-                        teamRoomId, userId, teamRoom.getCurrentMemberCount());
-            }
-        } else {
-            log.warn("현재 방 상태에서는 인원 변경이 불가능해 인원 차감을 건너뜁니다. teamRoomId={}, userId={}, status={}",
-                    teamRoomId, userId, status);
-        }
+        teamRoom.removeMember();
 
         notifyTeamMemberLeft(teamRoom, userId, user.getNickname());
         matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
@@ -685,19 +509,7 @@ public class GMatchingService {
 
         User leader = findUserOrThrow(requestUserId);
         String queueToken = teamRoom.getQueueToken();
-        Long tempChatRoomId = teamRoom.getTempChatRoomId();
-
-        if (chatService.isMember(tempChatRoomId, requestUserId)) {
-            chatService.publishExitMessage(
-                    tempChatRoomId,
-                    requestUserId,
-                    leader.getNickname() + "님이 팀을 해산했습니다."
-            );
-        } else {
-            log.warn("방장 채팅 멤버십이 없어 방 해산 퇴장 메시지 발행을 건너뜁니다. teamRoomId={}, leaderId={}, chatRoomId={}",
-                    teamRoomId, requestUserId, tempChatRoomId);
-        }
-
+        boolean wasQueueWaiting = teamRoom.getStatus() == GTemporaryTeamRoomStatus.QUEUE_WAITING;
         teamRoom.cancel(requestUserId);
         matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
 
@@ -705,12 +517,12 @@ public class GMatchingService {
                 .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoomId);
         notifyTeamRoomCancelled(teamRoom, activeMembers, requestUserId, leader.getNickname());
         markMembersLeft(activeMembers);
-        removeChatRoomMemberships(tempChatRoomId, extractUserIds(activeMembers));
-        teamReadyStateRepository.deleteByTeamRoomId(teamRoomId);
-        withQueueLockOrThrow(teamRoom.getTeamSize(), () -> {
-            removeRoomFromRedisQueue(teamRoom.getTeamSize(), teamRoomId, queueToken);
-            return null;
-        });
+        if (wasQueueWaiting) {
+            withQueueLockOrThrow(teamRoom.getTeamSize(), () -> {
+                removeRoomFromRedisQueue(teamRoom.getTeamSize(), teamRoomId, queueToken);
+                return null;
+            });
+        }
 
         return teamRoom;
     }
@@ -737,16 +549,12 @@ public class GMatchingService {
         return findLatestFinalRoomByTeamRoomId(teamRoomId);
     }
 
-    @Transactional(readOnly = true)
-    public Long getTempChatRoomId(Long teamRoomId, Long requestUserId) {
-        GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findById(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
-        validateActiveMembership(teamRoomId, requestUserId);
-        return teamRoom.getTempChatRoomId();
-    }
-
     private GTemporaryTeamRoom joinTeamRoomInternal(GTemporaryTeamRoom teamRoom, Long userId) {
-        User user = findUserOrThrow(userId);
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
+        if (temporaryTeamMemberRepository.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(teamRoom.getId(), userId)) {
+            return teamRoom;
+        }
         ensureUserHasNoActiveTeamRoom(userId);
 
         if (Objects.equals(teamRoom.getLeaderId(), userId)) {
@@ -781,32 +589,7 @@ public class GMatchingService {
             temporaryTeamMemberRepository.save(GTemporaryTeamMember.create(teamRoom.getId(), userId, false));
         }
 
-        Optional<GTeamReadyState> existingReadyState =
-                teamReadyStateRepository.findByTeamRoomIdAndUserId(teamRoom.getId(), userId);
-        if (existingReadyState.isPresent()) {
-            existingReadyState.get().markNotReady();
-        } else {
-            teamReadyStateRepository.save(GTeamReadyState.create(teamRoom.getId(), userId));
-        }
-        resetReadyStatesForActiveMembers(teamRoom.getId());
-
-        boolean becameReadyCheck = false;
-        if (teamRoom.isFull()) {
-            teamRoom.enterReadyCheck(teamRoom.getLeaderId());
-            becameReadyCheck = true;
-        }
-
-        chatService.addMembersToRoom(teamRoom.getTempChatRoomId(), List.of(userId));
-        chatService.publishEnterMessage(
-                teamRoom.getTempChatRoomId(),
-                userId,
-                user.getNickname() + TEAM_ROOM_JOINED_MESSAGE_SUFFIX
-        );
-
         notifyTeamMemberJoined(teamRoom, userId, user.getNickname());
-        if (becameReadyCheck) {
-            notifyTeamReadyRequired(teamRoom);
-        }
         matchingEventPublisher.publishStatus(teamRoom.getId(), teamRoom.getStatus().name());
         analyticsService.trackServerEvent(
                 AnalyticsEventType.TEAM_ROOM_JOINED,
@@ -891,10 +674,6 @@ public class GMatchingService {
         first.closeAfterFinalRoomCreated();
         second.closeAfterFinalRoomCreated();
 
-        removeChatRoomMemberships(first.getTempChatRoomId(), extractUserIds(firstMembers));
-        removeChatRoomMemberships(second.getTempChatRoomId(), extractUserIds(secondMembers));
-        teamReadyStateRepository.deleteByTeamRoomId(first.getId());
-        teamReadyStateRepository.deleteByTeamRoomId(second.getId());
         removeRoomFromRedisQueue(first.getTeamSize(), first.getId(), firstQueueToken);
         removeRoomFromRedisQueue(second.getTeamSize(), second.getId(), secondQueueToken);
         analyticsService.trackServerEvent(
@@ -933,13 +712,14 @@ public class GMatchingService {
         payload.put("joinedUserId", joinedUserId);
         payload.put("joinedNickname", joinedNickname);
         payload.put("currentMemberCount", teamRoom.getCurrentMemberCount());
+        payload.put("full", teamRoom.isFull());
 
         for (Long recipientId : recipientIds) {
             sendGroupNotification(
                     recipientId,
                     NotificationType.TEAM_MEMBER_JOINED,
                     "팀원 합류",
-                    joinedNickname + "님이 팀에 합류했어요.",
+                    joinedNickname + "님이 팀에 합류했어요." + (teamRoom.isFull() ? " 모두 모였으니 방장이 매칭을 시작할 수 있어요." : ""),
                     teamRoomDeeplink(teamRoom.getId()),
                     joinedUserId,
                     payload.toString(),
@@ -949,116 +729,20 @@ public class GMatchingService {
         }
     }
 
-    private void notifyTeamReadyRequired(GTemporaryTeamRoom teamRoom) {
-        List<Long> recipientIds = temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoom.getId())
-                .stream()
-                .map(GTemporaryTeamMember::getUserId)
-                .distinct()
-                .toList();
-        if (recipientIds.isEmpty()) {
-            return;
-        }
-
+    private void notifyMatchingStopped(GTemporaryTeamRoom teamRoom, Long actorId, String queueToken) {
+        User actor = findUserOrThrow(actorId);
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("teamRoomId", teamRoom.getId());
-        payload.put("teamSize", teamRoom.getTeamSize().name());
-        payload.put("currentMemberCount", teamRoom.getCurrentMemberCount());
-
-        String dedupeKey = buildGroupMatchingDedupeKey(
-                "team-ready-required",
-                teamRoom.getId(),
-                teamRoom.getUpdatedAt() != null ? teamRoom.getUpdatedAt() : LocalDateTime.now()
-        );
-
-        for (Long recipientId : recipientIds) {
-            sendGroupNotification(
-                    recipientId,
-                    NotificationType.TEAM_READY_REQUIRED,
-                    "팀 준비 확인 필요",
-                    "팀원이 모두 모였어요. 준비 상태를 체크해주세요.",
-                    teamRoomDeeplink(teamRoom.getId()),
-                    null,
-                    payload.toString(),
-                    dedupeKey,
-                    true
-            );
-        }
-    }
-
-    private void notifyTeamMemberReadyChanged(
-            GTemporaryTeamRoom teamRoom,
-            Long updatedUserId,
-            boolean ready,
-            Long skipRecipientId
-    ) {
-        List<GTemporaryTeamMember> activeMembers =
-                temporaryTeamMemberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoom.getId());
-        if (activeMembers == null || activeMembers.isEmpty()) {
-            return;
-        }
-
-        List<Long> recipientIds = activeMembers.stream()
-                .map(GTemporaryTeamMember::getUserId)
-                .filter(id -> !Objects.equals(id, updatedUserId))
-                .filter(id -> !Objects.equals(id, skipRecipientId))
-                .distinct()
-                .toList();
-        if (recipientIds.isEmpty()) {
-            return;
-        }
-
-        ObjectNode payload = objectMapper.createObjectNode();
-        payload.put("teamRoomId", teamRoom.getId());
-        payload.put("updatedUserId", updatedUserId);
-        payload.put("ready", ready);
+        payload.put("stoppedByUserId", actorId);
         payload.put("status", teamRoom.getStatus().name());
-        payload.put("currentMemberCount", teamRoom.getCurrentMemberCount());
-        String title = ready ? "팀원 준비 완료" : "팀원 준비 취소";
-        String body = ready ? "팀원이 준비를 완료했어요." : "팀원이 준비를 취소했어요.";
-
-        for (Long recipientId : recipientIds) {
-            sendGroupNotification(
-                    recipientId,
-                    NotificationType.TEAM_MEMBER_READY_CHANGED,
-                    title,
-                    body,
-                    teamRoomDeeplink(teamRoom.getId()),
-                    updatedUserId,
-                    payload.toString(),
-                    null,
-                    true
-            );
+        for (GTemporaryTeamMember member : temporaryTeamMemberRepository
+                .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoom.getId())) {
+            if (Objects.equals(member.getUserId(), actorId)) continue;
+            sendGroupNotification(member.getUserId(), NotificationType.TEAM_MATCHING_STOPPED,
+                    "매칭 대기 중지", actor.getNickname() + "님이 매칭 대기를 중지했어요. 팀은 유지됩니다.",
+                    teamRoomDeeplink(teamRoom.getId()), actorId, payload.toString(),
+                    buildGroupMatchingDedupeKey("queue-stopped", teamRoom.getId(), queueToken), true);
         }
-    }
-
-    private void notifyTeamAllReady(GTemporaryTeamRoom teamRoom, Long updatedByUserId, LocalDateTime readyChangedAt) {
-        Long leaderId = teamRoom.getLeaderId();
-        if (leaderId == null || Objects.equals(leaderId, updatedByUserId)) {
-            return;
-        }
-
-        ObjectNode payload = objectMapper.createObjectNode();
-        payload.put("teamRoomId", teamRoom.getId());
-        payload.put("leaderUserId", leaderId);
-        payload.put("allMembersReady", true);
-
-        String dedupeKey = buildGroupMatchingDedupeKey(
-                "team-all-ready",
-                teamRoom.getId(),
-                readyChangedAt != null ? readyChangedAt : LocalDateTime.now()
-        );
-
-        sendGroupNotification(
-                leaderId,
-                NotificationType.TEAM_ALL_READY,
-                "모든 팀원이 준비 완료",
-                "지금 매칭을 시작할 수 있어요.",
-                teamRoomDeeplink(teamRoom.getId()),
-                null,
-                payload.toString(),
-                dedupeKey,
-                true
-        );
     }
 
     private void notifyTeamMemberLeft(GTemporaryTeamRoom teamRoom, Long leftUserId, String leftNickname) {
@@ -1328,10 +1012,6 @@ public class GMatchingService {
         first.closeAfterFinalRoomCreated();
         second.closeAfterFinalRoomCreated();
 
-        removeChatRoomMemberships(first.getTempChatRoomId(), extractUserIds(firstMembers));
-        removeChatRoomMemberships(second.getTempChatRoomId(), extractUserIds(secondMembers));
-        teamReadyStateRepository.deleteByTeamRoomId(first.getId());
-        teamReadyStateRepository.deleteByTeamRoomId(second.getId());
         removeRoomFromRedisQueue(first.getTeamSize(), first.getId(), first.getQueueToken());
         removeRoomFromRedisQueue(second.getTeamSize(), second.getId(), second.getQueueToken());
         analyticsService.trackServerEvent(
@@ -1356,16 +1036,6 @@ public class GMatchingService {
             GTemporaryTeamRoom second,
             Long finalChatRoomId
     ) {
-        chatService.publishEnterMessage(
-                first.getTempChatRoomId(),
-                first.getLeaderId(),
-                MATCH_COMPLETED_MOVE_TO_FINAL_CHAT_MESSAGE
-        );
-        chatService.publishEnterMessage(
-                second.getTempChatRoomId(),
-                second.getLeaderId(),
-                MATCH_COMPLETED_MOVE_TO_FINAL_CHAT_MESSAGE
-        );
         chatService.publishEnterMessage(
                 finalChatRoomId,
                 first.getLeaderId(),
@@ -1410,7 +1080,7 @@ public class GMatchingService {
         }
 
         GTemporaryTeamRoomStatus status = roomOpt.get().getStatus();
-        return status == GTemporaryTeamRoomStatus.MATCHED || status == GTemporaryTeamRoomStatus.CLOSED;
+        return status == GTemporaryTeamRoomStatus.CLOSED && isFinalRoomParticipant(teamRoomId, userId);
     }
 
     private void validateActiveMembershipOrClosedRoomAccess(Long teamRoomId, Long userId) {
@@ -1429,9 +1099,16 @@ public class GMatchingService {
         GTemporaryTeamRoom room = temporaryTeamRoomRepository.findById(teamRoomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
 
-        if (room.getStatus() != GTemporaryTeamRoomStatus.CLOSED && room.getStatus() != GTemporaryTeamRoomStatus.MATCHED) {
+        if (member.wasExpelled() || room.getStatus() != GTemporaryTeamRoomStatus.CLOSED
+                || !isFinalRoomParticipant(teamRoomId, userId)) {
             throw new BusinessException(ErrorCode.TEAM_ROOM_ACCESS_FORBIDDEN);
         }
+    }
+
+    private boolean isFinalRoomParticipant(Long teamRoomId, Long userId) {
+        return finalGroupChatRoomRepository.findActiveRoomsByUserId(userId).stream()
+                .anyMatch(room -> Objects.equals(room.getTeam1RoomId(), teamRoomId)
+                        || Objects.equals(room.getTeam2RoomId(), teamRoomId));
     }
 
     private GTemporaryTeamRoom getTeamRoomForMemberAction(Long teamRoomId, Long userId) {
@@ -1442,15 +1119,9 @@ public class GMatchingService {
     }
 
     private void ensureUserHasNoActiveTeamRoom(Long userId) {
-        List<GTemporaryTeamRoom> activeRooms = temporaryTeamRoomRepository.findActiveRoomsByUserId(userId, ACTIVE_ROOM_STATUSES);
+        List<GTemporaryTeamRoom> activeRooms = temporaryTeamRoomRepository.findActiveRoomsByUserIdForUpdate(userId, ACTIVE_ROOM_STATUSES);
         if (!activeRooms.isEmpty()) {
             throw new BusinessException(ErrorCode.ACTIVE_TEAM_ROOM_EXISTS);
-        }
-    }
-
-    private void ensureActiveTeamRoomNameAvailable(String teamName) {
-        if (temporaryTeamRoomRepository.existsActiveRoomByTeamName(teamName, ACTIVE_ROOM_STATUSES)) {
-            throw new BusinessException(ErrorCode.GROUP_MATCH_ARGUMENT_INVALID, "이미 사용 중인 임시방 이름입니다.");
         }
     }
 
@@ -1465,13 +1136,6 @@ public class GMatchingService {
             if (member.isActiveMember()) {
                 member.markLeft();
             }
-        }
-    }
-
-    private void resetReadyStatesForActiveMembers(Long teamRoomId) {
-        List<GTeamReadyState> readyStates = teamReadyStateRepository.findByTeamRoomIdOrderByIdAsc(teamRoomId);
-        for (GTeamReadyState readyState : readyStates) {
-            readyState.markNotReady();
         }
     }
 
@@ -1496,16 +1160,6 @@ public class GMatchingService {
             }
         }
         return Optional.empty();
-    }
-
-    private void removeChatRoomMemberships(Long chatRoomId, Collection<Long> userIds) {
-        for (Long userId : userIds) {
-            removeChatRoomMembership(chatRoomId, userId);
-        }
-    }
-
-    private void removeChatRoomMembership(Long chatRoomId, Long userId) {
-        chatService.removeMember(chatRoomId, userId);
     }
 
     private User findUserOrThrow(Long userId) {
@@ -1573,19 +1227,6 @@ public class GMatchingService {
 
     private GTeamGender mapUserGenderToTeamGender(Gender gender) {
         return gender == Gender.MALE ? GTeamGender.M : GTeamGender.F;
-    }
-
-    private String buildTempRoomName(String teamName, GTeamSize teamSize) {
-        String baseName = (teamName == null || teamName.isBlank()) ? "임시 팀방" : teamName.trim();
-        String roomName = baseName + " (" + teamSize.getValue() + "인 팀)";
-        return truncate(roomName, 100);
-    }
-
-    private String normalizeTeamName(String teamName) {
-        if (teamName == null) {
-            return null;
-        }
-        return teamName.trim();
     }
 
     private int requiredTicketsFor(GTeamSize teamSize) {
@@ -1698,8 +1339,8 @@ public class GMatchingService {
 
     private String generateUniqueInviteCode() {
         for (int i = 0; i < 20; i++) {
-            String candidate = String.format("%06d", ThreadLocalRandom.current().nextInt(1_000_000));
-            if (!temporaryTeamRoomRepository.existsUsableInviteCode(candidate)) {
+            String candidate = String.format(java.util.Locale.ROOT, "%06d", INVITE_CODE_RANDOM.nextInt(1_000_000));
+            if (!temporaryTeamRoomRepository.existsByInviteCode(candidate)) {
                 return candidate;
             }
         }

@@ -52,17 +52,16 @@ import univ.airconnect.global.security.resolver.CurrentUserIdArgumentResolver;
 import univ.airconnect.global.security.stomp.StompHandler;
 import univ.airconnect.global.security.stomp.StompOpsMonitor;
 import univ.airconnect.global.security.stomp.StompSessionRegistry;
-import univ.airconnect.groupmatching.domain.GGenderFilter;
 import univ.airconnect.groupmatching.domain.GMatchResultStatus;
 import univ.airconnect.groupmatching.domain.GTeamGender;
 import univ.airconnect.groupmatching.domain.GTeamSize;
-import univ.airconnect.groupmatching.domain.GTeamVisibility;
 import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
 import univ.airconnect.groupmatching.domain.entity.GMatchResult;
 import univ.airconnect.groupmatching.domain.entity.GTemporaryTeamRoom;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
 import univ.airconnect.groupmatching.repository.GMatchResultRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
+import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.service.GMatchingEventPublisher;
 import univ.airconnect.groupmatching.service.GMatchingPushService;
 import univ.airconnect.groupmatching.service.GMatchingService;
@@ -109,6 +108,7 @@ class GroupChatJoinSecurityTest {
     @Autowired ChatRoomMemberRepository members;
     @Autowired ChatMessageRepository messages;
     @Autowired GTemporaryTeamRoomRepository teamRooms;
+    @Autowired GTemporaryTeamMemberRepository teamMembers;
     @Autowired GMatchResultRepository matchResults;
     @Autowired GFinalGroupChatRoomRepository finalRooms;
     @Autowired EntityManager entityManager;
@@ -268,20 +268,14 @@ class GroupChatJoinSecurityTest {
             firstUsers.add(saveUser("first-" + i, Gender.MALE));
             secondUsers.add(saveUser("second-" + i, Gender.FEMALE));
         }
-        GTemporaryTeamRoom first = matchingService.createTemporaryTeamRoom(firstUsers.get(0).getId(), "First team",
-                GTeamGender.M, size, GGenderFilter.ANY, GTeamVisibility.PUBLIC);
-        GTemporaryTeamRoom second = matchingService.createTemporaryTeamRoom(secondUsers.get(0).getId(), "Second team",
-                GTeamGender.F, size, GGenderFilter.ANY, GTeamVisibility.PRIVATE);
+        GTemporaryTeamRoom first = matchingService.createTemporaryTeamRoom(firstUsers.get(0).getId(), size);
+        GTemporaryTeamRoom second = matchingService.createTemporaryTeamRoom(secondUsers.get(0).getId(), size);
         for (int i = 1; i < size.getValue(); i++) {
-            matchingService.joinPublicRoom(first.getId(), firstUsers.get(i).getId());
+            matchingService.joinRoomByInviteCode(first.getInviteCode(), firstUsers.get(i).getId());
             matchingService.joinRoomByInviteCode(second.getInviteCode(), secondUsers.get(i).getId());
         }
-        assertThat(members.findUserIdsByChatRoomId(first.getTempChatRoomId()))
-                .containsExactlyInAnyOrderElementsOf(firstUsers.stream().map(User::getId).toList());
-        assertThat(members.findUserIdsByChatRoomId(second.getTempChatRoomId()))
-                .containsExactlyInAnyOrderElementsOf(secondUsers.stream().map(User::getId).toList());
-        firstUsers.forEach(user -> matchingService.updateReadyState(first.getId(), user.getId(), true));
-        secondUsers.forEach(user -> matchingService.updateReadyState(second.getId(), user.getId(), true));
+        assertThat(first.getTempChatRoomId()).isNull();
+        assertThat(second.getTempChatRoomId()).isNull();
         matchingService.startMatching(first.getId(), first.getLeaderId());
         matchingService.startMatching(second.getId(), second.getLeaderId());
         assertThat(matchResults.findByStatus(GMatchResultStatus.MATCHED)).hasSize(1);
@@ -307,8 +301,8 @@ class GroupChatJoinSecurityTest {
         allUsers.addAll(secondUsers);
         assertThat(members.findUserIdsByChatRoomId(finalRoomId))
                 .containsExactlyInAnyOrderElementsOf(allUsers.stream().map(User::getId).toList());
-        assertThat(members.countByChatRoomId(first.getTempChatRoomId())).isZero();
-        assertThat(members.countByChatRoomId(second.getTempChatRoomId())).isZero();
+        assertThat(matchingService.findMyActiveTeamRoom(firstUsers.get(0).getId())).isEmpty();
+        assertThat(matchingService.findMyActiveTeamRoom(secondUsers.get(0).getId())).isEmpty();
         for (User user : allUsers) {
             authenticate(user);
             assertThat(chatService.isMember(finalRoomId, user.getId())).isTrue();
@@ -326,6 +320,26 @@ class GroupChatJoinSecurityTest {
         authenticate(attacker);
         assertJoinForbidden(finalRoomId);
         assertThat(members.countByChatRoomId(finalRoomId)).isEqualTo(allUsers.size());
+    }
+
+    @Test
+    void everyMemberLeaving_removesTeamFromActiveStateAndCreatesNoTemporaryChat() {
+        User leader = saveUser("leave-leader", Gender.MALE);
+        User friend = saveUser("leave-friend", Gender.MALE);
+        GTemporaryTeamRoom room = matchingService.createTemporaryTeamRoom(leader.getId(), GTeamSize.TWO);
+        matchingService.joinRoomByInviteCode(room.getInviteCode(), friend.getId());
+
+        matchingService.leaveTeamRoom(room.getId(), friend.getId());
+        matchingService.cancelTeamRoom(room.getId(), leader.getId());
+        entityManager.flush();
+        entityManager.clear();
+
+        GTemporaryTeamRoom historical = teamRooms.findById(room.getId()).orElseThrow();
+        assertThat(historical.getStatus()).isEqualTo(GTemporaryTeamRoomStatus.CANCELLED);
+        assertThat(historical.getTempChatRoomId()).isNull();
+        assertThat(teamMembers.countByTeamRoomIdAndLeftAtIsNull(room.getId())).isZero();
+        assertThat(matchingService.findMyActiveTeamRoom(leader.getId())).isEmpty();
+        assertThat(matchingService.findMyActiveTeamRoom(friend.getId())).isEmpty();
     }
 
     private void assertJoinForbidden(Long roomId) throws Exception {

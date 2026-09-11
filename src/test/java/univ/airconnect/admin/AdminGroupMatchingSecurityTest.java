@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.beans.BeanUtils;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -59,10 +60,8 @@ import univ.airconnect.global.security.RestAccessDeniedHandler;
 import univ.airconnect.global.security.RestAuthenticationEntryPoint;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
 import univ.airconnect.global.security.resolver.CurrentUserIdArgumentResolver;
-import univ.airconnect.groupmatching.domain.GGenderFilter;
 import univ.airconnect.groupmatching.domain.GTeamGender;
 import univ.airconnect.groupmatching.domain.GTeamSize;
-import univ.airconnect.groupmatching.domain.GTeamVisibility;
 import univ.airconnect.groupmatching.domain.GTemporaryTeamRoomStatus;
 import univ.airconnect.groupmatching.domain.entity.GFinalGroupChatRoom;
 import univ.airconnect.groupmatching.domain.entity.GMatchResult;
@@ -221,7 +220,7 @@ class AdminGroupMatchingSecurityTest {
         assertThat(before.get("push_events")).hasSize(1);
 
         assertThat(detail(recruiting).stage()).isEqualTo("RECRUITING");
-        assertThat(detail(checking).stage()).isEqualTo("CHECKING_READY");
+        assertThat(detail(checking).stage()).isEqualTo("WAITING_FOR_START");
         assertThat(detail(ready).stage()).isEqualTo("WAITING_FOR_START");
         assertThat(detail(waiting).stage()).isEqualTo("WAITING");
         var pendingDetail = detail(pending.first());
@@ -307,8 +306,11 @@ class AdminGroupMatchingSecurityTest {
             ReflectionTestUtils.setField(teams.findById(team.teamId()).orElseThrow(), "currentMemberCount", 4);
             ReflectionTestUtils.setField(teams.findById(team.teamId()).orElseThrow(), "tempChatRoomId", Long.MAX_VALUE);
             participants.save(GTemporaryTeamMember.create(team.teamId(), Long.MAX_VALUE - 1, false));
-            readiness.findByTeamRoomIdAndUserId(team.teamId(), team.userIds().get(0)).ifPresent(readiness::delete);
-            readiness.save(GTeamReadyState.create(team.teamId(), ordinaryId));
+            readiness.findByTeamRoomIdOrderByIdAsc(team.teamId()).stream()
+                    .filter(row -> row.getUserId().equals(team.userIds().get(0)))
+                    .findFirst()
+                    .ifPresent(readiness::delete);
+            readiness.save(legacyReadyState(team.teamId(), ordinaryId, false));
         });
         var before = databaseState();
 
@@ -316,8 +318,6 @@ class AdminGroupMatchingSecurityTest {
 
         assertThat(result.stage()).isEqualTo("UNKNOWN");
         assertThat(result.observations()).anyMatch(text -> text.contains("저장 인원"))
-                .anyMatch(text -> text.contains("준비 기록 일부"))
-                .anyMatch(text -> text.contains("현재 참여자가 아닌"))
                 .anyMatch(text -> text.contains("회원 정보가 없어진"))
                 .anyMatch(text -> text.contains("임시 채팅방 연결"));
         assertThat(result.participants()).anyMatch(p -> !p.userRecordPresent() && p.nickname() == null);
@@ -351,7 +351,8 @@ class AdminGroupMatchingSecurityTest {
         transaction.executeWithoutResult(tx -> {
             var opponent = teams.findById(pair.second().teamId()).orElseThrow();
             switch (fault) {
-                case OPPONENT_CANCELLED -> opponent.cancel(opponent.getLeaderId());
+                case OPPONENT_CANCELLED ->
+                        ReflectionTestUtils.setField(opponent, "status", GTemporaryTeamRoomStatus.CANCELLED);
                 case OPPONENT_WRONG_SIZE -> ReflectionTestUtils.setField(opponent, "teamSize", GTeamSize.THREE);
                 case OPPONENT_MEMBER_MISSING -> participants.findByTeamRoomIdAndUserId(
                         pair.second().teamId(), pair.second().userIds().get(1)).orElseThrow().markLeft();
@@ -382,11 +383,12 @@ class AdminGroupMatchingSecurityTest {
             } else {
                 Long leader = team.userIds().get(0);
                 participants.findByTeamRoomIdAndUserId(team.teamId(), leader).orElseThrow().markLeft();
-                readiness.findByTeamRoomIdAndUserId(team.teamId(), leader).ifPresent(readiness::delete);
+                readiness.findByTeamRoomIdOrderByIdAsc(team.teamId()).stream()
+                        .filter(row -> row.getUserId().equals(leader))
+                        .findFirst()
+                        .ifPresent(readiness::delete);
                 participants.save(GTemporaryTeamMember.create(team.teamId(), ordinaryId, false));
-                var replacementReady = GTeamReadyState.create(team.teamId(), ordinaryId);
-                replacementReady.markReady();
-                readiness.save(replacementReady);
+                readiness.save(legacyReadyState(team.teamId(), ordinaryId, true));
             }
         });
         var before = databaseState();
@@ -886,8 +888,10 @@ class AdminGroupMatchingSecurityTest {
         ChatRoom chatRoom = rooms.save(ChatRoom.create("temporary-fixture", ChatRoomType.GROUP));
         chatRoom.updateLastMessage(BODY, LocalDateTime.now());
         Long leader = memberUsers.get(0).getId();
-        var team = teams.save(GTemporaryTeamRoom.create(leader, "fixture-team", GTeamGender.M, size,
-                GGenderFilter.ANY, GTeamVisibility.PRIVATE, chatRoom.getId()));
+        var team = GTemporaryTeamRoom.createInviteOnly(leader, GTeamGender.M, size);
+        ReflectionTestUtils.setField(team, "teamName", "fixture-team");
+        ReflectionTestUtils.setField(team, "tempChatRoomId", chatRoom.getId());
+        team = teams.save(team);
         String invitation = "INV-" + team.getId();
         String token = "queue-fixture-" + team.getId();
         team.assignInviteCode(invitation);
@@ -895,20 +899,17 @@ class AdminGroupMatchingSecurityTest {
         for (int i = 0; i < memberUsers.size(); i++) {
             User user = memberUsers.get(i);
             participants.save(GTemporaryTeamMember.create(team.getId(), user.getId(), i == 0));
-            var ready = GTeamReadyState.create(team.getId(), user.getId());
-            ready.setReady(i < readyCount);
-            readiness.save(ready);
+            readiness.save(legacyReadyState(team.getId(), user.getId(), i < readyCount));
             var chatMember = ChatRoomMember.create(chatRoom, user, 7L);
             if (i == 0) chatMember.hide("fixture-hidden");
             chatMembers.save(chatMember);
         }
         messages.save(ChatMessage.create(chatRoom.getId(), leader, "fixture-member", BODY, MessageType.TEXT));
-        if (status != GTemporaryTeamRoomStatus.OPEN && status != GTemporaryTeamRoomStatus.CANCELLED) {
-            team.enterReadyCheck(leader);
-            if (status != GTemporaryTeamRoomStatus.READY_CHECK) {
-                team.startQueue(leader, true, token);
-                if (status == GTemporaryTeamRoomStatus.MATCHED) team.markMatched();
-            }
+        if (status == GTemporaryTeamRoomStatus.READY_CHECK) {
+            ReflectionTestUtils.setField(team, "status", GTemporaryTeamRoomStatus.READY_CHECK);
+        } else if (status != GTemporaryTeamRoomStatus.OPEN && status != GTemporaryTeamRoomStatus.CANCELLED) {
+            team.startQueue(leader, token);
+            if (status == GTemporaryTeamRoomStatus.MATCHED) team.markMatched();
         }
         if (status == GTemporaryTeamRoomStatus.CANCELLED) team.cancel(leader);
         if (status == GTemporaryTeamRoomStatus.QUEUE_WAITING) queuePresence.put(team.getId(), "FOUND");
@@ -931,13 +932,25 @@ class AdminGroupMatchingSecurityTest {
                 for (var fixture : List.of(first, second)) {
                     for (Long id : fixture.userIds()) chatMembers.save(ChatRoomMember.create(finalChat, users.findById(id).orElseThrow()));
                     participants.findByTeamRoomIdOrderByJoinedAtAsc(fixture.teamId()).forEach(GTemporaryTeamMember::markLeft);
-                    readiness.deleteByTeamRoomId(fixture.teamId());
+                    readiness.deleteAll(readiness.findByTeamRoomIdOrderByIdAsc(fixture.teamId()));
                     chatMembers.deleteAllInBatch(chatMembers.findByChatRoomId(fixture.chatRoomId()));
                     teams.findById(fixture.teamId()).orElseThrow().closeAfterFinalRoomCreated();
                 }
             }
             return new Pair(first, second, result.getId(), finalId);
         });
+    }
+
+    private GTeamReadyState legacyReadyState(Long teamRoomId, Long userId, boolean ready) {
+        GTeamReadyState state = BeanUtils.instantiateClass(GTeamReadyState.class);
+        LocalDateTime now = LocalDateTime.now();
+        ReflectionTestUtils.setField(state, "teamRoomId", teamRoomId);
+        ReflectionTestUtils.setField(state, "userId", userId);
+        ReflectionTestUtils.setField(state, "ready", ready);
+        ReflectionTestUtils.setField(state, "readyAt", ready ? now : null);
+        ReflectionTestUtils.setField(state, "createdAt", now);
+        ReflectionTestUtils.setField(state, "updatedAt", now);
+        return state;
     }
 
     private User user(String nickname, UserRole role) {

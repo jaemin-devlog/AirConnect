@@ -11,7 +11,6 @@ import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
 import univ.airconnect.groupmatching.repository.GFinalGroupChatRoomRepository;
 import univ.airconnect.groupmatching.repository.GMatchResultRepository;
-import univ.airconnect.groupmatching.repository.GTeamReadyStateRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
@@ -58,7 +57,6 @@ public class AdminOperationsService {
     private final UserReportRepository userReportRepository;
     private final GTemporaryTeamRoomRepository gTemporaryTeamRoomRepository;
     private final GTemporaryTeamMemberRepository gTemporaryTeamMemberRepository;
-    private final GTeamReadyStateRepository gTeamReadyStateRepository;
     private final GMatchResultRepository gMatchResultRepository;
     private final GFinalGroupChatRoomRepository gFinalGroupChatRoomRepository;
     private final TicketLedgerRepository ticketLedgerRepository;
@@ -271,7 +269,6 @@ public class AdminOperationsService {
 
         long teamRoomCreated = gTemporaryTeamRoomRepository.countByCreatedAtGreaterThanEqual(since);
         long teamRoomJoined = gTemporaryTeamMemberRepository.countByJoinedAtGreaterThanEqual(since);
-        long readyTeams = gTeamReadyStateRepository.countReadyTeamsSince(since);
         long queueEntered = gTemporaryTeamRoomRepository.countByQueuedAtGreaterThanEqual(since);
         long matchSuccess = gMatchResultRepository.countByMatchedAtGreaterThanEqual(since);
         long finalGroupChatCreated = gFinalGroupChatRoomRepository.countByCreatedAtGreaterThanEqual(since);
@@ -280,8 +277,7 @@ public class AdminOperationsService {
         List<AdminDtos.FunnelStep> steps = List.of(
                 new AdminDtos.FunnelStep("team_room_created", "팀방 생성", teamRoomCreated, null),
                 new AdminDtos.FunnelStep("team_room_joined", "팀방 참여", teamRoomJoined, percentage(teamRoomJoined, teamRoomCreated)),
-                new AdminDtos.FunnelStep("ready_team", "준비 완료 팀", readyTeams, percentage(readyTeams, teamRoomCreated)),
-                new AdminDtos.FunnelStep("queue_entered", "큐 진입", queueEntered, percentage(queueEntered, readyTeams)),
+                new AdminDtos.FunnelStep("queue_entered", "매칭 시작", queueEntered, percentage(queueEntered, teamRoomCreated)),
                 new AdminDtos.FunnelStep("match_success", "매칭 성공", matchSuccess, percentage(matchSuccess, queueEntered)),
                 new AdminDtos.FunnelStep("final_group_chat_created", "최종 그룹 채팅방 생성", finalGroupChatCreated, percentage(finalGroupChatCreated, matchSuccess))
         );
@@ -291,7 +287,6 @@ public class AdminOperationsService {
                 since,
                 teamRoomCreated,
                 teamRoomJoined,
-                readyTeams,
                 queueEntered,
                 matchSuccess,
                 finalGroupChatCreated,

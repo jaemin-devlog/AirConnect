@@ -23,6 +23,8 @@ public enum NotificationType {
     TEAM_ALL_READY(NotificationCategory.GROUP_MATCHING, true),
     /** 팀 방이 해산됐을 때 */
     TEAM_ROOM_CANCELLED(NotificationCategory.GROUP_MATCHING, true),
+    /** 팀원이 매칭 대기를 중지했을 때 (팀은 유지됨) */
+    TEAM_MATCHING_STOPPED(NotificationCategory.GROUP_MATCHING, true),
     /** 새로운 팀원이 팀에 들어왔을 때 */
     TEAM_MEMBER_JOINED(NotificationCategory.GROUP_MATCHING, false),
     /** 팀원이 팀에서 나갔을 때 */
