@@ -16,6 +16,13 @@ public enum ErrorCode {
     FESTIVAL_COUPON_INVALID(HttpStatus.BAD_REQUEST, "COUPON-001", "유효하지 않은 쿠폰 코드입니다."),
     FESTIVAL_COUPON_ALREADY_REDEEMED(HttpStatus.CONFLICT, "COUPON-002", "이미 사용된 쿠폰 코드입니다."),
 
+    REFERRAL_CODE_INVALID(HttpStatus.BAD_REQUEST, "REFERRAL-001", "유효하지 않은 추천인 코드입니다."),
+    REFERRAL_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "REFERRAL-002", "본인의 추천인 코드는 입력할 수 없습니다."),
+    REFERRAL_ALREADY_REDEEMED(HttpStatus.CONFLICT, "REFERRAL-003", "이미 추천인 코드를 입력했습니다."),
+    REFERRAL_RECIPROCAL_NOT_ALLOWED(HttpStatus.CONFLICT, "REFERRAL-004", "서로의 추천인 코드를 중복으로 입력할 수 없습니다."),
+    REFERRAL_ACCOUNT_INELIGIBLE(HttpStatus.FORBIDDEN, "REFERRAL-005", "추천인 기능을 사용할 수 없는 계정입니다."),
+    REFERRAL_CODE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "REFERRAL-006", "추천인 코드 생성에 실패했습니다."),
+
     PERSONAL_ROOM_REQUIRES_MATCH(HttpStatus.FORBIDDEN, "CHAT-001", "1:1 채팅방은 매칭 요청이 수락된 경우에만 생성할 수 있습니다."),
 
     TEAM_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "GMATCH-001", "임시 팀방을 찾을 수 없습니다."),

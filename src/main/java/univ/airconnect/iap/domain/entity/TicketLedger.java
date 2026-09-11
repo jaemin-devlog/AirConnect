@@ -216,6 +216,23 @@ public class TicketLedger {
                 .build();
     }
 
+    public static TicketLedger grantForReferral(Long userId,
+                                                int amount,
+                                                int beforeAmount,
+                                                int afterAmount,
+                                                Long redemptionId,
+                                                String role) {
+        return TicketLedger.builder()
+                .userId(userId)
+                .changeAmount(amount)
+                .beforeAmount(beforeAmount)
+                .afterAmount(afterAmount)
+                .reason("REFERRAL_REWARD")
+                .refType(LedgerRefType.REFERRAL_REWARD)
+                .refId("referral:" + redemptionId + ":" + role)
+                .build();
+    }
+
     public String ledgerExternalId() {
         return "TICKET_LEDGER_" + id;
     }

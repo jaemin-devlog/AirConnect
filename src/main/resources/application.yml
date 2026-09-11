@@ -31,6 +31,7 @@ app:
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
   rewards:
+    referral-tickets: ${REFERRAL_REWARD_TICKETS:5}
     milestone:
       profile-image-uploaded-tickets: ${PROFILE_IMAGE_UPLOADED_REWARD_TICKETS:2}
       email-verified-tickets: ${EMAIL_VERIFIED_REWARD_TICKETS:0}
