@@ -116,6 +116,15 @@ class StompHandlerTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    void subscribeToRealtimeMainStatisticsIsAllowedForActiveSession() {
+        allowActiveSession("session-statistics", 1L);
+
+        assertThatCode(() -> handler.preSend(frame(StompCommand.SUBSCRIBE,
+                "session-statistics", "sub-statistics", "/sub/statistics/main", 1L), messageChannel))
+                .doesNotThrowAnyException();
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "/sub/**", "/sub/chat/**", "/sub/chat/room/*", "/sub/chat/room/**",

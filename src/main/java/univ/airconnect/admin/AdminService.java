@@ -32,6 +32,7 @@ import univ.airconnect.moderation.repository.UserReportRepository;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
+import univ.airconnect.statistics.dto.response.DepartmentRankingResponse;
 import univ.airconnect.statistics.service.StatisticsService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.UserRole;
@@ -451,7 +452,7 @@ public class AdminService {
                 main.getDailyActiveUsers(),
                 AdminDtos.GenderRatio.from(main.getGenderRatio()),
                 main.getTotalMatchSuccessCount(),
-                mapDepartmentRankings(main.getTopRequestedDepartments()),
+                mapDepartmentRankings(statisticsService.getDepartmentRankings()),
                 ticketLedgerRepository.sumGrantedTickets(),
                 ticketLedgerRepository.sumConsumedTickets(),
                 userReportRepository.countByStatus(ReportStatus.OPEN),
@@ -671,7 +672,7 @@ public class AdminService {
         return email.toLowerCase(Locale.ROOT).endsWith("@office.hanseo.ac.kr") ? "HANSEO" : null;
     }
 
-    private List<AdminDtos.DepartmentRanking> mapDepartmentRankings(List<MainStatisticsResponse.DepartmentRanking> rankings) {
+    private List<AdminDtos.DepartmentRanking> mapDepartmentRankings(List<DepartmentRankingResponse> rankings) {
         if (rankings == null || rankings.isEmpty()) {
             return List.of();
         }

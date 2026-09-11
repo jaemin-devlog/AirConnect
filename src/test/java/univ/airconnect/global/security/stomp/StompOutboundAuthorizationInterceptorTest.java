@@ -93,6 +93,15 @@ class StompOutboundAuthorizationInterceptorTest {
         verifyNoInteractions(userRepository);
     }
 
+    @Test
+    void activeSessionReceivesRealtimeMainStatistics() {
+        when(sessionRegistry.findUserId("session-statistics")).thenReturn(Optional.of(1L));
+        Message<byte[]> message = outbound("session-statistics", "/sub/statistics/main");
+
+        assertThat(interceptor.preSend(message, channel)).isSameAs(message);
+        verifyNoInteractions(userRepository);
+    }
+
     private void allowActiveSession(String sessionId, Long userId) {
         User user = mock(User.class);
         when(user.getStatus()).thenReturn(UserStatus.ACTIVE);

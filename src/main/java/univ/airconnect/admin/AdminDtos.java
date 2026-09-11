@@ -246,7 +246,7 @@ public final class AdminDtos {
             String deptName,
             long requestCount
     ) {
-        public static DepartmentRanking from(univ.airconnect.statistics.dto.response.MainStatisticsResponse.DepartmentRanking value) {
+        public static DepartmentRanking from(univ.airconnect.statistics.dto.response.DepartmentRankingResponse value) {
             return new DepartmentRanking(
                     value.getRank(),
                     value.getDeptName(),

@@ -13,6 +13,8 @@ import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
+import univ.airconnect.statistics.dto.response.DepartmentRankingResponse;
+import univ.airconnect.statistics.dto.response.RealtimeMainStatisticsResponse;
 import univ.airconnect.statistics.repository.GenderCountProjection;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.repository.UserProfileRepository;
@@ -60,12 +62,6 @@ class StatisticsServiceTest {
         when(matchingConnectionRepository.countByStatus(ConnectionStatus.ACCEPTED)).thenReturn(40L);
         when(finalGroupChatRoomRepository.countByStatusIn(any())).thenReturn(10L);
         when(stompSessionRegistry.onlineUserCount()).thenReturn(17);
-        when(departmentRepository.findAllRankedByMatchingRequests()).thenReturn(List.of(
-                departmentCount(1L, "항공운항학과", "항공학부", "ACTIVE", 23L),
-                departmentCount(2L, "간호학과", "보건학부", "ACTIVE", 23L),
-                departmentCount(3L, "항공컴퓨터학과", "항공융합학부(이전)", "LEGACY", 0L)
-        ));
-
         MainStatisticsResponse response = statisticsService.getMainStatistics();
 
         assertThat(response.getTotalRegisteredUsers()).isEqualTo(135L);
@@ -77,14 +73,44 @@ class StatisticsServiceTest {
         assertThat(response.getGenderRatio().getMalePercentage()).isEqualTo(58);
         assertThat(response.getGenderRatio().getFemalePercentage()).isEqualTo(42);
         assertThat(response.getTotalMatchSuccessCount()).isEqualTo(50L);
-        assertThat(response.getTopRequestedDepartments()).hasSize(3);
-        assertThat(response.getTopRequestedDepartments().get(0).getRank()).isEqualTo(1);
-        assertThat(response.getTopRequestedDepartments().get(0).getDeptName()).isEqualTo("항공운항학과");
-        assertThat(response.getTopRequestedDepartments().get(0).getRequestCount()).isEqualTo(23L);
-        assertThat(response.getTopRequestedDepartments().get(1).getRank()).isEqualTo(1);
-        assertThat(response.getTopRequestedDepartments().get(2).getRank()).isEqualTo(3);
-        assertThat(response.getTopRequestedDepartments().get(2).getRequestCount()).isZero();
         assertThat(response.getGeneratedAt()).isNotNull();
+    }
+
+    @Test
+    void getRealtimeMainStatistics_returnsLightweightCountsAndTopDepartment() {
+        DepartmentRankingProjection top = departmentCount(
+                1L, "시각디자인학과", "디자인융합학부", "ACTIVE", 56L);
+        when(userRepository.countRegisteredUsersExcludingDeleted()).thenReturn(135L);
+        when(matchingConnectionRepository.countByStatus(ConnectionStatus.ACCEPTED)).thenReturn(40L);
+        when(finalGroupChatRoomRepository.countByStatusIn(any())).thenReturn(10L);
+        when(stompSessionRegistry.onlineUserCount()).thenReturn(17);
+        when(departmentRepository.findTopRankedByMatchingRequests()).thenReturn(java.util.Optional.of(top));
+
+        RealtimeMainStatisticsResponse response = statisticsService.getRealtimeMainStatistics();
+
+        assertThat(response.totalRegisteredUsers()).isEqualTo(135L);
+        assertThat(response.totalMatchSuccessCount()).isEqualTo(50L);
+        assertThat(response.onlineUserCount()).isEqualTo(17);
+        assertThat(response.topDepartment().deptName()).isEqualTo("시각디자인학과");
+        assertThat(response.topDepartment().requestCount()).isEqualTo(56L);
+        assertThat(response.updatedAt()).isNotNull();
+    }
+
+    @Test
+    void getDepartmentRankings_returnsAllDepartmentsWithCompetitionRanks() {
+        when(departmentRepository.findAllRankedByMatchingRequests()).thenReturn(List.of(
+                departmentCount(1L, "항공운항학과", "항공학부", "ACTIVE", 23L),
+                departmentCount(2L, "간호학과", "보건학부", "ACTIVE", 23L),
+                departmentCount(3L, "항공컴퓨터학과", "항공융합학부(이전)", "LEGACY", 0L)
+        ));
+
+        List<DepartmentRankingResponse> rankings = statisticsService.getDepartmentRankings();
+
+        assertThat(rankings).hasSize(3);
+        assertThat(rankings.get(0).getRank()).isEqualTo(1);
+        assertThat(rankings.get(1).getRank()).isEqualTo(1);
+        assertThat(rankings.get(2).getRank()).isEqualTo(3);
+        assertThat(rankings.get(2).getRequestCount()).isZero();
     }
 
     private GenderCountProjection genderCount(Gender gender, long count) {

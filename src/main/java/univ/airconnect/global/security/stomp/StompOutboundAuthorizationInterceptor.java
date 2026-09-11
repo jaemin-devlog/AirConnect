@@ -30,6 +30,7 @@ public class StompOutboundAuthorizationInterceptor implements ChannelInterceptor
     private static final Pattern CHAT_LIST = Pattern.compile("^/sub/chat/list/([1-9]\\d*)$");
     private static final Pattern MATCHING_TEAM_ROOM = Pattern.compile("^/sub/matching/team-room/([1-9]\\d*)$");
     private static final String ONLINE_USERS = StompSessionRegistry.ONLINE_USERS_DESTINATION;
+    private static final String MAIN_STATISTICS = StompSessionRegistry.MAIN_STATISTICS_DESTINATION;
 
     private final StompSessionRegistry sessionRegistry;
     private final UserRepository userRepository;
@@ -68,7 +69,7 @@ public class StompOutboundAuthorizationInterceptor implements ChannelInterceptor
         }
         // 전 사용자 브로드캐스트마다 DB를 조회하면 접속자 수 변동 1회가
         // 구독자 수만큼의 쿼리를 만들므로, 로컬에서 폐기되지 않은 인증 세션만 확인한다.
-        if (ONLINE_USERS.equals(destination)) {
+        if (ONLINE_USERS.equals(destination) || MAIN_STATISTICS.equals(destination)) {
             return message;
         }
         if (!isActiveUser(userId)) {

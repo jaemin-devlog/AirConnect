@@ -11,7 +11,9 @@ import univ.airconnect.global.security.stomp.StompSessionRegistry;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
+import univ.airconnect.statistics.dto.response.DepartmentRankingResponse;
 import univ.airconnect.statistics.dto.response.OnlinePresenceResponse;
+import univ.airconnect.statistics.dto.response.RealtimeMainStatisticsResponse;
 import univ.airconnect.statistics.repository.GenderCountProjection;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.repository.UserProfileRepository;
@@ -47,18 +49,49 @@ public class StatisticsService {
                 EnumSet.of(GFinalGroupRoomStatus.ACTIVE, GFinalGroupRoomStatus.ENDED)
         );
 
-        List<DepartmentRankingProjection> departmentProjections =
-                departmentRepository.findAllRankedByMatchingRequests();
-        List<MainStatisticsResponse.DepartmentRanking> topRequestedDepartments = new ArrayList<>();
+        return MainStatisticsResponse.builder()
+                .totalRegisteredUsers(totalRegisteredUsers)
+                .dailyActiveUsers(dailyActiveUsers)
+                .onlineUserCount(stompSessionRegistry.onlineUserCount())
+                .genderRatio(genderRatio)
+                .totalMatchSuccessCount(oneToOneSuccessCount + groupSuccessCount)
+                .generatedAt(LocalDateTime.now())
+                .build();
+    }
+
+    public RealtimeMainStatisticsResponse getRealtimeMainStatistics() {
+        long totalRegisteredUsers = userRepository.countRegisteredUsersExcludingDeleted();
+        long totalMatchSuccessCount = countTotalMatchSuccesses();
+        RealtimeMainStatisticsResponse.TopDepartment topDepartment = departmentRepository
+                .findTopRankedByMatchingRequests()
+                .map(projection -> new RealtimeMainStatisticsResponse.TopDepartment(
+                        projection.getDepartmentId(),
+                        projection.getDeptName(),
+                        projection.getRequestCount()
+                ))
+                .orElse(null);
+
+        return new RealtimeMainStatisticsResponse(
+                totalRegisteredUsers,
+                totalMatchSuccessCount,
+                stompSessionRegistry.onlineUserCount(),
+                topDepartment,
+                LocalDateTime.now()
+        );
+    }
+
+    public List<DepartmentRankingResponse> getDepartmentRankings() {
+        List<DepartmentRankingProjection> projections = departmentRepository.findAllRankedByMatchingRequests();
+        List<DepartmentRankingResponse> rankings = new ArrayList<>(projections.size());
         int rank = 0;
         long previousCount = Long.MIN_VALUE;
-        for (int i = 0; i < departmentProjections.size(); i++) {
-            DepartmentRankingProjection projection = departmentProjections.get(i);
+        for (int i = 0; i < projections.size(); i++) {
+            DepartmentRankingProjection projection = projections.get(i);
             if (projection.getRequestCount() != previousCount) {
                 rank = i + 1;
                 previousCount = projection.getRequestCount();
             }
-            topRequestedDepartments.add(MainStatisticsResponse.DepartmentRanking.builder()
+            rankings.add(DepartmentRankingResponse.builder()
                     .rank(rank)
                     .departmentId(projection.getDepartmentId())
                     .deptName(projection.getDeptName())
@@ -67,20 +100,19 @@ public class StatisticsService {
                     .requestCount(projection.getRequestCount())
                     .build());
         }
-
-        return MainStatisticsResponse.builder()
-                .totalRegisteredUsers(totalRegisteredUsers)
-                .dailyActiveUsers(dailyActiveUsers)
-                .onlineUserCount(stompSessionRegistry.onlineUserCount())
-                .genderRatio(genderRatio)
-                .totalMatchSuccessCount(oneToOneSuccessCount + groupSuccessCount)
-                .topRequestedDepartments(topRequestedDepartments)
-                .generatedAt(LocalDateTime.now())
-                .build();
+        return rankings;
     }
 
     public OnlinePresenceResponse getOnlinePresence() {
         return OnlinePresenceResponse.of(stompSessionRegistry.onlineUserCount());
+    }
+
+    private long countTotalMatchSuccesses() {
+        long oneToOneSuccessCount = matchingConnectionRepository.countByStatus(ConnectionStatus.ACCEPTED);
+        long groupSuccessCount = finalGroupChatRoomRepository.countByStatusIn(
+                EnumSet.of(GFinalGroupRoomStatus.ACTIVE, GFinalGroupRoomStatus.ENDED)
+        );
+        return oneToOneSuccessCount + groupSuccessCount;
     }
 
     private MainStatisticsResponse.GenderRatio buildGenderRatio(long totalRegisteredUsers) {

@@ -599,14 +599,14 @@ members[].ready
 
 ---
 
-## 4. 메인페이지 통계
+## 4. 메인페이지 실시간 통계와 학과 순위
 
-### 4.1 메인 통계 조회
+### 4.1 메인 실시간 통계 초기값
 
-인증 없이 호출할 수 있다.
+인증 없이 호출할 수 있다. 메인 화면에서는 이 가벼운 API만 사용한다.
 
 ```http
-GET /api/v1/statistics/main
+GET /api/v1/statistics/main/realtime
 ```
 
 ```json
@@ -614,99 +614,108 @@ GET /api/v1/statistics/main
   "success": true,
   "data": {
     "totalRegisteredUsers": 135,
-    "dailyActiveUsers": 34,
-    "onlineUserCount": 17,
-    "genderRatio": {
-      "maleUsers": 70,
-      "femaleUsers": 50,
-      "unknownUsers": 0,
-      "malePercentage": 58,
-      "femalePercentage": 42
-    },
     "totalMatchSuccessCount": 50,
-    "topRequestedDepartments": [
-      {
-        "rank": 1,
-        "departmentId": 1,
-        "deptName": "항공운항학과",
-        "collegeName": "항공학부",
-        "status": "ACTIVE",
-        "requestCount": 23
-      },
-      {
-        "rank": 2,
-        "departmentId": 2,
-        "deptName": "간호학과",
-        "collegeName": "보건학부",
-        "status": "ACTIVE",
-        "requestCount": 15
-      }
-    ],
-    "generatedAt": "2026-09-11T15:00:00"
+    "onlineUserCount": 17,
+    "topDepartment": {
+      "departmentId": 1,
+      "deptName": "시각디자인학과",
+      "requestCount": 56
+    },
+    "updatedAt": "2026-09-11T15:00:00"
   },
   "error": null,
   "traceId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
-### 4.2 메인 노출 필드 기준
+등록된 학과가 하나도 없으면 `topDepartment`는 `null`이다.
 
 | 필드 | 화면 의미 | 서버 집계 기준 |
 |---|---|---|
 | `totalRegisteredUsers` | 총 가입자 수 | 온보딩 미완료·정지·제한 계정 포함, 탈퇴 계정만 제외 |
 | `totalMatchSuccessCount` | 매칭 수 | `ACCEPTED` 상태 1:1 + `ACTIVE/ENDED` 상태 최종 그룹매칭 |
-| `onlineUserCount` | 실시간 접속자 수 | 현재 서버에 인증된 STOMP 연결을 유지 중인 고유 사용자 수 |
+| `onlineUserCount` | 현재 접속자 수 | 현재 서버에 인증된 STOMP 연결을 유지 중인 고유 사용자 수 |
+| `topDepartment` | 메인에 표시할 현재 1위 학과 | 1:1 요청을 보낸 횟수 + 받은 횟수가 가장 많은 학과 한 곳 |
 
-- 한 사용자가 여러 기기 또는 여러 화면에서 연결해도 한 명으로 집계한다.
+- 한 사용자가 여러 기기 또는 여러 화면에서 연결해도 접속자 한 명으로 집계한다.
 - 앱이 STOMP 연결을 하지 않으면 접속자로 집계되지 않는다.
-- 현재 집계는 실행 중인 애플리케이션 서버 인스턴스 기준이다.
-- 메인 화면에 필요한 세 값은 위 필드를 사용한다. `dailyActiveUsers`, `genderRatio`는 부가 통계다.
-- `topRequestedDepartments`라는 필드명과 달리 모든 DB 학과를 반환한다. 실적 0회 학과도 포함한다.
-- 학과 점수 `requestCount`는 해당 학과 사용자가 보낸 1:1 요청 수 + 받은 1:1 요청 수다.
-- 점수 내림차순이며 동점은 공동 순위와 건너뛰기 방식이다. 예: `1, 2, 2, 4`.
+- 현재 접속자 수는 실행 중인 애플리케이션 서버 인스턴스 기준이다.
+- 공동 1위가 있으면 학과명 오름차순으로 가장 앞선 한 학과를 메인에 표시한다.
 
-### 4.3 실시간 접속자 초기값 조회
-
-```http
-GET /api/v1/statistics/online
-```
-
-```json
-{
-  "success": true,
-  "data": {
-    "onlineUserCount": 17,
-    "updatedAt": "2026-09-11T15:00:01"
-  },
-  "error": null,
-  "traceId": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-### 4.4 실시간 접속자 STOMP 구독
+### 4.2 메인 실시간 통계 STOMP 구독
 
 ```text
-/sub/statistics/online
+/sub/statistics/main
 ```
 
-이 구독은 STOMP 인증이 필요하다.
+STOMP 연결과 구독에는 액세스 토큰 인증이 필요하다. 서버는 10초마다 값을 확인하고, 네 값 중 하나라도 달라졌을 때만 다음 payload를 전송한다.
 
 ```json
 {
+  "totalRegisteredUsers": 136,
+  "totalMatchSuccessCount": 51,
   "onlineUserCount": 18,
-  "updatedAt": "2026-09-11T15:00:02"
+  "topDepartment": {
+    "departmentId": 1,
+    "deptName": "시각디자인학과",
+    "requestCount": 57
+  },
+  "updatedAt": "2026-09-11T15:00:10"
 }
 ```
 
 권장 메인 화면 처리:
 
-1. `GET /api/v1/statistics/main`으로 화면 전체 초기값을 표시한다.
-2. 전역 STOMP 연결을 만들고 `/sub/statistics/online`을 구독한다.
-3. 구독 직후 `GET /api/v1/statistics/online`을 한 번 호출해 최신 초기값을 맞춘다.
-4. 이후 수신 이벤트의 `onlineUserCount`로 숫자를 교체한다.
-5. 재연결하면 재구독 후 `/statistics/online`을 다시 호출한다.
+1. STOMP 연결 후 `/sub/statistics/main`을 구독한다.
+2. 구독 직후 `GET /api/v1/statistics/main/realtime`을 한 번 호출해 초기값을 표시한다.
+3. 이후 STOMP payload를 받을 때 세 통계 숫자와 1위 학과를 한 번에 교체한다.
+4. 값이 같으면 애니메이션을 다시 실행하지 않는다.
+5. STOMP 재연결 시 재구독하고 초기값 API를 다시 호출한다.
 
-STOMP 연결 시점의 증가 이벤트는 구독 이전에 발생할 수 있으므로 3번 초기 조회를 생략하면 안 된다.
+기존 `GET /api/v1/statistics/online`과 `/sub/statistics/online`은 이전 앱 호환을 위해 유지하지만, 새 앱은 사용하지 않는다.
+
+### 4.3 전체 학과 순위 페이지 조회
+
+전체 학과 순위는 메인 API에 포함되지 않는다. 사용자가 `랭킹 현황 바로가기`를 눌러 별도 페이지에 들어갈 때 한 번 호출한다.
+
+```http
+GET /api/v1/statistics/departments/rankings
+```
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "rank": 1,
+      "departmentId": 1,
+      "deptName": "시각디자인학과",
+      "collegeName": "디자인융합학부",
+      "status": "ACTIVE",
+      "requestCount": 56
+    },
+    {
+      "rank": 2,
+      "departmentId": 2,
+      "deptName": "항공운항학과",
+      "collegeName": "항공학부",
+      "status": "ACTIVE",
+      "requestCount": 41
+    }
+  ],
+  "error": null,
+  "traceId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+- 모든 DB 학과를 반환하며 실적 0회 학과도 포함한다.
+- `requestCount`는 해당 학과 사용자가 보낸 1:1 요청 수 + 받은 1:1 요청 수다.
+- 점수 내림차순이며 동점은 공동 순위와 건너뛰기 방식이다. 예: `1, 2, 2, 4`.
+- 별도 랭킹 페이지에서 새로고침하거나 화면에 다시 진입할 때 재호출한다.
+
+### 4.4 기존 확장 통계 API
+
+`GET /api/v1/statistics/main`은 관리자·이전 앱 호환용으로 유지한다. 이제 전체 학과 순위는 포함하지 않는다. 새 메인 화면은 이 API 대신 `/statistics/main/realtime`을 사용한다.
 
 ---
 
@@ -928,10 +937,11 @@ Content-Type: application/json
 
 ### 메인 통계
 
-- [ ] `/statistics/main`의 가입자 수, 매칭 수, 접속자 수를 표시한다.
-- [ ] 전역 STOMP 연결에서 `/sub/statistics/online`을 구독한다.
-- [ ] 구독 직후 `/statistics/online`을 호출해 초기 접속자 수를 맞춘다.
+- [ ] 메인 진입 시 `/statistics/main/realtime`로 통계 3개와 1위 학과를 표시한다.
+- [ ] 전역 STOMP 연결에서 `/sub/statistics/main`을 구독한다.
+- [ ] 10초 단위 이벤트를 받을 때 통계 3개와 1위 학과를 한 번에 갱신한다.
 - [ ] 재연결 시 재구독하고 REST 초기값을 다시 조회한다.
+- [ ] 전체 학과 목록은 랭킹 페이지 진입 시 `/statistics/departments/rankings`로만 조회한다.
 
 ### 추천인
 

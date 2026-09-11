@@ -32,6 +32,7 @@ import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.moderation.repository.UserReportRepository;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
+import univ.airconnect.statistics.dto.response.DepartmentRankingResponse;
 import univ.airconnect.statistics.service.StatisticsService;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.user.domain.OnboardingStatus;
@@ -411,16 +412,16 @@ class AdminServiceTest {
                         .femalePercentage(56)
                         .build())
                 .totalMatchSuccessCount(13)
-                .topRequestedDepartments(List.of(
-                        MainStatisticsResponse.DepartmentRanking.builder()
-                                .rank(1)
-                                .deptName("컴퓨터공학과")
-                                .requestCount(12)
-                                .build()
-                ))
                 .generatedAt(LocalDateTime.now())
                 .build();
         when(statisticsService.getMainStatistics()).thenReturn(main);
+        when(statisticsService.getDepartmentRankings()).thenReturn(List.of(
+                DepartmentRankingResponse.builder()
+                        .rank(1)
+                        .deptName("컴퓨터공학과")
+                        .requestCount(12)
+                        .build()
+        ));
         when(ticketLedgerRepository.sumGrantedTickets()).thenReturn(200L);
         when(ticketLedgerRepository.sumConsumedTickets()).thenReturn(150L);
         when(userReportRepository.countByStatus(ReportStatus.OPEN)).thenReturn(3L);

@@ -4,7 +4,6 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Getter
 @Builder
@@ -15,7 +14,6 @@ public class MainStatisticsResponse {
     private final int onlineUserCount;
     private final GenderRatio genderRatio;
     private final long totalMatchSuccessCount;
-    private final List<DepartmentRanking> topRequestedDepartments;
     private final LocalDateTime generatedAt;
 
     @Getter
@@ -28,14 +26,4 @@ public class MainStatisticsResponse {
         private final int femalePercentage;
     }
 
-    @Getter
-    @Builder
-    public static class DepartmentRanking {
-        private final int rank;
-        private final Long departmentId;
-        private final String deptName;
-        private final String collegeName;
-        private final String status;
-        private final long requestCount;
-    }
 }
