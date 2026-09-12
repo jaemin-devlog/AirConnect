@@ -11,12 +11,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import univ.airconnect.chat.dto.request.ChatRoomCreateRequest;
+import univ.airconnect.chat.dto.request.ChatRoomNameUpdateRequest;
 import univ.airconnect.chat.dto.request.ChatReadRequest;
 import univ.airconnect.chat.dto.request.SendMessageRequest;
 import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantDetailResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantProfileResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
+import univ.airconnect.chat.dto.response.ChatRoomNameUpdateResponse;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.global.security.resolver.CurrentUserId;
@@ -91,6 +93,21 @@ public class ChatRoomController {
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         List<ChatRoomResponse> response = chatService.findAllRooms(userId);
+        return ResponseEntity.ok(ApiResponse.ok(response, traceId));
+    }
+
+    /**
+     * 내 목록에 표시할 채팅방 이름을 변경한다. 다른 참여자의 표시 이름은 바뀌지 않는다.
+     */
+    @PatchMapping("/rooms/{roomId}/name")
+    public ResponseEntity<ApiResponse<ChatRoomNameUpdateResponse>> updateRoomName(
+            @PathVariable @Positive(message = "채팅방 ID는 양수여야 합니다.") Long roomId,
+            @CurrentUserId Long userId,
+            @RequestBody @Valid ChatRoomNameUpdateRequest requestBody,
+            HttpServletRequest request
+    ) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        ChatRoomNameUpdateResponse response = chatService.updateRoomName(roomId, userId, requestBody.getName());
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 

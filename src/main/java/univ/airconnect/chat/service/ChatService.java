@@ -27,6 +27,7 @@ import univ.airconnect.chat.dto.response.ChatMessageResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantDetailResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantProfileResponse;
 import univ.airconnect.chat.dto.response.ChatRoomListUpdateResponse;
+import univ.airconnect.chat.dto.response.ChatRoomNameUpdateResponse;
 import univ.airconnect.chat.dto.response.ChatRoomResponse;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
@@ -781,10 +782,7 @@ public class ChatService {
                     ChatParticipantDetailResponse targetProfile = targetUser != null
                             ? toParticipantDetailResponse(targetUser)
                             : null;
-                    String displayName = room.getName();
-                    if (room.getType() == ChatRoomType.PERSONAL && targetNickname != null && !targetNickname.isBlank()) {
-                        displayName = targetNickname;
-                    }
+                    String displayName = resolveRoomDisplayName(member, room, targetNickname);
 
                     return ChatRoomResponse.from(room, displayName, content, time, unreadCount,
                             targetUserId, targetNickname,
@@ -797,6 +795,17 @@ public class ChatService {
                     return t2.compareTo(t1);
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 참여자별 별칭을 저장한다. PERSONAL 방도 상대 닉네임보다 별칭을 우선해 목록에 표시한다.
+     */
+    @Transactional
+    public ChatRoomNameUpdateResponse updateRoomName(Long roomId, Long userId, String name) {
+        findRoomForUpdateOrThrow(roomId);
+        ChatRoomMember member = findVisibleMemberForUpdateOrThrow(roomId, userId);
+        member.updateCustomName(name);
+        return ChatRoomNameUpdateResponse.of(roomId, member.getCustomName());
     }
 
     /**
@@ -903,6 +912,16 @@ public class ChatService {
             result.putIfAbsent(roomId, user);
         }
         return result;
+    }
+
+    private String resolveRoomDisplayName(ChatRoomMember member, ChatRoom room, String targetNickname) {
+        if (member.getCustomName() != null && !member.getCustomName().isBlank()) {
+            return member.getCustomName();
+        }
+        if (room.getType() == ChatRoomType.PERSONAL && targetNickname != null && !targetNickname.isBlank()) {
+            return targetNickname;
+        }
+        return room.getName();
     }
 
     private ChatRoomResponse buildCreateRoomResponse(ChatRoom room, Long requesterUserId) {

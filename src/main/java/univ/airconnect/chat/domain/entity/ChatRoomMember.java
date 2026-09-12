@@ -30,6 +30,9 @@ public class ChatRoomMember {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(name = "custom_name", length = 100)
+    private String customName;
+
     @Column(nullable = false)
     private LocalDateTime joinedAt;
 
@@ -57,6 +60,16 @@ public class ChatRoomMember {
             return;
         }
         this.lastReadMessageId = messageId;
+    }
+
+    /**
+     * 참여자 본인에게만 보이는 채팅방 별칭이다.
+     */
+    public void updateCustomName(String customName) {
+        if (customName == null || customName.isBlank()) {
+            throw new IllegalArgumentException("채팅방 이름은 비어 있을 수 없습니다.");
+        }
+        this.customName = customName.trim();
     }
 
     public boolean hasRead(Long messageId) {
