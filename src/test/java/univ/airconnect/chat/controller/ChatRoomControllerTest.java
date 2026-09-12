@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import univ.airconnect.chat.dto.response.ChatParticipantDetailResponse;
 import univ.airconnect.chat.dto.response.ChatParticipantProfileResponse;
+import univ.airconnect.chat.dto.response.ChatRoomNameUpdateResponse;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.response.ApiResponse;
 import univ.airconnect.user.domain.Gender;
@@ -193,5 +194,28 @@ class ChatRoomControllerTest {
         assertThat(response.getBody().getTraceId()).isEqualTo(traceId);
 
         verify(chatService).syncReadStateOnRoomViewed(roomId, currentUserId);
+    }
+
+    @Test
+    void updateRoomName_returnsOnlyTheRequestersUpdatedName() {
+        ChatRoomController controller = new ChatRoomController(chatService);
+        Long roomId = 904L;
+        Long currentUserId = 1L;
+        String traceId = "trace-chat-rename";
+        var requestBody = new univ.airconnect.chat.dto.request.ChatRoomNameUpdateRequest();
+        org.springframework.test.util.ReflectionTestUtils.setField(requestBody, "name", "축제 친구들");
+
+        when(request.getAttribute("traceId")).thenReturn(traceId);
+        when(chatService.updateRoomName(roomId, currentUserId, "축제 친구들"))
+                .thenReturn(ChatRoomNameUpdateResponse.of(roomId, "축제 친구들"));
+
+        ResponseEntity<ApiResponse<ChatRoomNameUpdateResponse>> response =
+                controller.updateRoomName(roomId, currentUserId, requestBody, request);
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getTraceId()).isEqualTo(traceId);
+        assertThat(response.getBody().getData().getRoomId()).isEqualTo(roomId);
+        assertThat(response.getBody().getData().getName()).isEqualTo("축제 친구들");
+        verify(chatService).updateRoomName(roomId, currentUserId, "축제 친구들");
     }
 }

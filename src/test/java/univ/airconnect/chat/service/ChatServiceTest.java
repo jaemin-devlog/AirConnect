@@ -529,6 +529,7 @@ class ChatServiceTest {
         room.updateLastMessage("latest", LocalDateTime.now());
 
         ChatRoomMember myMembership = ChatRoomMember.create(room, me);
+        myMembership.updateCustomName("내가 정한 이름");
         ChatRoomMember otherMembership = ChatRoomMember.create(room, other);
 
         when(chatRoomMemberRepository.findByUser_IdWithRoom(myUserId)).thenReturn(List.of(myMembership));
@@ -539,6 +540,7 @@ class ChatServiceTest {
         List<ChatRoomResponse> response = service.findAllRooms(myUserId);
 
         assertThat(response).hasSize(1);
+        assertThat(response.get(0).getName()).isEqualTo("내가 정한 이름");
         assertThat(response.get(0).getTargetUserId()).isEqualTo(other.getId());
         assertThat(response.get(0).getTargetNickname()).isEqualTo("other");
         assertThat(response.get(0).getTargetStudentNum()).isEqualTo(20230002);
@@ -550,6 +552,46 @@ class ChatServiceTest {
         assertThat(response.get(0).getTargetProfile().getProfile()).isNotNull();
         assertThat(response.get(0).getTargetProfile().getProfile().getMbti()).isEqualTo("ISFP");
         assertThat(response.get(0).getUnreadCount()).isEqualTo(2);
+    }
+
+    @Test
+    void updateRoomName_updatesOnlyCurrentMembersCustomName() {
+        ChatService service = createService();
+        Long userId = 1L;
+        Long roomId = 301L;
+        User user = createUser(userId, "me");
+        ChatRoom room = ChatRoom.create("기본 방 이름", ChatRoomType.GROUP);
+        ReflectionTestUtils.setField(room, "id", roomId);
+        ChatRoomMember member = ChatRoomMember.create(room, user);
+
+        when(chatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, userId))
+                .thenReturn(Optional.of(member));
+
+        var response = service.updateRoomName(roomId, userId, "  축제 운영진  ");
+
+        assertThat(response.getRoomId()).isEqualTo(roomId);
+        assertThat(response.getName()).isEqualTo("축제 운영진");
+        assertThat(member.getCustomName()).isEqualTo("축제 운영진");
+        assertThat(room.getName()).isEqualTo("기본 방 이름");
+    }
+
+    @Test
+    void updateRoomName_rejectsNonMember() {
+        ChatService service = createService();
+        Long roomId = 302L;
+        Long outsiderUserId = 9L;
+        ChatRoom room = ChatRoom.create("비공개 방", ChatRoomType.GROUP);
+        ReflectionTestUtils.setField(room, "id", roomId);
+
+        when(chatRoomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
+        when(chatRoomMemberRepository.findByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, outsiderUserId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateRoomName(roomId, outsiderUserId, "바꾸기"))
+                .isInstanceOf(univ.airconnect.global.error.BusinessException.class)
+                .extracting(ex -> ((univ.airconnect.global.error.BusinessException) ex).getErrorCode())
+                .isEqualTo(univ.airconnect.global.error.ErrorCode.FORBIDDEN);
     }
 
     @Test
