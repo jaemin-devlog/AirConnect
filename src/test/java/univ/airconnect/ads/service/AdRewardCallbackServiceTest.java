@@ -22,6 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -96,6 +97,8 @@ class AdRewardCallbackServiceTest {
                 .isInstanceOf(AdsException.class)
                 .extracting(ex -> ((AdsException) ex).getErrorCode())
                 .isEqualTo(AdsErrorCode.AD_REWARD_INVALID_SIGNATURE);
+        verify(adRewardSessionRepository, never()).findBySessionKeyForUpdate(any());
+        verify(adTicketGrantService, never()).grantFromAdReward(any(), anyInt(), any());
     }
 
     @Test
@@ -123,5 +126,3 @@ class AdRewardCallbackServiceTest {
         verify(adRewardCallbackRepository).save(any());
     }
 }
-
-

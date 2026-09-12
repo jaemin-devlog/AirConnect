@@ -31,6 +31,8 @@ public class CompatibilityScoreCalculator {
     private static final int SMOKING_MAX = 10;
     private static final int RELIGION_MAX = 8;
     private static final int RESIDENCE_MAX = 10;
+    private static final int MATCHING_POINT_COUNT = 1;
+    private static final int CHECK_POINT_COUNT = 1;
 
     public CompatibilityResult calculate(CompatibilityProfile me, CompatibilityProfile target) {
         MbtiCompatibilityTier mbtiTier = MbtiCompatibilityTable.tier(me.mbti(), target.mbti());
@@ -293,7 +295,7 @@ public class CompatibilityScoreCalculator {
     private List<String> topReasons(List<CompatibilityScoreDetail> details) {
         return details.stream()
                 .sorted(Comparator.comparingInt(CompatibilityScoreDetail::getScore).reversed())
-                .limit(3)
+                .limit(MATCHING_POINT_COUNT)
                 .map(CompatibilityScoreDetail::getReason)
                 .toList();
     }
@@ -302,7 +304,7 @@ public class CompatibilityScoreCalculator {
         return details.stream()
                 .sorted(Comparator.comparingDouble(CompatibilityScoreDetail::scoreRatio)
                         .thenComparingInt(CompatibilityScoreDetail::getScore))
-                .limit(2)
+                .limit(CHECK_POINT_COUNT)
                 .map(CompatibilityScoreDetail::getCaution)
                 .toList();
     }

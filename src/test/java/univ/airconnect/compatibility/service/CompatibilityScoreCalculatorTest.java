@@ -42,8 +42,8 @@ class CompatibilityScoreCalculatorTest {
         assertThat(result.getScore()).isEqualTo(100);
         assertThat(result.getGrade()).isEqualTo(CompatibilityGrade.AMAZING);
         assertThat(result.getMbtiTier()).isEqualTo(MbtiCompatibilityTier.IDEAL);
-        assertThat(result.getReasons()).hasSize(3);
-        assertThat(result.getCautions()).hasSize(2);
+        assertThat(result.getReasons()).hasSize(1);
+        assertThat(result.getCautions()).hasSize(1);
     }
 
     @Test

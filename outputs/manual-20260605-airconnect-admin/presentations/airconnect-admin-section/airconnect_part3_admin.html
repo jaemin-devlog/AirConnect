@@ -1,0 +1,2173 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AirConnect Admin 발표 파트</title>
+  <style>
+    @font-face {
+      font-family: "Jua-Regular";
+      src: url("assets/fonts/Jua-Regular.ttf") format("truetype");
+      font-weight: 400 950;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --brand: #F2B300;
+      --brand-2: #FEDF56;
+      --cream: #FFF9E7;
+      --warm: #FFF3CC;
+      --panel: #FFFFFF;
+      --panel-soft: #FFFBF0;
+      --ink: #2A2417;
+      --brown: #7A5A20;
+      --muted: #7F704E;
+      --line: #EED89D;
+      --line-soft: rgba(122, 90, 32, 0.16);
+      --green: #1B8A4A;
+      --danger: #B42318;
+      --shadow: 0 22px 54px rgba(122, 90, 32, 0.14);
+      --soft-shadow: 0 10px 28px rgba(122, 90, 32, 0.09);
+      --font: "Jua-Regular", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      background: #F2E7C0;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--ink);
+      background: var(--cream);
+      overflow-x: hidden;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+
+    h1, h2, h3, h4, p, span, strong, label, div { min-width: 0; }
+    h1, h2, h3, p { margin: 0; letter-spacing: 0; }
+
+    .deck {
+      min-height: 100vh;
+      background: var(--cream);
+    }
+
+    .slide {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      min-height: 720px;
+      padding: 50px 64px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      page-break-after: always;
+      isolation: isolate;
+    }
+
+    .slide::before {
+      content: "";
+      position: absolute;
+      inset: 24px;
+      border: 1px solid rgba(122, 90, 32, 0.10);
+      border-radius: 38px;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    .slide--dark {
+      color: #fff;
+      background:
+        linear-gradient(90deg, rgba(13, 31, 54, 0.50), rgba(13, 31, 54, 0.86)),
+        url("assets/airport_bg.png") center / cover no-repeat;
+    }
+
+    .slide--dark::before { border-color: rgba(255, 255, 255, 0.16); }
+
+    .topbar {
+      position: absolute;
+      top: 32px;
+      left: 64px;
+      right: 64px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      z-index: 10;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 18px;
+      font-weight: 900;
+      color: inherit;
+    }
+
+    .brand-logo {
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      background: var(--brand-2);
+      box-shadow: 0 10px 24px rgba(122, 90, 32, 0.16);
+      overflow: hidden;
+    }
+
+    .brand-logo img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 750;
+    }
+
+    .slide--dark .meta { color: rgba(255,255,255,0.68); }
+
+    .footer {
+      position: absolute;
+      left: 64px;
+      right: 64px;
+      bottom: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 750;
+      z-index: 10;
+    }
+
+    .slide--dark .footer { color: rgba(255,255,255,0.64); }
+
+    h1 {
+      font-size: 74px;
+      line-height: 1.02;
+      font-weight: 950;
+    }
+
+    h2 {
+      font-size: 44px;
+      line-height: 1.08;
+      font-weight: 950;
+    }
+
+    h3 {
+      font-size: 23px;
+      line-height: 1.18;
+      font-weight: 900;
+    }
+
+    .lead {
+      margin-top: 16px;
+      max-width: 820px;
+      color: rgba(42, 36, 23, 0.72);
+      font-size: 20px;
+      line-height: 1.44;
+      font-weight: 650;
+    }
+
+    .slide--dark .lead { color: rgba(255,255,255,0.78); }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      width: fit-content;
+      padding: 10px 15px;
+      border-radius: 999px;
+      background: rgba(242, 179, 0, 0.16);
+      border: 1px solid rgba(242, 179, 0, 0.32);
+      color: var(--brown);
+      font-size: 17px;
+      font-weight: 850;
+    }
+
+    .slide--dark .eyebrow {
+      background: rgba(254, 223, 86, 0.16);
+      border-color: rgba(254, 223, 86, 0.32);
+      color: var(--brand-2);
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--brand);
+      box-shadow: 0 0 0 6px rgba(242, 179, 0, 0.15);
+    }
+
+    .mark {
+      position: relative;
+      z-index: 0;
+      white-space: nowrap;
+    }
+
+    .mark::after {
+      content: "";
+      position: absolute;
+      left: -0.04em;
+      right: -0.04em;
+      bottom: 0.06em;
+      height: 0.34em;
+      border-radius: 999px;
+      background: var(--brand-2);
+      opacity: 0.78;
+      z-index: -1;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 34px;
+      align-items: center;
+      width: 100%;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      width: 100%;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 46px;
+      margin-bottom: 24px;
+    }
+
+    .section-head .lead {
+      max-width: 540px;
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: #fff;
+      border: 1px solid var(--line);
+      color: var(--brown);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .pill--yellow {
+      background: var(--brand);
+      color: #191206;
+      border-color: transparent;
+    }
+
+    .pill--ghost {
+      color: #fff;
+      background: rgba(255,255,255,0.10);
+      border-color: rgba(255,255,255,0.20);
+    }
+
+    .card {
+      min-height: 145px;
+      padding: 20px;
+      border-radius: 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .card--yellow { background: linear-gradient(180deg, #FFF5CF, #FFFFFF); }
+    .card--dark { background: #2A2417; color: #fff; border-color: rgba(255,255,255,0.16); }
+
+    .card p {
+      margin-top: 12px;
+      color: rgba(42, 36, 23, 0.66);
+      font-size: 15px;
+      line-height: 1.42;
+      font-weight: 650;
+    }
+
+    .card--dark p { color: rgba(255,255,255,0.66); }
+
+    .screen {
+      background: #FFFDF6;
+      border: 1px solid var(--line);
+      border-radius: 32px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .screen--login {
+      min-height: 560px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: #fff;
+    }
+
+    .login-left {
+      position: relative;
+      min-height: 560px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      overflow: hidden;
+      background:
+        linear-gradient(rgba(255,255,255,0.56), rgba(255,255,255,0.56)),
+        url("assets/airport_bg.png") center / cover no-repeat;
+    }
+
+    .login-left img {
+      width: 150px;
+      height: auto;
+      object-fit: contain;
+      filter: drop-shadow(0 18px 26px rgba(0,0,0,0.14));
+    }
+
+    .login-left strong {
+      display: block;
+      margin-top: 32px;
+      color: #B37A00;
+      font-size: 56px;
+      line-height: 1.05;
+    }
+
+    .login-left span {
+      display: block;
+      margin-top: 20px;
+      color: var(--brown);
+      font-size: 20px;
+    }
+
+    .login-right {
+      min-height: 560px;
+      display: grid;
+      place-items: center;
+      background: #FFFDF8;
+      padding: 42px;
+    }
+
+    .login-box {
+      width: min(420px, 100%);
+      padding: 34px;
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      background: #fff;
+      box-shadow: var(--soft-shadow);
+    }
+
+    .login-box .brand-logo {
+      width: 76px;
+      height: 76px;
+      border-radius: 20px;
+      margin-bottom: 18px;
+    }
+
+    .login-box h3 { font-size: 38px; }
+
+    .login-box p {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.45;
+    }
+
+    .field {
+      margin-top: 22px;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--brown);
+      font-size: 16px;
+      font-weight: 850;
+    }
+
+    .input {
+      height: 50px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: #EFF4FF;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      color: #111;
+      font-size: 17px;
+      font-weight: 650;
+    }
+
+    .button {
+      min-height: 48px;
+      border: 0;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #F7B900, #E5A100);
+      color: #170F02;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 18px;
+      font-family: var(--font);
+      font-size: 17px;
+      font-weight: 950;
+    }
+
+    .admin-screen {
+      min-height: 545px;
+      background: linear-gradient(180deg, #FFF7DC 0, #FFFDF6 95px);
+      border: 1px solid var(--line);
+      border-radius: 32px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .admin-nav {
+      height: 70px;
+      display: grid;
+      grid-template-columns: 220px 1fr 110px;
+      align-items: center;
+      gap: 18px;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 249, 231, 0.96);
+    }
+
+    .admin-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .admin-logo img {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+    }
+
+    .admin-logo strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .admin-logo span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .nav-tabs {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .tab {
+      height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 15px;
+      border-radius: 999px;
+      color: var(--brown);
+      font-size: 16px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .tab.active {
+      background: #FFF1C8;
+      border: 1px solid var(--line);
+      color: var(--ink);
+    }
+
+    .logout {
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: #fff;
+      color: var(--brown);
+      font-size: 15px;
+      font-weight: 900;
+    }
+
+    .admin-content {
+      padding: 26px 30px 30px;
+    }
+
+    .admin-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 22px;
+      align-items: start;
+      margin-bottom: 20px;
+    }
+
+    .admin-title h3 {
+      font-size: 34px;
+    }
+
+    .admin-title p {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .stat {
+      min-height: 105px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 21px;
+      background: #fff;
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 8px;
+      color: #A87300;
+      font-size: 36px;
+      line-height: 1;
+      font-weight: 950;
+    }
+
+    .dashboard-lower {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .mini-panel {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: #fff;
+    }
+
+    .mini-panel h4,
+    .form-panel h4,
+    .list-panel h4 {
+      margin: 0;
+      font-size: 24px;
+      color: var(--ink);
+    }
+
+    .gender-row {
+      display: grid;
+      grid-template-columns: 70px 1fr 80px;
+      gap: 12px;
+      align-items: center;
+      margin-top: 18px;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    .progress {
+      height: 12px;
+      border-radius: 999px;
+      background: #EFE5C5;
+      overflow: hidden;
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #FFD46B, var(--brand));
+    }
+
+    .rank-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .rank {
+      min-height: 52px;
+      display: grid;
+      grid-template-columns: 54px 1fr 52px;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: #FFFBF0;
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .rank em {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 34px;
+      border-radius: 999px;
+      background: #FFF1C8;
+      color: var(--brown);
+      font-style: normal;
+    }
+
+    .form-panel {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: #fff;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 170px 105px;
+      gap: 10px;
+      align-items: end;
+      margin-top: 18px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #FFFCF2;
+    }
+
+    .select-like,
+    .input-like {
+      height: 50px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      color: rgba(42,36,23,0.72);
+      font-size: 16px;
+      font-weight: 750;
+    }
+
+    .list-panel {
+      margin-top: 14px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: #fff;
+    }
+
+    .table {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    .table-row {
+      min-height: 48px;
+      display: grid;
+      grid-template-columns: 1.2fr 0.7fr 0.7fr 0.7fr;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      border-top: 1px solid rgba(122,90,32,0.12);
+      color: rgba(42,36,23,0.72);
+      font-size: 15px;
+      font-weight: 750;
+    }
+
+    .table-row:first-child {
+      border-top: 0;
+      color: var(--ink);
+      background: #FFF3CC;
+      font-weight: 950;
+    }
+
+    .empty-state {
+      min-height: 230px;
+      margin-top: 14px;
+      border: 1px dashed var(--line);
+      border-radius: 22px;
+      background: #FFFDF6;
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }
+
+    .empty-state img {
+      width: 106px;
+      height: auto;
+      margin-bottom: 12px;
+    }
+
+    .empty-state strong {
+      display: block;
+      font-size: 25px;
+    }
+
+    .empty-state span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .notice-layout {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 16px;
+    }
+
+    .notice-card {
+      min-height: 470px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: #fff;
+    }
+
+    .quick-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .quick-row .pill {
+      background: #FFF7DD;
+      color: #A87300;
+    }
+
+    .textarea-like {
+      min-height: 165px;
+      align-items: start;
+      padding-top: 16px;
+    }
+
+    .preview-box {
+      display: grid;
+      grid-template-columns: 70px 1fr;
+      gap: 14px;
+      align-items: start;
+      margin-top: 18px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: linear-gradient(180deg, #FFF9E7, #FFFDF6);
+    }
+
+    .preview-box img {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+    }
+
+    .preview-message {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #FFF8DC;
+    }
+
+    .preview-message small {
+      display: inline-flex;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #FFF1C8;
+      color: #A87300;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .preview-message strong {
+      display: block;
+      margin-top: 12px;
+      font-size: 22px;
+    }
+
+    .preview-message p {
+      margin-top: 9px;
+      color: rgba(42,36,23,0.72);
+      font-size: 17px;
+      line-height: 1.42;
+    }
+
+    .maintenance-layout {
+      display: grid;
+      grid-template-columns: 1fr 0.72fr;
+      gap: 16px;
+    }
+
+    .status-hero {
+      min-height: 230px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: linear-gradient(135deg, #F2FFF5, #FFFFFF);
+      display: grid;
+      align-content: center;
+    }
+
+    .status-badge {
+      width: fit-content;
+      padding: 8px 13px;
+      border-radius: 999px;
+      background: #E7F7ED;
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 950;
+      margin-bottom: 14px;
+    }
+
+    .status-hero h3 {
+      font-size: 42px;
+    }
+
+    .status-hero p {
+      margin-top: 14px;
+      color: rgba(42,36,23,0.72);
+      font-size: 21px;
+      line-height: 1.44;
+    }
+
+    .preset-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .script-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 14px;
+      width: 100%;
+    }
+
+    .script-step {
+      min-height: 245px;
+      padding: 21px;
+      border-radius: 24px;
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.18);
+    }
+
+    .script-step time {
+      display: inline-flex;
+      padding: 7px 11px;
+      border-radius: 999px;
+      background: var(--brand-2);
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 950;
+    }
+
+    .script-step h3 {
+      margin-top: 18px;
+      color: #fff;
+      font-size: 22px;
+    }
+
+    .script-step p {
+      margin-top: 11px;
+      color: rgba(255,255,255,0.68);
+      font-size: 16px;
+      line-height: 1.42;
+      font-weight: 650;
+    }
+
+    .controls {
+      position: fixed;
+      right: 14px;
+      top: 50%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transform: translateY(-50%);
+      z-index: 100;
+    }
+
+    .control-btn {
+      width: 42px;
+      height: 42px;
+      border: 0;
+      border-radius: 15px;
+      background: rgba(42, 36, 23, 0.86);
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+      box-shadow: 0 12px 24px rgba(42,36,23,0.18);
+    }
+
+    /* Presentation fit pass: keep every mock admin screen inside a 16:9 slide. */
+    .slide {
+      padding: 48px 58px;
+    }
+
+    .topbar {
+      top: 30px;
+      left: 58px;
+      right: 58px;
+      height: 44px;
+    }
+
+    .footer {
+      left: 58px;
+      right: 58px;
+      bottom: 28px;
+      font-size: 13px;
+    }
+
+    .brand { font-size: 18px; }
+    .brand-logo { width: 36px; height: 36px; border-radius: 12px; }
+    .meta { font-size: 14px; }
+
+    h1 { font-size: 68px; line-height: 1.02; }
+    h2 { font-size: 42px; line-height: 1.08; }
+    h3 { font-size: 22px; line-height: 1.18; }
+
+    .lead {
+      margin-top: 14px;
+      font-size: 19px;
+      line-height: 1.42;
+    }
+
+    .eyebrow {
+      padding: 8px 13px;
+      font-size: 15px;
+    }
+
+    .grid-2 { gap: 28px; }
+    .grid-3 { gap: 13px; }
+
+    .section-head {
+      gap: 28px;
+      margin-bottom: 20px;
+    }
+
+    .section-head .lead {
+      max-width: 480px;
+      font-size: 16px;
+      line-height: 1.4;
+    }
+
+    .pill {
+      min-height: 30px;
+      padding: 0 11px;
+      font-size: 12px;
+    }
+
+    .card {
+      min-height: 128px;
+      padding: 18px;
+      border-radius: 20px;
+    }
+
+    .card p {
+      margin-top: 8px;
+      font-size: 14px;
+      line-height: 1.38;
+    }
+
+    .screen { border-radius: 26px; }
+    .screen--login,
+    .login-left,
+    .login-right { min-height: 430px; }
+
+    .login-right { padding: 22px; }
+    .login-left img { width: 104px; }
+    .login-left strong { margin-top: 18px; font-size: 38px; }
+    .login-left span { margin-top: 12px; font-size: 15px; }
+
+    .login-box {
+      width: min(360px, 100%);
+      padding: 22px;
+      border-radius: 24px;
+    }
+
+    .login-box .brand-logo {
+      width: 54px;
+      height: 54px;
+      margin-bottom: 12px;
+    }
+
+    .login-box h3 { font-size: 28px; }
+    .login-box p { margin-top: 10px; font-size: 13px; line-height: 1.38; }
+
+    .field { margin-top: 12px; }
+    .field label { margin-bottom: 6px; font-size: 12px; }
+
+    .input,
+    .input-like,
+    .select-like {
+      height: 38px;
+      padding: 0 11px;
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .button {
+      min-height: 38px;
+      padding: 0 12px;
+      border-radius: 11px;
+      font-size: 13px;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
+    .admin-screen {
+      min-height: 0 !important;
+      border-radius: 26px;
+    }
+
+    .admin-nav {
+      height: 50px !important;
+      grid-template-columns: 158px minmax(0, 1fr) 76px !important;
+      gap: 7px;
+      padding: 0 14px;
+    }
+
+    .admin-logo { gap: 8px; }
+    .admin-logo img { width: 36px; height: 36px; border-radius: 10px; }
+    .admin-logo strong { font-size: 17px; }
+    .admin-logo span { margin-top: 3px; font-size: 10px; }
+
+    .nav-tabs {
+      gap: 3px;
+      overflow: hidden;
+      justify-content: center;
+    }
+
+    .tab {
+      height: 30px;
+      padding: 0 7px;
+      font-size: 11px;
+      max-width: 92px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .logout {
+      height: 30px;
+      font-size: 11px;
+    }
+
+    .admin-content { padding: 14px 18px 18px; }
+
+    .admin-title {
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+
+    .admin-title h3 { font-size: 25px; }
+    .admin-title p { margin-top: 5px; font-size: 12px; line-height: 1.35; }
+
+    .stat-grid { gap: 8px; }
+
+    .stat {
+      min-height: 68px;
+      padding: 11px 13px;
+      border-radius: 16px;
+    }
+
+    .stat span { font-size: 11px; }
+    .stat strong { margin-top: 4px; font-size: 27px; }
+
+    .dashboard-lower {
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .mini-panel,
+    .form-panel,
+    .list-panel,
+    .notice-card {
+      padding: 14px;
+      border-radius: 18px;
+    }
+
+    .mini-panel h4,
+    .form-panel h4,
+    .list-panel h4,
+    .notice-card h4 {
+      font-size: 18px;
+    }
+
+    .gender-row {
+      grid-template-columns: 46px 1fr 62px;
+      gap: 8px;
+      margin-top: 9px;
+      font-size: 11px;
+    }
+
+    .progress { height: 9px; }
+
+    .rank-list {
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .rank {
+      min-height: 34px;
+      grid-template-columns: 34px 1fr 38px;
+      gap: 8px;
+      padding: 0 8px;
+      border-radius: 13px;
+      font-size: 12px;
+    }
+
+    .rank em {
+      width: 28px;
+      height: 24px;
+    }
+
+    .form-row {
+      gap: 8px;
+      margin-top: 9px;
+      padding: 9px;
+      border-radius: 14px;
+    }
+
+    .list-panel { margin-top: 10px; }
+    .table { margin-top: 9px; border-radius: 14px; }
+
+    .table-row {
+      min-height: 34px;
+      gap: 8px;
+      padding: 0 10px;
+      font-size: 11px;
+    }
+
+    .empty-state {
+      min-height: 160px;
+      margin-top: 10px;
+      border-radius: 18px;
+    }
+
+    .empty-state img { width: 72px; margin-bottom: 8px; }
+    .empty-state strong { font-size: 19px; }
+    .empty-state span { margin-top: 6px; font-size: 13px; }
+
+    .notice-layout,
+    .maintenance-layout {
+      gap: 12px;
+    }
+
+    .notice-card { min-height: 0; }
+    .quick-row { gap: 8px; margin-top: 12px; }
+    .textarea-like { min-height: 96px; padding-top: 12px; white-space: normal; }
+
+    .preview-box {
+      grid-template-columns: 52px 1fr;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 16px;
+    }
+
+    .preview-box img {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+    }
+
+    .preview-message {
+      padding: 13px;
+      border-radius: 15px;
+    }
+
+    .preview-message small { font-size: 10px; }
+    .preview-message strong { margin-top: 8px; font-size: 17px; }
+    .preview-message p { margin-top: 6px; font-size: 12px; line-height: 1.35; }
+
+    .status-hero {
+      min-height: 150px;
+      padding: 18px;
+      border-radius: 18px;
+    }
+
+    .status-badge {
+      padding: 6px 10px;
+      margin-bottom: 10px;
+      font-size: 11px;
+    }
+
+    .status-hero h3 { font-size: 31px; }
+    .status-hero p { margin-top: 8px; font-size: 16px; line-height: 1.36; }
+    .preset-row { gap: 8px; margin-top: 12px; }
+
+    .script-grid {
+      gap: 10px;
+    }
+
+    .script-step {
+      min-height: 205px;
+      padding: 16px;
+      border-radius: 20px;
+    }
+
+    .script-step time { font-size: 11px; }
+    .script-step h3 { margin-top: 14px; font-size: 18px; }
+    .script-step p { margin-top: 8px; font-size: 12px; line-height: 1.36; }
+
+    /* Dense slide pass: protect the 16:9 viewport from clipped mock screens. */
+    .slide[data-title="회원 관리"],
+    .slide[data-title="매칭 관리"],
+    .slide[data-title="신고와 티켓 관리"],
+    .slide[data-title="공지 발송"],
+    .slide[data-title="서버 점검 통제"] {
+      justify-content: center;
+    }
+
+    .slide[data-title="회원 관리"] .section-head,
+    .slide[data-title="매칭 관리"] .section-head,
+    .slide[data-title="신고와 티켓 관리"] .section-head,
+    .slide[data-title="공지 발송"] .section-head,
+    .slide[data-title="서버 점검 통제"] .section-head {
+      margin-bottom: 12px;
+    }
+
+    .slide[data-title="회원 관리"] h2,
+    .slide[data-title="매칭 관리"] h2,
+    .slide[data-title="신고와 티켓 관리"] h2,
+    .slide[data-title="공지 발송"] h2,
+    .slide[data-title="서버 점검 통제"] h2 {
+      margin-top: 12px !important;
+      font-size: 34px;
+      line-height: 1.05;
+    }
+
+    .slide[data-title="회원 관리"] .eyebrow,
+    .slide[data-title="매칭 관리"] .eyebrow,
+    .slide[data-title="신고와 티켓 관리"] .eyebrow,
+    .slide[data-title="공지 발송"] .eyebrow,
+    .slide[data-title="서버 점검 통제"] .eyebrow {
+      min-height: 26px;
+      padding: 6px 11px;
+      font-size: 13px;
+    }
+
+    .slide[data-title="회원 관리"] .section-head .lead,
+    .slide[data-title="매칭 관리"] .section-head .lead,
+    .slide[data-title="신고와 티켓 관리"] .section-head .lead,
+    .slide[data-title="공지 발송"] .section-head .lead,
+    .slide[data-title="서버 점검 통제"] .section-head .lead {
+      max-width: 430px;
+      font-size: 13px;
+      line-height: 1.3;
+    }
+
+    .slide[data-title="회원 관리"] .admin-content,
+    .slide[data-title="매칭 관리"] .admin-content,
+    .slide[data-title="신고와 티켓 관리"] .admin-content,
+    .slide[data-title="공지 발송"] .admin-content,
+    .slide[data-title="서버 점검 통제"] .admin-content {
+      padding: 10px 14px 12px;
+    }
+
+    .slide[data-title="회원 관리"] .admin-title,
+    .slide[data-title="매칭 관리"] .admin-title,
+    .slide[data-title="공지 발송"] .admin-title,
+    .slide[data-title="서버 점검 통제"] .admin-title {
+      margin-bottom: 8px;
+    }
+
+    .slide[data-title="회원 관리"] .admin-title h3,
+    .slide[data-title="매칭 관리"] .admin-title h3,
+    .slide[data-title="공지 발송"] .admin-title h3,
+    .slide[data-title="서버 점검 통제"] .admin-title h3 {
+      font-size: 21px;
+    }
+
+    .slide[data-title="회원 관리"] .admin-title p,
+    .slide[data-title="매칭 관리"] .admin-title p,
+    .slide[data-title="공지 발송"] .admin-title p,
+    .slide[data-title="서버 점검 통제"] .admin-title p {
+      margin-top: 3px;
+      font-size: 10px;
+      line-height: 1.25;
+    }
+
+    .slide[data-title="회원 관리"] .stat,
+    .slide[data-title="매칭 관리"] .stat {
+      min-height: 54px;
+      padding: 8px 11px;
+      border-radius: 14px;
+    }
+
+    .slide[data-title="회원 관리"] .stat span,
+    .slide[data-title="매칭 관리"] .stat span {
+      font-size: 10px;
+    }
+
+    .slide[data-title="회원 관리"] .stat strong,
+    .slide[data-title="매칭 관리"] .stat strong {
+      margin-top: 2px;
+      font-size: 23px;
+    }
+
+    .slide[data-title="회원 관리"] .form-panel,
+    .slide[data-title="매칭 관리"] .form-panel,
+    .slide[data-title="신고와 티켓 관리"] .form-panel,
+    .slide[data-title="공지 발송"] .notice-card,
+    .slide[data-title="서버 점검 통제"] .form-panel {
+      padding: 10px;
+      border-radius: 15px;
+    }
+
+    .slide[data-title="회원 관리"] .form-panel h4,
+    .slide[data-title="매칭 관리"] .form-panel h4,
+    .slide[data-title="신고와 티켓 관리"] .form-panel h4,
+    .slide[data-title="공지 발송"] .notice-card h4,
+    .slide[data-title="서버 점검 통제"] .form-panel h4 {
+      font-size: 15px;
+    }
+
+    .slide[data-title="회원 관리"] .form-panel[style],
+    .slide[data-title="매칭 관리"] .form-panel[style],
+    .slide[data-title="신고와 티켓 관리"] .form-panel[style],
+    .slide[data-title="서버 점검 통제"] .form-panel[style] {
+      margin-top: 8px !important;
+    }
+
+    .slide[data-title="회원 관리"] .form-row,
+    .slide[data-title="매칭 관리"] .form-row,
+    .slide[data-title="신고와 티켓 관리"] .form-row,
+    .slide[data-title="공지 발송"] .form-row,
+    .slide[data-title="서버 점검 통제"] .form-row {
+      gap: 6px;
+      margin-top: 6px;
+      padding: 7px;
+      border-radius: 12px;
+    }
+
+    .slide[data-title="회원 관리"] .form-panel p,
+    .slide[data-title="매칭 관리"] .form-panel p {
+      margin-top: 7px !important;
+      font-size: 10px !important;
+      line-height: 1.25;
+    }
+
+    .slide[data-title="회원 관리"] .list-panel,
+    .slide[data-title="매칭 관리"] .list-panel {
+      margin-top: 8px;
+      padding: 10px;
+      border-radius: 15px;
+    }
+
+    .slide[data-title="회원 관리"] .list-panel h4,
+    .slide[data-title="매칭 관리"] .list-panel h4 {
+      font-size: 15px;
+    }
+
+    .slide[data-title="회원 관리"] .table,
+    .slide[data-title="매칭 관리"] .table {
+      margin-top: 6px;
+    }
+
+    .slide[data-title="회원 관리"] .table-row,
+    .slide[data-title="매칭 관리"] .table-row {
+      min-height: 26px;
+      font-size: 9px;
+    }
+
+    .slide[data-title="신고와 티켓 관리"] .grid-2 {
+      gap: 12px;
+    }
+
+    .slide[data-title="신고와 티켓 관리"] .admin-nav {
+      height: 44px !important;
+      grid-template-columns: 146px 1fr !important;
+    }
+
+    .slide[data-title="신고와 티켓 관리"] .admin-logo img {
+      width: 32px;
+      height: 32px;
+    }
+
+    .slide[data-title="신고와 티켓 관리"] .admin-logo strong {
+      font-size: 15px;
+    }
+
+    .slide[data-title="신고와 티켓 관리"] .admin-logo span {
+      font-size: 9px;
+    }
+
+    .slide[data-title="신고와 티켓 관리"] .empty-state {
+      min-height: 96px;
+      margin-top: 8px;
+      border-radius: 14px;
+    }
+
+    .slide[data-title="신고와 티켓 관리"] .empty-state img {
+      width: 46px;
+      margin-bottom: 4px;
+    }
+
+    .slide[data-title="신고와 티켓 관리"] .empty-state strong {
+      font-size: 14px;
+    }
+
+    .slide[data-title="신고와 티켓 관리"] .empty-state span {
+      margin-top: 3px;
+      font-size: 10px;
+    }
+
+    .slide[data-title="공지 발송"] .notice-layout {
+      grid-template-columns: 1fr 0.9fr;
+      gap: 10px;
+    }
+
+    .slide[data-title="공지 발송"] .admin-title {
+      margin-bottom: 5px;
+    }
+
+    .slide[data-title="공지 발송"] .admin-title p {
+      display: none;
+    }
+
+    .slide[data-title="공지 발송"] .quick-row {
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .slide[data-title="공지 발송"] .grid-2[style] {
+      gap: 8px !important;
+      margin-top: 8px !important;
+    }
+
+    .slide[data-title="공지 발송"] .field {
+      margin-top: 8px;
+    }
+
+    .slide[data-title="공지 발송"] .textarea-like {
+      min-height: 44px;
+      padding-top: 8px;
+      line-height: 1.25;
+    }
+
+    .slide[data-title="공지 발송"] .pill-row[style] {
+      margin-top: 8px !important;
+    }
+
+    .slide[data-title="공지 발송"] .notice-card[style] {
+      min-height: 0 !important;
+      margin-top: 8px !important;
+    }
+
+    .slide[data-title="공지 발송"] .card {
+      min-height: 46px !important;
+      margin-top: 8px !important;
+      padding: 10px !important;
+      border-radius: 14px;
+    }
+
+    .slide[data-title="공지 발송"] .card h3 {
+      font-size: 15px !important;
+    }
+
+    .slide[data-title="공지 발송"] .card p {
+      margin-top: 4px;
+      font-size: 10px;
+    }
+
+    .slide[data-title="공지 발송"] .preview-box {
+      grid-template-columns: 42px 1fr;
+      gap: 8px;
+      margin-top: 6px;
+      padding: 9px;
+      border-radius: 14px;
+    }
+
+    .slide[data-title="공지 발송"] .preview-box img {
+      width: 34px;
+      height: 34px;
+    }
+
+    .slide[data-title="공지 발송"] .preview-message {
+      padding: 9px;
+      border-radius: 13px;
+    }
+
+    .slide[data-title="공지 발송"] .preview-message strong {
+      margin-top: 5px;
+      font-size: 14px;
+    }
+
+    .slide[data-title="공지 발송"] .preview-message p {
+      margin-top: 4px;
+      font-size: 10px;
+      line-height: 1.25;
+    }
+
+    .slide[data-title="서버 점검 통제"] .maintenance-layout {
+      grid-template-columns: 1fr 0.76fr;
+      gap: 10px;
+    }
+
+    .slide[data-title="서버 점검 통제"] .status-hero {
+      min-height: 124px;
+      padding: 13px;
+      border-radius: 16px;
+    }
+
+    .slide[data-title="서버 점검 통제"] .status-badge {
+      margin-bottom: 6px;
+      padding: 5px 8px;
+      font-size: 10px;
+    }
+
+    .slide[data-title="서버 점검 통제"] .status-hero h3 {
+      font-size: 25px;
+    }
+
+    .slide[data-title="서버 점검 통제"] .status-hero p {
+      margin-top: 5px;
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .slide[data-title="서버 점검 통제"] .status-hero .grid-2[style] {
+      gap: 8px !important;
+      margin-top: 10px !important;
+    }
+
+    .slide[data-title="서버 점검 통제"] .card {
+      min-height: 50px !important;
+      padding: 10px !important;
+      border-radius: 14px;
+    }
+
+    .slide[data-title="서버 점검 통제"] .card h3 {
+      font-size: 14px !important;
+      margin-top: 4px !important;
+    }
+
+    .slide[data-title="서버 점검 통제"] .card p {
+      font-size: 10px;
+      line-height: 1.25;
+    }
+
+    .slide[data-title="서버 점검 통제"] .preset-row {
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .slide[data-title="서버 점검 통제"] .preview-box {
+      grid-template-columns: 42px 1fr;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 9px;
+      border-radius: 14px;
+    }
+
+    .slide[data-title="서버 점검 통제"] .preview-box img {
+      width: 34px;
+      height: 34px;
+    }
+
+    .slide[data-title="서버 점검 통제"] .preview-message {
+      padding: 9px;
+      border-radius: 13px;
+    }
+
+    .slide[data-title="서버 점검 통제"] .preview-message strong {
+      margin-top: 5px;
+      font-size: 14px;
+    }
+
+    .slide[data-title="서버 점검 통제"] .preview-message p {
+      margin-top: 4px;
+      font-size: 10px;
+      line-height: 1.25;
+    }
+
+    .tab,
+    .logout,
+    .button,
+    .input-like,
+    .select-like,
+    .table-row span,
+    .rank span,
+    .card h3,
+    .preview-message strong {
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 1100px) {
+      .slide {
+        height: auto;
+        min-height: 900px;
+        padding: 52px 46px;
+      }
+      .topbar, .footer { left: 46px; right: 46px; }
+      h1 { font-size: 62px; }
+      h2 { font-size: 44px; }
+      .grid-2, .screen--login, .notice-layout, .maintenance-layout, .dashboard-lower { grid-template-columns: 1fr; }
+      .grid-3, .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .admin-nav { grid-template-columns: 1fr; height: auto; padding: 18px 24px; }
+      .nav-tabs { justify-content: start; overflow: hidden; flex-wrap: wrap; }
+      .logout { display: none; }
+      .script-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media print {
+      @page { size: 16in 9in; margin: 0; }
+      html, body, .deck { background: var(--cream); }
+      .slide {
+        width: 16in;
+        height: 9in;
+        min-height: 9in;
+        padding: 0.58in 0.72in;
+        break-after: page;
+      }
+      .slide::before { inset: 0.24in; }
+      .topbar { top: 0.38in; left: 0.72in; right: 0.72in; }
+      .footer { bottom: 0.38in; left: 0.72in; right: 0.72in; }
+      .controls { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" id="deck">
+    <section class="slide slide--dark" data-title="관리자 파트 표지">
+      <div class="topbar">
+        <div class="brand"><span class="brand-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /></span><span>AirConnect</span></div>
+        <div class="meta">Part 3 · Admin Console</div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <div class="eyebrow">Demo continuation</div>
+          <h1 style="margin-top:24px;"><br><span class="mark">관리자 페이지</span></h1>
+          <p class="lead">사용자 앱에서 발생하는 가입, 매칭, 신고, 티켓, 공지, 점검 흐름을 실제 관리자 화면에서 어떻게 확인하고 조치하는지 보여줍니다.</p>
+          <div class="pill-row" style="margin-top:30px;">
+            <span class="pill pill--yellow">실제 화면 기반</span>
+            <span class="pill pill--ghost">운영 지표</span>
+            <span class="pill pill--ghost">회원 관리</span>
+            <span class="pill pill--ghost">공지·점검</span>
+          </div>
+        </div>
+        <div class="screen screen--login" aria-label="AirConnect 관리자 로그인 화면">
+          <div class="login-left">
+            <div>
+              <img src="assets/character_front.png" alt="AirConnect 캐릭터" />
+              <strong>AirConnect<br>Admin</strong>
+              <span>한서대학교 AirConnect 서비스 운영을 위한 관리자 콘솔</span>
+            </div>
+          </div>
+          <div class="login-right">
+            <div class="login-box">
+              <div class="brand-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /></div>
+              <h3>관리자 로그인</h3>
+              <p>관리자 권한이 있는 계정의 아이디와 비밀번호로 로그인합니다.</p>
+              <div class="field"><label>아이디(이메일)</label><div class="input">관리자 계정</div></div>
+              <div class="field"><label>비밀번호</label><div class="input">••••••••••••••••••</div></div>
+              <div class="button" style="width:100%; margin-top:22px;">로그인</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>도입: 관리자 로그인 화면에서 운영 콘솔로 진입</span><span class="slide-no"></span></div>
+    </section>
+
+    <section class="slide" data-title="관리자 페이지 구성">
+      <div class="topbar">
+        <div class="brand"><span class="brand-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /></span><span>AirConnect Admin</span></div>
+        <div class="meta">Console Map</div>
+      </div>
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Navigation</div>
+          <h2 style="margin-top:20px;">관리자 페이지는<br><span class="mark">7개 운영 화면</span>으로 구성됩니다</h2>
+        </div>
+        <p class="lead">발표에서는 메뉴를 하나씩 누르는 방식으로 실제 서비스 운영 범위를 보여주면 자연스럽습니다.</p>
+      </div>
+      <div class="grid-3">
+        <div class="card card--yellow"><h3>대시보드</h3><p>전체 가입자, 일간 활성 사용자, 매칭 성공, 티켓 지급·사용, 미처리 신고를 확인합니다.</p></div>
+        <div class="card"><h3>회원 관리</h3><p>회원 검색, 상태 확인, 상세 페이지 이동, 이용 제한·정지·탈퇴 상태를 관리합니다.</p></div>
+        <div class="card"><h3>매칭 관리</h3><p>매칭 연결 상태와 참여자 정보를 기준으로 수락, 대기, 거절 흐름을 추적합니다.</p></div>
+        <div class="card"><h3>신고 관리</h3><p>신고 상태와 신고자, 대상자 기준으로 신고를 조회하고 처리 단계를 변경합니다.</p></div>
+        <div class="card"><h3>티켓 관리</h3><p>유저별 티켓 보유량과 변동 내역을 조회하고 강제 지급·회수를 수행합니다.</p></div>
+        <div class="card card--dark"><h3>공지·점검</h3><p>전체 공지 발송과 서버 점검 모드를 관리해 서비스 운영 공지를 빠르게 반영합니다.</p></div>
+      </div>
+      <div class="footer"><span>사진 속 상단 메뉴 구조를 발표용 목차로 변환</span><span class="slide-no"></span></div>
+    </section>
+
+    <section class="slide" data-title="운영 지표 대시보드">
+      <div class="topbar">
+        <div class="brand"><span class="brand-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /></span><span>AirConnect Admin</span></div>
+        <div class="meta">Dashboard</div>
+      </div>
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">운영 지표</div>
+          <h2 style="margin-top:20px;">대시보드에서<br><span class="mark">현재 서비스 상태</span>를 한 번에 확인합니다</h2>
+        </div>
+        <p class="lead">실시간 통계와 위험 신호를 보고 회원, 매칭, 신고, 티켓, 공지 화면으로 빠르게 이동합니다.</p>
+      </div>
+      <div class="admin-screen">
+        <div class="admin-nav">
+          <div class="admin-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /><div><strong>AirConnect</strong><span>관리자 콘솔</span></div></div>
+          <div class="nav-tabs">
+            <div class="tab active">대시보드</div><div class="tab">회원 관리</div><div class="tab">매칭 관리</div><div class="tab">신고 관리</div><div class="tab">티켓 관리</div><div class="tab">공지 발송</div><div class="tab">서버 점검</div>
+          </div>
+          <div class="logout">로그아웃</div>
+        </div>
+        <div class="admin-content">
+          <div class="admin-title"><div><h3>운영 지표</h3><p>실시간 운영 통계를 확인하고 핵심 관리 화면으로 이동합니다.</p></div><div class="button">새로고침</div></div>
+          <div class="stat-grid">
+            <div class="stat"><span>전체 가입자</span><strong>11</strong></div>
+            <div class="stat"><span>일간 활성 사용자</span><strong>3</strong></div>
+            <div class="stat"><span>매칭 성공 누적</span><strong>8</strong></div>
+            <div class="stat"><span>누적 티켓 지급</span><strong>327</strong></div>
+            <div class="stat"><span>누적 티켓 사용</span><strong>222</strong></div>
+            <div class="stat"><span>미처리 신고</span><strong>0</strong></div>
+          </div>
+          <div class="dashboard-lower">
+            <div class="mini-panel">
+              <h4>성비 통계</h4>
+              <div class="gender-row"><span>남성</span><div class="progress"><span style="width:80%"></span></div><strong>8명 · 80%</strong></div>
+              <div class="gender-row"><span>여성</span><div class="progress"><span style="width:20%"></span></div><strong>2명 · 20%</strong></div>
+              <div class="gender-row"><span>미가입</span><div class="progress"><span style="width:9%; background:#C4B27E;"></span></div><strong>1명 · 9%</strong></div>
+            </div>
+            <div class="mini-panel">
+              <h4>요청 많이 받은 학과</h4>
+              <div class="rank-list">
+                <div class="rank"><em>#1</em><span>항공소프트웨어공학과</span><strong>8회</strong></div>
+                <div class="rank"><em>#2</em><span>방사선학과</span><strong>1회</strong></div>
+                <div class="rank"><em>#3</em><span>항공교통물류학과</span><strong>1회</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>핵심 멘트: 서비스 규모, 매칭 성과, 신고 위험을 첫 화면에서 확인</span><span class="slide-no"></span></div>
+    </section>
+
+    <section class="slide" data-title="회원 관리">
+      <div class="topbar">
+        <div class="brand"><span class="brand-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /></span><span>AirConnect Admin</span></div>
+        <div class="meta">Members</div>
+      </div>
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">회원 목록</div>
+          <h2 style="margin-top:20px;">회원 관리는<br><span class="mark">검색과 상태 필터</span>가 중심입니다</h2>
+        </div>
+        <p class="lead">이름, 닉네임, 이메일, socialId, 학과로 검색하고 정상, 이용 제한, 정지, 탈퇴 상태를 빠르게 좁혀 봅니다.</p>
+      </div>
+      <div class="admin-screen">
+        <div class="admin-nav">
+          <div class="admin-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /><div><strong>AirConnect</strong><span>관리자 콘솔</span></div></div>
+          <div class="nav-tabs">
+            <div class="tab">대시보드</div><div class="tab active">회원 관리</div><div class="tab">매칭 관리</div><div class="tab">신고 관리</div><div class="tab">티켓 관리</div><div class="tab">공지 발송</div><div class="tab">서버 점검</div>
+          </div>
+          <div class="logout">로그아웃</div>
+        </div>
+        <div class="admin-content">
+          <div class="admin-title"><div><h3>회원 목록</h3><p>유저 검색, 상태 확인, 상세 페이지 이동 및 제재 작업을 관리합니다.</p></div></div>
+          <div class="stat-grid">
+            <div class="stat"><span>전체 조회 결과</span><strong>18</strong><span>현재 필터 기준</span></div>
+            <div class="stat"><span>정상</span><strong>17</strong><span>현재 페이지 기준</span></div>
+            <div class="stat"><span>탈퇴</span><strong>1</strong><span>현재 페이지 기준</span></div>
+          </div>
+          <div class="form-panel" style="margin-top:14px;">
+            <h4>조회 필터</h4>
+            <div class="form-row">
+              <div><div class="field" style="margin-top:0;"><label>검색어</label><div class="input-like">이름, 닉네임, 이메일, socialId, 학과</div></div></div>
+              <div><div class="field" style="margin-top:0;"><label>상태</label><div class="select-like">전체</div></div></div>
+              <div class="button">조회</div>
+            </div>
+            <p style="margin-top:14px; color:var(--muted); font-size:16px;">검색은 이름, 닉네임, 이메일, socialId, 학과 기준으로 동작합니다.</p>
+          </div>
+          <div class="list-panel">
+            <h4>회원 목록</h4>
+            <div class="table">
+              <div class="table-row"><span>회원</span><span>학과</span><span>상태</span><span>관리</span></div>
+              <div class="table-row"><span>민수 · user@office.hanseo.ac.kr</span><span>컴퓨터공학과</span><span>정상</span><span>상세 보기</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>설명 포인트: 검색어와 상태를 조합해 회원 목록을 빠르게 좁혀 보기</span><span class="slide-no"></span></div>
+    </section>
+
+    <section class="slide" data-title="매칭 관리">
+      <div class="topbar">
+        <div class="brand"><span class="brand-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /></span><span>AirConnect Admin</span></div>
+        <div class="meta">Matchings</div>
+      </div>
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">매칭 목록</div>
+          <h2 style="margin-top:20px;">매칭 관리는<br><span class="mark">연결 상태와 사용자 ID</span>로 추적합니다</h2>
+        </div>
+        <p class="lead">가입부터 기능 활용까지 이어진 뒤, 실제 요청이 수락·대기·거절 중 어디에 있는지 확인하는 화면입니다.</p>
+      </div>
+      <div class="admin-screen">
+        <div class="admin-nav">
+          <div class="admin-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /><div><strong>AirConnect</strong><span>관리자 콘솔</span></div></div>
+          <div class="nav-tabs">
+            <div class="tab">대시보드</div><div class="tab">회원 관리</div><div class="tab active">매칭 관리</div><div class="tab">신고 관리</div><div class="tab">티켓 관리</div><div class="tab">공지 발송</div><div class="tab">서버 점검</div>
+          </div>
+          <div class="logout">로그아웃</div>
+        </div>
+        <div class="admin-content">
+          <div class="admin-title"><div><h3>매칭 목록</h3><p>매칭 연결 상태와 참여자 정보를 추적합니다.</p></div></div>
+          <div class="stat-grid">
+            <div class="stat"><span>전체 조회 결과</span><strong>12</strong></div>
+            <div class="stat"><span>수락</span><strong>8</strong></div>
+            <div class="stat"><span>대기</span><strong>3</strong></div>
+          </div>
+          <div class="form-panel" style="margin-top:14px;">
+            <h4>조회 필터</h4>
+            <div class="form-row">
+              <div><div class="field" style="margin-top:0;"><label>매칭 상태</label><div class="select-like">전체</div></div></div>
+              <div><div class="field" style="margin-top:0;"><label>사용자 ID</label><div class="input-like">예: 12</div></div></div>
+              <div class="button">조회</div>
+            </div>
+            <p style="margin-top:14px; color:var(--muted); font-size:16px;">상태와 특정 사용자를 기준으로 매칭 흐름을 좁혀 볼 수 있습니다.</p>
+          </div>
+          <div class="list-panel">
+            <h4>사용자 검색</h4>
+            <div class="form-row" style="grid-template-columns:1fr 130px;">
+              <div class="input-like">이름/닉네임/이메일/학과/학번</div>
+              <div class="button">사용자 검색</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>핵심 멘트: 매칭 흐름이 막혔을 때 상태와 참여자 기준으로 원인을 확인</span><span class="slide-no"></span></div>
+    </section>
+
+    <section class="slide" data-title="신고와 티켓 관리">
+      <div class="topbar">
+        <div class="brand"><span class="brand-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /></span><span>AirConnect Admin</span></div>
+        <div class="meta">Reports & Tickets</div>
+      </div>
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Safety & mileage</div>
+          <h2 style="margin-top:20px;">신고와 티켓은<br><span class="mark">운영 조치 화면</span>입니다</h2>
+        </div>
+        <p class="lead">신고는 접수·검토·해결·기각 단계로 관리하고, 티켓은 사용자별 보유량과 변동 내역을 조회합니다.</p>
+      </div>
+      <div class="grid-2">
+        <div class="admin-screen" style="min-height:545px;">
+          <div class="admin-nav" style="grid-template-columns:180px 1fr; height:62px;">
+            <div class="admin-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /><div><strong>신고 관리</strong><span>신고 상태 확인</span></div></div>
+            <div class="nav-tabs"><div class="tab active">신고 관리</div></div>
+          </div>
+          <div class="admin-content">
+            <div class="form-panel">
+              <h4>신고 필터</h4>
+              <div class="form-row">
+                <div><div class="field" style="margin-top:0;"><label>신고 상태</label><div class="select-like">전체</div></div></div>
+                <div><div class="field" style="margin-top:0;"><label>신고자 ID</label><div class="input-like">예: 12</div></div></div>
+                <div class="button">조회</div>
+              </div>
+            </div>
+            <div class="form-panel" style="margin-top:14px;">
+              <h4>사용자 검색</h4>
+              <div class="form-row" style="grid-template-columns:1fr 140px;">
+                <div class="input-like">예: 민수, 20231234, user@office.hanseo.ac.kr</div>
+                <div class="button">사용자 검색</div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <div>
+                <img src="assets/character_plane.png" alt="비행기 캐릭터" />
+                <strong>신고 데이터가 없습니다.</strong>
+                <span>필터를 변경하거나 새로운 신고를 기다려 주세요.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="admin-screen" style="min-height:545px;">
+          <div class="admin-nav" style="grid-template-columns:180px 1fr; height:62px;">
+            <div class="admin-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /><div><strong>티켓 관리</strong><span>보유량과 변동 내역</span></div></div>
+            <div class="nav-tabs"><div class="tab active">티켓 관리</div></div>
+          </div>
+          <div class="admin-content">
+            <div class="form-panel">
+              <h4>티켓 조회</h4>
+              <div class="form-row" style="grid-template-columns:1fr 120px;">
+                <div><div class="field" style="margin-top:0;"><label>사용자 ID</label><div class="input-like">예: 12</div></div></div>
+                <div class="button">조회</div>
+              </div>
+            </div>
+            <div class="form-panel" style="margin-top:14px;">
+              <h4>강제 지급 / 회수</h4>
+              <div class="form-row" style="grid-template-columns:160px 1fr 120px;">
+                <div class="input-like">예: 3 또는 -2</div>
+                <div class="input-like">예: 이벤트 보상 지급</div>
+                <div class="button">조정 실행</div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <div>
+                <img src="assets/character_plane.png" alt="비행기 캐릭터" />
+                <strong>티켓 변동 내역</strong>
+                <span>조회 후 유저의 지급·사용·조정 이력이 표시됩니다.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>설명 포인트: 신고는 안전 운영, 티켓은 서비스 경제 관리 화면으로 설명</span><span class="slide-no"></span></div>
+    </section>
+
+    <section class="slide" data-title="공지 발송">
+      <div class="topbar">
+        <div class="brand"><span class="brand-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /></span><span>AirConnect Admin</span></div>
+        <div class="meta">Notice Broadcast</div>
+      </div>
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">전체 공지 발송</div>
+          <h2 style="margin-top:20px;">공지 화면은<br><span class="mark">작성, 대상 선택, 미리보기</span>가 핵심입니다</h2>
+        </div>
+        <p class="lead">점검 안내, 이벤트 안내, 정책 공지를 빠르게 작성하고 정상 회원 또는 삭제 제외 전체 대상에게 발송합니다.</p>
+      </div>
+      <div class="admin-screen">
+        <div class="admin-nav">
+          <div class="admin-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /><div><strong>AirConnect</strong><span>관리자 콘솔</span></div></div>
+          <div class="nav-tabs">
+            <div class="tab">대시보드</div><div class="tab">회원 관리</div><div class="tab">매칭 관리</div><div class="tab">신고 관리</div><div class="tab">티켓 관리</div><div class="tab active">공지 발송</div><div class="tab">서버 점검</div>
+          </div>
+          <div class="logout">로그아웃</div>
+        </div>
+        <div class="admin-content">
+          <div class="admin-title"><div><h3>전체 공지 발송</h3><p>발송 대상과 이동 링크를 정리해서 한 번에 공지를 보낼 수 있습니다.</p></div></div>
+          <div class="notice-layout">
+            <div class="notice-card">
+              <h4>공지 내용 작성</h4>
+              <div class="quick-row"><span class="pill">점검 안내</span><span class="pill">이벤트 안내</span><span class="pill">정책 공지</span></div>
+              <div class="grid-2" style="gap:14px; margin-top:18px;">
+                <div class="field"><label>제목</label><div class="input-like">예: 서버 점검 안내</div></div>
+                <div class="field"><label>딥링크 (선택)</label><div class="input-like">예: airconnect://notice/maintenance</div></div>
+              </div>
+              <div class="field"><label>내용</label><div class="input-like textarea-like">예: 오늘 23시부터 23시 30분까지 점검이 진행됩니다.</div></div>
+              <div class="pill-row" style="margin-top:16px;"><span class="pill">제목 0자</span><span class="pill">내용 0자</span><span class="pill">딥링크 없음</span></div>
+            </div>
+            <div>
+              <div class="notice-card" style="min-height:180px;">
+                <h4>발송 대상</h4>
+                <div class="card" style="min-height:70px; margin-top:16px; padding:18px;"><h3 style="font-size:21px;">활성 사용자만</h3><p>현재 정상 상태 회원만 전송</p></div>
+                <div class="card" style="min-height:70px; margin-top:12px; padding:18px;"><h3 style="font-size:21px;">삭제 제외 전체</h3><p>탈퇴 회원을 제외한 전체 회원 전송</p></div>
+              </div>
+              <div class="notice-card" style="min-height:245px; margin-top:16px;">
+                <h4>미리보기</h4>
+                <div class="preview-box">
+                  <img src="assets/character_front.png" alt="AirConnect 캐릭터" />
+                  <div class="preview-message"><small>AirConnect 공지</small><strong>공지 제목이 여기에 표시됩니다.</strong><p>공지 내용을 입력하면 이 영역에서 미리 확인할 수 있습니다.</p><p style="color:#A87300;">연결 이동 없음</p></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>핵심 멘트: 앱 사용자에게 운영 메시지를 즉시 전달하는 화면</span><span class="slide-no"></span></div>
+    </section>
+
+    <section class="slide" data-title="서버 점검 통제">
+      <div class="topbar">
+        <div class="brand"><span class="brand-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /></span><span>AirConnect Admin</span></div>
+        <div class="meta">Maintenance</div>
+      </div>
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">서버 점검 통제</div>
+          <h2 style="margin-top:20px;">점검 화면은<br><span class="mark">앱 API 차단과 안내 문구</span>를 관리합니다</h2>
+        </div>
+        <p class="lead">정상 운영과 점검 모드를 전환하고, 사용자에게 노출될 제목과 문구를 운영자가 직접 반영합니다.</p>
+      </div>
+      <div class="admin-screen">
+        <div class="admin-nav">
+          <div class="admin-logo"><img src="assets/app_icon.png" alt="AirConnect 아이콘" /><div><strong>AirConnect</strong><span>관리자 콘솔</span></div></div>
+          <div class="nav-tabs">
+            <div class="tab">대시보드</div><div class="tab">회원 관리</div><div class="tab">매칭 관리</div><div class="tab">신고 관리</div><div class="tab">티켓 관리</div><div class="tab">공지 발송</div><div class="tab active">서버 점검</div>
+          </div>
+          <div class="logout">로그아웃</div>
+        </div>
+        <div class="admin-content">
+          <div class="admin-title"><div><h3>서버 점검 통제</h3><p>일반 앱 API 차단 여부와 점검 문구를 운영 화면에서 즉시 관리합니다.</p></div><div class="button">상태 새로고침</div></div>
+          <div class="maintenance-layout">
+            <div>
+              <div class="status-hero">
+                <div class="status-badge">정상 운영</div>
+                <h3>서버 점검 중</h3>
+                <p>더 나은 서비스를 위해 점검 중입니다. 잠시 후 다시 시도해 주세요.</p>
+                <div class="grid-2" style="gap:14px; margin-top:22px;">
+                  <div class="card" style="min-height:74px; padding:16px;"><p style="margin:0;">점검 시작</p><h3 style="font-size:20px; margin-top:8px;">-</h3></div>
+                  <div class="card" style="min-height:74px; padding:16px;"><p style="margin:0;">마지막 저장</p><h3 style="font-size:20px; margin-top:8px;">2026. 06. 05. 오전 05:50</h3></div>
+                </div>
+              </div>
+              <div class="form-panel" style="margin-top:16px;">
+                <h4>점검 설정</h4>
+                <div class="grid-2" style="gap:14px; margin-top:18px;">
+                  <div class="card" style="min-height:90px; padding:18px;"><h3 style="font-size:21px;">정상 운영</h3><p>일반 앱 API를 정상 허용합니다.</p></div>
+                  <div class="card" style="min-height:90px; padding:18px;"><h3 style="font-size:21px;">점검 모드</h3><p>일반 앱 API는 503으로 차단됩니다.</p></div>
+                </div>
+                <div class="preset-row"><span class="pill">긴급 점검</span><span class="pill">정기 점검</span><span class="pill">배포 반영</span></div>
+              </div>
+            </div>
+            <div>
+              <div class="form-panel">
+                <h4>최근 반영 정보</h4>
+                <div class="grid-2" style="gap:14px; margin-top:18px;">
+                  <div class="card" style="min-height:80px; padding:16px;"><p style="margin:0;">현재 모드</p><h3 style="font-size:21px; margin-top:8px;">정상 운영</h3></div>
+                  <div class="card" style="min-height:80px; padding:16px;"><p style="margin:0;">수정 관리자 ID</p><h3 style="font-size:21px; margin-top:8px;">-</h3></div>
+                </div>
+              </div>
+              <div class="form-panel" style="margin-top:16px;">
+                <h4>문구 미리보기</h4>
+                <div class="preview-box">
+                  <img src="assets/character_front.png" alt="AirConnect 캐릭터" />
+                  <div class="preview-message"><small>정상 운영 안내</small><strong>서버 점검 중</strong><p>더 나은 서비스를 위해 점검 중입니다. 잠시 후 다시 시도해 주세요.</p><p style="color:#A87300;">일반 앱 API가 정상적으로 허용됩니다.</p></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>마무리: 운영자가 서비스 접근 상태까지 직접 통제 가능</span><span class="slide-no"></span></div>
+    </section>
+  </main>
+
+  <div class="controls" aria-label="presentation controls">
+    <button class="control-btn" type="button" id="prev" aria-label="이전 슬라이드">‹</button>
+    <button class="control-btn" type="button" id="next" aria-label="다음 슬라이드">›</button>
+  </div>
+
+  <script>
+    const slides = [...document.querySelectorAll('.slide')];
+    const params = new URLSearchParams(window.location.search);
+    const focusSlide = Number(params.get('focus'));
+    if (Number.isInteger(focusSlide) && focusSlide >= 1 && focusSlide <= slides.length) {
+      document.documentElement.style.scrollBehavior = 'auto';
+      slides.forEach((slide, index) => {
+        slide.style.display = index + 1 === focusSlide ? 'flex' : 'none';
+      });
+    }
+    const counters = [...document.querySelectorAll('.slide-no')];
+    counters.forEach((counter, index) => {
+      counter.textContent = String(index + 1).padStart(2, '0') + ' / ' + String(slides.length).padStart(2, '0');
+    });
+
+    const requestedSlide = Number(params.get('slide'));
+    if (Number.isInteger(requestedSlide) && requestedSlide >= 1 && requestedSlide <= slides.length) {
+      document.documentElement.style.scrollBehavior = 'auto';
+      window.scrollTo(0, slides[requestedSlide - 1].offsetTop);
+      requestAnimationFrame(() => {
+        document.documentElement.style.scrollBehavior = '';
+      });
+    }
+
+    if (new URLSearchParams(window.location.search).get('metrics') === '1') {
+      requestAnimationFrame(() => {
+        const viewport = { width: window.innerWidth, height: window.innerHeight };
+        const results = slides.map((slide, index) => {
+          const slideRect = slide.getBoundingClientRect();
+          const offenders = [...slide.querySelectorAll('*')]
+            .filter((el) => !el.closest('.footer') && !el.classList.contains('slide-no'))
+            .map((el) => {
+              const rect = el.getBoundingClientRect();
+              const text = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 70);
+              return {
+                tag: el.tagName.toLowerCase(),
+                cls: String(el.className || ''),
+                text,
+                left: Math.round(rect.left - slideRect.left),
+                right: Math.round(rect.right - slideRect.left),
+                top: Math.round(rect.top - slideRect.top),
+                bottom: Math.round(rect.bottom - slideRect.top),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              };
+            })
+            .filter((box) => {
+              if (box.width <= 2 || box.height <= 2) return false;
+              const outsideX = box.left < -2 || box.right > slideRect.width + 2;
+              const outsideY = box.top < -2 || box.bottom > slideRect.height - 46;
+              return outsideX || outsideY;
+            })
+            .slice(0, 10);
+          return {
+            slide: index + 1,
+            title: slide.dataset.title,
+            width: Math.round(slideRect.width),
+            height: Math.round(slideRect.height),
+            offenders,
+          };
+        });
+        document.body.innerHTML = '<pre id="metrics"></pre>';
+        document.getElementById('metrics').textContent = JSON.stringify({ viewport, results }, null, 2);
+      });
+    }
+
+    function currentIndex() {
+      const y = window.scrollY;
+      let index = 0;
+      let min = Infinity;
+      slides.forEach((slide, i) => {
+        const diff = Math.abs(slide.offsetTop - y);
+        if (diff < min) { min = diff; index = i; }
+      });
+      return index;
+    }
+
+    function goTo(index) {
+      const safe = Math.max(0, Math.min(slides.length - 1, index));
+      slides[safe].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    document.getElementById('prev').addEventListener('click', () => goTo(currentIndex() - 1));
+    document.getElementById('next').addEventListener('click', () => goTo(currentIndex() + 1));
+
+    window.addEventListener('keydown', (event) => {
+      const nextKeys = ['ArrowRight', 'ArrowDown', 'PageDown', ' '];
+      const prevKeys = ['ArrowLeft', 'ArrowUp', 'PageUp'];
+      if (nextKeys.includes(event.key)) { event.preventDefault(); goTo(currentIndex() + 1); }
+      if (prevKeys.includes(event.key)) { event.preventDefault(); goTo(currentIndex() - 1); }
+      if (event.key.toLowerCase() === 'home') goTo(0);
+      if (event.key.toLowerCase() === 'end') goTo(slides.length - 1);
+    });
+  </script>
+</body>
+</html>
