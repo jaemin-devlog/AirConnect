@@ -26,6 +26,11 @@ spring:
         enabled: ${REDIS_SSL_ENABLED:false}
 
 app:
+  links:
+    android-package-name: ${APP_LINK_ANDROID_PACKAGE_NAME:org.airconnect.hsu}
+    android-sha256-cert-fingerprints: ${APP_LINK_ANDROID_SHA256_CERT_FINGERPRINTS:}
+    ios-team-id: ${APP_LINK_IOS_TEAM_ID:${APPLE_TEAM_ID:${TEAM_ID:}}}
+    ios-bundle-id: ${APP_LINK_IOS_BUNDLE_ID:${BUNDLE_ID:}}
   statistics:
     realtime-interval-ms: ${STATISTICS_REALTIME_INTERVAL_MS:60000}
     realtime-initial-delay-ms: ${STATISTICS_REALTIME_INITIAL_DELAY_MS:1000}

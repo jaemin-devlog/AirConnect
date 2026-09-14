@@ -60,6 +60,13 @@ public class SecurityConfig {
                         // 인증 관련
                         .requestMatchers("/api/v1/auth/**").permitAll()
 
+                        // 앱 설치 여부에 따라 스토어 또는 앱으로 연결되는 공개 초대 링크
+                        .requestMatchers(HttpMethod.GET,
+                                "/join",
+                                "/.well-known/assetlinks.json",
+                                "/.well-known/apple-app-site-association"
+                        ).permitAll()
+
                         .requestMatchers("/api/v1/maintenance").permitAll()
                         .requestMatchers("/api/v1/statistics/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/departments").permitAll()
