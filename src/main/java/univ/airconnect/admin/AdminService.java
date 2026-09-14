@@ -75,7 +75,10 @@ public class AdminService {
                                                                   Integer size,
                                                                   UserStatus status,
                                                                   String keyword) {
-        Pageable pageable = PageRequest.of(safePage(page), safeSize(size));
+        Sort sort = status == UserStatus.DELETED
+                ? Sort.by(Sort.Order.desc("deletedAt"), Sort.Order.desc("id"))
+                : Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+        Pageable pageable = PageRequest.of(safePage(page), safeSize(size), sort);
         Page<User> result = userRepository.searchForAdmin(status, normalizeKeyword(keyword), pageable);
         Page<AdminDtos.UserSummary> mapped = result.map(this::toUserSummary);
         return AdminDtos.PageResponse.from(mapped);
@@ -282,6 +285,9 @@ public class AdminService {
         User user = userRepository.findByIdForTicketUpdate(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
         String reason = trimToNull(request.reason());
+        if (request.action() == AdminRequests.UserActionType.REACTIVATE && reason == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "복구 사유를 입력해 주세요.");
+        }
         switch (request.action()) {
             case SUSPEND -> {
                 user.suspend(request.until(), reason);
@@ -307,13 +313,13 @@ public class AdminService {
             case DELETE -> userService.deleteAccount(userId, null, null);
             case REACTIVATE -> {
                 if (user.getStatus() == UserStatus.DELETED) {
-                    if (user.isEmailProvider()) {
+                    if (!user.canRestoreDeletedAccount()) {
                         throw new BusinessException(
                                 ErrorCode.INVALID_REQUEST,
-                                "이메일 로그인 탈퇴 계정은 비밀번호가 삭제되어 복구할 수 없습니다."
+                                "과거 탈퇴 처리로 비밀번호가 이미 삭제된 이메일 계정은 자동 복구할 수 없습니다."
                         );
                     }
-                    user.restoreDeletedSocialAccount();
+                    user.restoreDeletedAccount();
                 } else {
                     user.reactivate();
                 }
@@ -554,6 +560,8 @@ public class AdminService {
                 deriveSchoolName(user.getPrimaryEmail()),
                 user.getDeptName(),
                 user.getNickname(),
+                user.getName(),
+                user.getUserProfile() != null ? user.getUserProfile().getProfileImagePath() : null,
                 user.getRole(),
                 user.getStatus(),
                 user.getOnboardingStatus(),
@@ -561,6 +569,7 @@ public class AdminService {
                 user.getTickets(),
                 user.getCreatedAt(),
                 user.getLastActiveAt(),
+                user.getDeletedAt(),
                 user.isMatchingRestricted()
         );
     }
@@ -588,6 +597,8 @@ public class AdminService {
                 user.getCreatedAt(),
                 user.getLastActiveAt(),
                 user.getDeletedAt(),
+                user.canRestoreDeletedAccount(),
+                hasRetainedAccountData(user),
                 user.getSuspendedUntil(),
                 user.getRestrictedAt(),
                 user.getRestrictedUntil(),
@@ -599,6 +610,30 @@ public class AdminService {
                 loadTicketUsageHistories(user.getId()),
                 loadApiUsageHistories(user.getId())
         );
+    }
+
+    private boolean hasRetainedAccountData(User user) {
+        if (trimToNull(user.getName()) != null
+                || trimToNull(user.getNickname()) != null
+                || trimToNull(user.getEmail()) != null
+                || trimToNull(user.getVerifiedSchoolEmail()) != null
+                || trimToNull(user.getDeptName()) != null
+                || user.getStudentNum() != null) {
+            return true;
+        }
+        UserProfile profile = user.getUserProfile();
+        return profile != null
+                && (profile.getHeight() != null
+                || profile.getAge() != null
+                || trimToNull(profile.getMbti()) != null
+                || trimToNull(profile.getSmoking()) != null
+                || profile.getGender() != null
+                || profile.getMilitary() != null
+                || trimToNull(profile.getReligion()) != null
+                || trimToNull(profile.getResidence()) != null
+                || trimToNull(profile.getIntro()) != null
+                || trimToNull(profile.getInstagram()) != null
+                || trimToNull(profile.getProfileImagePath()) != null);
     }
 
     private AdminDtos.UserProfileDetail toUserProfileDetail(UserProfile profile) {

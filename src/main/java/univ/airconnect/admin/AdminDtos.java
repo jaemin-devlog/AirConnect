@@ -51,6 +51,8 @@ public final class AdminDtos {
             String schoolName,
             String deptName,
             String nickname,
+            String name,
+            String profileImagePath,
             UserRole role,
             UserStatus status,
             OnboardingStatus onboardingStatus,
@@ -58,6 +60,7 @@ public final class AdminDtos {
             Integer tickets,
             LocalDateTime createdAt,
             LocalDateTime lastActiveAt,
+            LocalDateTime deletedAt,
             boolean matchingRestricted
     ) {
     }
@@ -84,6 +87,8 @@ public final class AdminDtos {
             LocalDateTime createdAt,
             LocalDateTime lastActiveAt,
             LocalDateTime deletedAt,
+            boolean restoreAvailable,
+            boolean retainedDataAvailable,
             LocalDateTime suspendedUntil,
             LocalDateTime restrictedAt,
             LocalDateTime restrictedUntil,

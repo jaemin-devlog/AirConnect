@@ -246,10 +246,11 @@ class AdminServiceTest {
     }
 
     @Test
-    void applyUserAction_reactivateDeletedSocialAccount_restoresOnlyLoginIdentity() {
+    void applyUserAction_reactivateDeletedSocialAccount_restoresRetainedAccount() {
         User user = user(3L, 7);
         String retainedSocialId = user.getSocialId();
-        user.anonymizeForDeletion();
+        ReflectionTestUtils.setField(user, "name", "보존된 이름");
+        ReflectionTestUtils.setField(user, "nickname", "보존된 별명");
         user.markDeleted();
         when(userRepository.findById(3L)).thenReturn(Optional.of(user));
         when(userRepository.findByIdForTicketUpdate(3L)).thenReturn(Optional.of(user));
@@ -265,23 +266,25 @@ class AdminServiceTest {
         );
 
         assertThat(response.status()).isEqualTo(UserStatus.ACTIVE);
-        assertThat(response.onboardingStatus()).isEqualTo(OnboardingStatus.BASIC);
+        assertThat(response.onboardingStatus()).isEqualTo(OnboardingStatus.FULL);
         assertThat(response.deletedAt()).isNull();
-        assertThat(response.email()).isNull();
-        assertThat(response.nickname()).isNull();
+        assertThat(response.email()).isEqualTo("u3@airconnect.test");
+        assertThat(response.name()).isEqualTo("보존된 이름");
+        assertThat(response.nickname()).isEqualTo("보존된 별명");
         assertThat(user.getSocialId()).isEqualTo(retainedSocialId);
         assertThat(user.getTickets()).isEqualTo(7);
     }
 
     @Test
-    void applyUserAction_reactivateDeletedEmailAccount_isRejectedBecausePasswordWasDeleted() {
+    void applyUserAction_reactivateDeletedEmailAccount_restoresWhenPasswordIsRetained() {
         User user = User.createEmailUser("withdrawn@example.test", "password-hash");
         ReflectionTestUtils.setField(user, "id", 4L);
-        user.anonymizeForDeletion();
+        user.completeSignUp("이름", "별명", 20260004, "학과");
         user.markDeleted();
         when(userRepository.findByIdForTicketUpdate(4L)).thenReturn(Optional.of(user));
+        when(userRepository.findById(4L)).thenReturn(Optional.of(user));
 
-        assertThatThrownBy(() -> adminService.applyUserAction(
+        AdminDtos.UserDetail response = adminService.applyUserAction(
                 999L,
                 4L,
                 new AdminRequests.UserActionRequest(
@@ -289,12 +292,56 @@ class AdminServiceTest {
                         "복구 요청",
                         null
                 )
+        );
+
+        assertThat(response.status()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(response.name()).isEqualTo("이름");
+        assertThat(response.nickname()).isEqualTo("별명");
+        assertThat(user.getPasswordHash()).isEqualTo("password-hash");
+        assertThat(user.getDeletedAt()).isNull();
+    }
+
+    @Test
+    void applyUserAction_reactivateLegacyEmailAccountWithoutPasswordIsRejected() {
+        User user = User.createEmailUser("legacy@example.test", "password-hash");
+        ReflectionTestUtils.setField(user, "id", 5L);
+        user.anonymizeForDeletion();
+        user.markDeleted();
+        when(userRepository.findByIdForTicketUpdate(5L)).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> adminService.applyUserAction(
+                999L,
+                5L,
+                new AdminRequests.UserActionRequest(
+                        AdminRequests.UserActionType.REACTIVATE,
+                        "복구 요청",
+                        null
+                )
         ))
                 .isInstanceOf(univ.airconnect.global.error.BusinessException.class)
-                .hasMessageContaining("비밀번호가 삭제되어 복구할 수 없습니다");
+                .hasMessageContaining("자동 복구할 수 없습니다");
 
         assertThat(user.getStatus()).isEqualTo(UserStatus.DELETED);
-        assertThat(user.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    void applyUserAction_reactivateRequiresAuditReason() {
+        User user = user(6L, 7);
+        user.markDeleted();
+        when(userRepository.findByIdForTicketUpdate(6L)).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> adminService.applyUserAction(
+                999L,
+                6L,
+                new AdminRequests.UserActionRequest(
+                        AdminRequests.UserActionType.REACTIVATE,
+                        "  ",
+                        null
+                )
+        ))
+                .isInstanceOf(univ.airconnect.global.error.BusinessException.class)
+                .hasMessageContaining("복구 사유");
+        assertThat(user.getStatus()).isEqualTo(UserStatus.DELETED);
     }
 
     private AdminReportService reportService() {
@@ -385,6 +432,8 @@ class AdminServiceTest {
         assertThat(detail.profile().mbti()).isEqualTo("ENFP");
         assertThat(detail.profile().instagram()).isEqualTo("airconnect_member");
         assertThat(detail.profile().profileImagePath()).isEqualTo("profile-5.png");
+        assertThat(detail.restoreAvailable()).isTrue();
+        assertThat(detail.retainedDataAvailable()).isTrue();
         assertThat(detail.matchingRestricted()).isFalse();
         assertThat(new ObjectMapper().findAndRegisterModules().valueToTree(detail).toString())
                 .doesNotContain("passwordHash", "iosAppAccountToken", "refreshToken", "accessToken");
@@ -397,6 +446,30 @@ class AdminServiceTest {
         assertThat(detail.ticketUsageHistories().get(0).usedAmount()).isEqualTo(2);
         assertThat(detail.apiUsageHistories()).hasSize(1);
         assertThat(detail.apiUsageHistories().get(0).type()).isEqualTo(AnalyticsEventType.USER_LOGGED_IN);
+    }
+
+    @Test
+    void getUsers_exposesDeletedAtAndProfileImageForWithdrawnDirectory() {
+        User user = user(7L, 10);
+        ReflectionTestUtils.setField(user, "name", "탈퇴 회원");
+        ReflectionTestUtils.setField(user, "nickname", "기록 보존");
+        UserProfile profile = UserProfile.create(
+                user, 170, 23, "ISFJ", "NON_SMOKER", Gender.FEMALE,
+                MilitaryStatus.NOT_APPLICABLE, "무교", "서울", "소개", "account"
+        );
+        profile.updateProfileImagePath("profile-7.png");
+        ReflectionTestUtils.setField(user, "userProfile", profile);
+        user.markDeleted();
+        when(userRepository.searchForAdmin(any(), any(), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(user)));
+
+        AdminDtos.PageResponse<AdminDtos.UserSummary> response =
+                adminService.getUsers(0, 10, UserStatus.DELETED, null);
+
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).name()).isEqualTo("탈퇴 회원");
+        assertThat(response.items().get(0).profileImagePath()).isEqualTo("profile-7.png");
+        assertThat(response.items().get(0).deletedAt()).isNotNull();
     }
 
     @Test

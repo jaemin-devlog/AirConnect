@@ -149,7 +149,6 @@ class UserServiceTest {
         );
 
         when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
-        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
         when(refreshTokenRepository.findByUserId(userId)).thenReturn(List.of(tokenA, tokenB));
         when(chatService.invalidateSessionsByUserId(userId)).thenReturn(3);
         when(pushDeviceRepository.findByUserIdAndActiveTrue(userId)).thenReturn(List.of(pushDevice));
@@ -160,13 +159,13 @@ class UserServiceTest {
 
         assertThat(user.getStatus()).isEqualTo(UserStatus.DELETED);
         assertThat(user.getDeletedAt()).isNotNull();
-        assertThat(user.getNickname()).isNull();
-        assertThat(user.getName()).isNull();
-        assertThat(user.getEmail()).isNull();
+        assertThat(user.getNickname()).isEqualTo("nick");
+        assertThat(user.getName()).isEqualTo("name");
+        assertThat(user.getEmail()).isEqualTo("u10@test.dev");
 
-        assertThat(profile.getIntro()).isNull();
-        assertThat(profile.getInstagram()).isNull();
-        assertThat(profile.getProfileImagePath()).isNull();
+        assertThat(profile.getIntro()).isEqualTo("hello");
+        assertThat(profile.getInstagram()).isEqualTo("insta");
+        assertThat(profile.getProfileImagePath()).isEqualTo("profile_10.png");
 
         ArgumentCaptor<Iterable<String>> tokenIdsCaptor = ArgumentCaptor.forClass(Iterable.class);
         verify(refreshTokenRepository).deleteAllById(tokenIdsCaptor.capture());
@@ -402,7 +401,6 @@ class UserServiceTest {
                 matchingLifecycleService
         );
         ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
-        ReflectionTestUtils.setField(service, "profileImageDir", "/tmp/airconnect-test-profile-images");
         return service;
     }
 

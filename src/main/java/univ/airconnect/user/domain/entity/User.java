@@ -283,7 +283,6 @@ public class User {
         }
         this.status = UserStatus.DELETED;
         this.deletedAt = LocalDateTime.now();
-        this.lastActiveAt = null;
     }
 
     public boolean isEmailProvider() {
@@ -345,20 +344,24 @@ public class User {
     }
 
     /**
-     * Restores only the retained account identity after privacy deletion.
-     * Personal/profile fields stay anonymized and onboarding must be completed again.
+     * Reactivates a soft-deleted account without rewriting the retained account,
+     * profile, ticket or history data. Legacy email accounts whose password was
+     * already erased cannot be made login-capable and are deliberately rejected.
      */
-    public void restoreDeletedSocialAccount() {
+    public void restoreDeletedAccount() {
         if (this.status != UserStatus.DELETED) {
             return;
         }
-        if (isEmailProvider()) {
-            throw new IllegalStateException("Email accounts cannot be restored after password deletion.");
+        if (!canRestoreDeletedAccount()) {
+            throw new IllegalStateException("Email account password is unavailable.");
         }
         this.status = UserStatus.ACTIVE;
         this.deletedAt = null;
         this.suspendedUntil = null;
-        this.lastActiveAt = null;
+    }
+
+    public boolean canRestoreDeletedAccount() {
+        return !isEmailProvider() || (this.passwordHash != null && !this.passwordHash.isBlank());
     }
 
     public void restrictMatching(LocalDateTime until, String reason) {

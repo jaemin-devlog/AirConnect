@@ -8,6 +8,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
@@ -34,6 +35,7 @@ public interface UserRepository extends JpaRepository<User, Long>, UserTicketLoc
 
     long countByLastActiveAtGreaterThanEqual(LocalDateTime since);
 
+    @EntityGraph(attributePaths = "userProfile")
     @Query("""
         SELECT u
         FROM User u
@@ -46,7 +48,6 @@ public interface UserRepository extends JpaRepository<User, Long>, UserTicketLoc
                 OR LOWER(COALESCE(u.socialId, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
                 OR LOWER(COALESCE(u.deptName, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
              )
-        ORDER BY u.createdAt DESC
     """)
     Page<User> searchForAdmin(@Param("status") UserStatus status,
                               @Param("keyword") String keyword,

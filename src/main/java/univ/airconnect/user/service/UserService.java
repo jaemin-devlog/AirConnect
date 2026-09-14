@@ -35,9 +35,6 @@ import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -68,9 +65,6 @@ public class UserService {
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
-
-    @Value("${app.upload.profile-image-dir:/tmp/airconnect/profile-images}")
-    private String profileImageDir;
 
     // ...existing code...
 
@@ -347,10 +341,8 @@ public class UserService {
         if (user.getStatus() == UserStatus.DELETED) {
             log.info("ℹ️ 이미 탈퇴된 사용자입니다. 후처리만 재시도합니다: userId={}", userId);
         } else {
-            user.anonymizeForDeletion();
             user.markDeleted();
         }
-        anonymizeProfileAndDeleteImage(userId);
         matchingLifecycleService.cleanupOnAccountDeletion(userId);
 
         int refreshTokensRevoked = purgeRefreshTokens(userId);
@@ -383,15 +375,6 @@ public class UserService {
                     user != null ? user.getId() : null,
                     ex.getMessage());
         }
-    }
-
-    private void anonymizeProfileAndDeleteImage(Long userId) {
-        userProfileRepository.findByUserId(userId).ifPresent(profile -> {
-            String profileImagePath = profile.getProfileImagePath();
-            profile.anonymize();
-            deleteProfileImageFile(profileImagePath);
-            log.debug("👤 프로필 정보를 익명화했습니다: userId={}", userId);
-        });
     }
 
     private int purgeRefreshTokens(Long userId) {
@@ -445,24 +428,6 @@ public class UserService {
             redisTemplate.delete(USER_ACTIVITY_TOUCH_KEY_PREFIX + userId);
         } catch (Exception ex) {
             log.warn("활동 터치 키 삭제에 실패했습니다. userId={}, reason={}", userId, ex.getMessage());
-        }
-    }
-
-    private void deleteProfileImageFile(String profileImagePath) {
-        if (profileImagePath == null || profileImagePath.isBlank()) {
-            return;
-        }
-
-        try {
-            Path uploadRoot = Paths.get(profileImageDir).toAbsolutePath().normalize();
-            Path target = uploadRoot.resolve(profileImagePath).normalize();
-            if (!target.startsWith(uploadRoot)) {
-                log.warn("프로필 이미지 삭제가 차단되었습니다. path={}", profileImagePath);
-                return;
-            }
-            Files.deleteIfExists(target);
-        } catch (Exception ex) {
-            log.warn("프로필 이미지 파일 삭제에 실패했습니다. imagePath={}, reason={}", profileImagePath, ex.getMessage());
         }
     }
 
