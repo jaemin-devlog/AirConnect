@@ -495,7 +495,7 @@ class MatchingServiceTest {
                 "name", "email", "provider", "socialId", "tickets", "userStatus",
                 "studentNum"
         );
-        assertThat(received.getAdmissionYear()).isEqualTo(2024);
+        assertThat(received.getAdmissionYear()).isEqualTo(24);
         assertThat(received.getOnboardingStatus()).isEqualTo(OnboardingStatus.FULL);
         assertThat(received.isProfileExists()).isTrue();
         assertThat(received.getProfile().getInstagram()).isEqualTo("insta");
@@ -545,7 +545,7 @@ class MatchingServiceTest {
                 "name", "email", "provider", "socialId", "tickets", "status",
                 "studentNum"
         );
-        assertThat(response.getCandidates().get(0).getAdmissionYear()).isEqualTo(2024);
+        assertThat(response.getCandidates().get(0).getAdmissionYear()).isEqualTo(24);
         assertThat(response.getCandidates().get(0).getOnboardingStatus()).isEqualTo(OnboardingStatus.FULL);
         assertThat(response.getCandidates().get(0).isProfileExists()).isTrue();
         assertThat(response.getCandidates().get(0).getProfile().getInstagram()).isEqualTo("insta");

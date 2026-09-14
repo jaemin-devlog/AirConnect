@@ -60,7 +60,7 @@ public class UserService {
     private final MatchingLifecycleService matchingLifecycleService;
 
     private static final String USER_ACTIVITY_TOUCH_KEY_PREFIX = "analytics:user:last-active:";
-    private static final int NICKNAME_MAX_LENGTH = 100;
+    private static final int NICKNAME_MAX_LENGTH = 6;
     private static final long NICKNAME_CHANGE_COOLDOWN_DAYS = 14L;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
@@ -85,6 +85,7 @@ public class UserService {
 
         ensureUserActive(user);
 
+        String nickname = normalizeNickname(request.getNickname());
         String departmentName = DepartmentNames.canonicalize(request.getDeptName());
         if (departmentName == null || departmentName.isBlank()
                 || !departmentRepository.existsByName(departmentName)) {
@@ -93,7 +94,7 @@ public class UserService {
 
         user.completeSignUp(
                 request.getName(),
-                request.getNickname(),
+                nickname,
                 request.getStudentNum(),
                 departmentName
         );
@@ -131,7 +132,7 @@ public class UserService {
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("deptName", departmentName);
-        payload.put("nickname", request.getNickname());
+        payload.put("nickname", nickname);
         if (request.getGender() != null) {
             payload.put("gender", request.getGender().name());
         }
@@ -455,8 +456,9 @@ public class UserService {
             throw new UserException(UserErrorCode.INVALID_INPUT);
         }
 
-        String normalized = nickname.trim();
-        if (normalized.isBlank() || normalized.length() > NICKNAME_MAX_LENGTH) {
+        String normalized = nickname.replaceAll("\\s+", "");
+        if (normalized.isBlank()
+                || normalized.codePointCount(0, normalized.length()) > NICKNAME_MAX_LENGTH) {
             throw new UserException(UserErrorCode.INVALID_INPUT);
         }
 

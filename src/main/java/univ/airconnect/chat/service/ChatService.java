@@ -39,6 +39,7 @@ import univ.airconnect.global.transaction.AfterCommitExecutor;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
+import univ.airconnect.user.domain.AdmissionYear;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.domain.entity.UserProfile;
@@ -786,7 +787,7 @@ public class ChatService {
 
                     return ChatRoomResponse.from(room, displayName, content, time, unreadCount,
                             targetUserId, targetNickname,
-                            targetUser != null ? targetUser.getStudentNum() : null,
+                            targetUser != null ? AdmissionYear.from(targetUser.getStudentNum()) : null,
                             targetProfileImage, targetProfile);
                 })
                 .sorted((r1, r2) -> {
@@ -948,7 +949,7 @@ public class ChatService {
                 0,
                 counterpart.getId(),
                 targetNickname,
-                counterpart.getStudentNum(),
+                AdmissionYear.from(counterpart.getStudentNum()),
                 extractProfileImage(counterpart),
                 toParticipantDetailResponse(counterpart)
         );
@@ -1474,6 +1475,7 @@ public class ChatService {
                 .userId(user.getId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
+                .admissionYear(AdmissionYear.from(user.getStudentNum()))
                 .profileImage(profile != null ? profile.getProfileImagePath() : null)
                 .gender(profile != null ? profile.getGender() : null)
                 .age(profile != null ? profile.getAge() : null)
@@ -1496,7 +1498,7 @@ public class ChatService {
                 .userId(user.getId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
-                .studentNum(user.getStudentNum())
+                .admissionYear(AdmissionYear.from(user.getStudentNum()))
                 .profileImage(profile != null ? profile.getProfileImagePath() : null)
                 .gender(profile != null ? profile.getGender() : null)
                 .age(profile != null ? profile.getAge() : null)

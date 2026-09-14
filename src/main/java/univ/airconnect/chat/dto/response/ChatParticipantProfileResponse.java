@@ -13,6 +13,7 @@ public class ChatParticipantProfileResponse {
     private Long userId;
     private String nickname;
     private String deptName;
+    private Integer admissionYear;
     private Integer age;
     private Gender gender;
     private String profileImage;

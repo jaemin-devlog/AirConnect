@@ -106,6 +106,28 @@ class UserServiceTest {
     }
 
     @Test
+    void signUp_trimsNicknameAndRejectsMoreThanSixCharacters() {
+        UserService service = createService();
+        Long userId = 3L;
+        User user = User.create(SocialProvider.KAKAO, "signup-nickname");
+        SignUpRequest request = signUpRequest("디지털산업디자인학과");
+        ReflectionTestUtils.setField(request, "nickname", "  일 이 삼 사 오 육  ");
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(departmentRepository.existsByName("디지털산업디자인학과")).thenReturn(true);
+        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.empty());
+
+        service.signUp(userId, request);
+
+        assertThat(user.getNickname()).isEqualTo("일이삼사오육");
+
+        ReflectionTestUtils.setField(request, "nickname", "일이삼사오육칠");
+        assertThatThrownBy(() -> service.signUp(userId, request))
+                .isInstanceOfSatisfying(UserException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(UserErrorCode.INVALID_INPUT));
+    }
+
+    @Test
     void deleteAccount_marksUserDeleted_andRevokesSessions() {
         UserService service = createService();
         Long userId = 10L;
@@ -263,14 +285,14 @@ class UserServiceTest {
         when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
 
         UpdateNicknameRequest request = new UpdateNicknameRequest();
-        ReflectionTestUtils.setField(request, "nickname", "  newNick  ");
+        ReflectionTestUtils.setField(request, "nickname", "  newNic  ");
 
         UpdateNicknameResponse response = service.updateNickname(userId, request);
 
-        assertThat(user.getNickname()).isEqualTo("newNick");
+        assertThat(user.getNickname()).isEqualTo("newNic");
         assertThat(user.getLastNicknameChangedAt()).isNotNull();
         assertThat(response.getUserId()).isEqualTo(userId);
-        assertThat(response.getNickname()).isEqualTo("newNick");
+        assertThat(response.getNickname()).isEqualTo("newNic");
     }
 
     @Test
@@ -293,6 +315,23 @@ class UserServiceTest {
     }
 
     @Test
+    void updateNickname_rejectsMoreThanSixCharactersAfterTrimming() {
+        UserService service = createService();
+        Long userId = 9L;
+        User user = User.createEmailUser("long-nickname@airconnect.test", "encoded-password");
+        user.completeSignUp("tester", "oldNick", 20230009, "dept");
+        ReflectionTestUtils.setField(user, "id", userId);
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+
+        UpdateNicknameRequest request = new UpdateNicknameRequest();
+        ReflectionTestUtils.setField(request, "nickname", "  일 이 삼 사 오 육 칠  ");
+
+        assertThatThrownBy(() -> service.updateNickname(userId, request))
+                .isInstanceOfSatisfying(UserException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(UserErrorCode.INVALID_INPUT));
+    }
+
+    @Test
     void updateNickname_rejectsChangeWithinFourteenDays() {
         UserService service = createService();
         Long userId = 81L;
@@ -305,7 +344,7 @@ class UserServiceTest {
         when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
 
         UpdateNicknameRequest request = new UpdateNicknameRequest();
-        ReflectionTestUtils.setField(request, "nickname", "newNick");
+        ReflectionTestUtils.setField(request, "nickname", "newNic");
 
         assertThatThrownBy(() -> service.updateNickname(userId, request))
                 .isInstanceOfSatisfying(UserException.class, ex ->
@@ -325,12 +364,12 @@ class UserServiceTest {
         when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
 
         UpdateNicknameRequest request = new UpdateNicknameRequest();
-        ReflectionTestUtils.setField(request, "nickname", "newNick");
+        ReflectionTestUtils.setField(request, "nickname", "newNic");
 
         UpdateNicknameResponse response = service.updateNickname(userId, request);
 
-        assertThat(response.getNickname()).isEqualTo("newNick");
-        assertThat(user.getNickname()).isEqualTo("newNick");
+        assertThat(response.getNickname()).isEqualTo("newNic");
+        assertThat(user.getNickname()).isEqualTo("newNic");
     }
 
     @Test
@@ -339,7 +378,7 @@ class UserServiceTest {
         Long userId = 83L;
 
         User user = User.createEmailUser("same@airconnect.test", "encoded-password");
-        user.completeSignUp("tester", "sameNick", 20230083, "dept");
+        user.completeSignUp("tester", "sameNi", 20230083, "dept");
         ReflectionTestUtils.setField(user, "id", userId);
         LocalDateTime changedAt = LocalDateTime.now().minusDays(1);
         ReflectionTestUtils.setField(user, "lastNicknameChangedAt", changedAt);
@@ -347,11 +386,11 @@ class UserServiceTest {
         when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
 
         UpdateNicknameRequest request = new UpdateNicknameRequest();
-        ReflectionTestUtils.setField(request, "nickname", "  sameNick  ");
+        ReflectionTestUtils.setField(request, "nickname", "  sameNi  ");
 
         UpdateNicknameResponse response = service.updateNickname(userId, request);
 
-        assertThat(response.getNickname()).isEqualTo("sameNick");
+        assertThat(response.getNickname()).isEqualTo("sameNi");
         assertThat(user.getLastNicknameChangedAt()).isEqualTo(changedAt);
     }
 
@@ -407,7 +446,7 @@ class UserServiceTest {
     private SignUpRequest signUpRequest(String departmentName) {
         SignUpRequest request = new SignUpRequest();
         ReflectionTestUtils.setField(request, "name", "테스트 사용자");
-        ReflectionTestUtils.setField(request, "nickname", "테스트닉네임");
+        ReflectionTestUtils.setField(request, "nickname", "테스트닉");
         ReflectionTestUtils.setField(request, "studentNum", 20260001);
         ReflectionTestUtils.setField(request, "deptName", departmentName);
         return request;

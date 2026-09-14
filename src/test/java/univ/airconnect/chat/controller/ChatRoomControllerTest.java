@@ -87,6 +87,7 @@ class ChatRoomControllerTest {
                 .userId(targetUserId)
                 .nickname("target")
                 .deptName("cs")
+                .admissionYear(23)
                 .age(24)
                 .gender(Gender.FEMALE)
                 .profileImage("profiles/2.png")
@@ -106,6 +107,7 @@ class ChatRoomControllerTest {
         assertThat(response.getBody().getTraceId()).isEqualTo(traceId);
         assertThat(response.getBody().getData()).isNotNull();
         assertThat(response.getBody().getData().getUserId()).isEqualTo(targetUserId);
+        assertThat(response.getBody().getData().getAdmissionYear()).isEqualTo(23);
         assertThat(response.getBody().getData().getGender()).isEqualTo(Gender.FEMALE);
         assertThat(response.getBody().getData().getProfileImage()).isEqualTo("profiles/2.png");
 
