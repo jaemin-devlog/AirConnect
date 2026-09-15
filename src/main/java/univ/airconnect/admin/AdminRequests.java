@@ -14,6 +14,7 @@ public final class AdminRequests {
 
     // ticket_ledger.reason(60) also stores the server's six-character ADMIN: prefix.
     public static final int MAX_TICKET_ADJUSTMENT_REASON_LENGTH = 54;
+    public static final int MAX_BULK_TICKET_MESSAGE_LENGTH = 500;
     public static final String OPERATION_UUID_PATTERN = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
     private AdminRequests() {
@@ -73,6 +74,17 @@ public final class AdminRequests {
         public TicketAdjustmentRequest {
             operationId = operationId == null ? null : operationId.trim();
             reason = reason == null ? null : reason.trim();
+        }
+    }
+
+    public record BulkTicketGrantRequest(
+            @NotBlank @Pattern(regexp = OPERATION_UUID_PATTERN) String operationId,
+            @Positive int amount,
+            @NotBlank @Size(max = MAX_BULK_TICKET_MESSAGE_LENGTH) String message
+    ) {
+        public BulkTicketGrantRequest {
+            operationId = operationId == null ? null : operationId.trim();
+            message = message == null ? null : message.trim();
         }
     }
 

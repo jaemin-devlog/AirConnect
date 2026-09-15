@@ -58,6 +58,20 @@ public class AdminAuditLogService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public void recordBulkTicketGrant(Long actorUserId, String operationId, int amount,
+                                      int targetCount, long totalGrantedTickets, String message) {
+        adminAuditLogRepository.save(AdminAuditLog.create(actorUserId, AdminAuditAction.BULK_TICKETS_GRANTED,
+                "ACTIVE_USERS", operationId,
+                "정상 일반 회원 " + targetCount + "명에게 티켓을 일괄 지급했습니다.",
+                null, toJson(Map.of(
+                        "operationId", operationId,
+                        "amountPerUser", amount,
+                        "targetCount", targetCount,
+                        "totalGrantedTickets", totalGrantedTickets,
+                        "message", message))));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public void recordOutboxRetry(Long actorUserId, NotificationOutboxRetryAudit details) {
         adminAuditLogRepository.save(AdminAuditLog.create(
                 actorUserId,

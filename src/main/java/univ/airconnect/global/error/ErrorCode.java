@@ -12,6 +12,7 @@ public enum ErrorCode {
     MAINTENANCE_MODE(HttpStatus.SERVICE_UNAVAILABLE, "COMMON-503", "서버 점검 중입니다."),
     MAINTENANCE_CONFLICT(HttpStatus.CONFLICT, "MAINT-409", "점검 설정이 변경되었습니다. 최신 상태를 확인한 뒤 다시 결정해 주세요."),
     TICKET_ADJUSTMENT_CONFLICT(HttpStatus.CONFLICT, "ADMIN-TICKET-409", "같은 작업번호에 다른 요청 내용이 사용되었습니다. 기존 작업 결과를 확인해 주세요."),
+    BULK_TICKET_GRANT_CONFLICT(HttpStatus.CONFLICT, "ADMIN-BULK-TICKET-409", "같은 전체 지급 작업번호에 다른 수량이나 안내 문구가 사용되었습니다. 기존 작업 결과를 확인해 주세요."),
     REPORT_CONFLICT(HttpStatus.CONFLICT, "ADMIN-REPORT-409", "신고가 변경되었습니다. 최신 내용을 확인한 뒤 다시 저장해 주세요."),
     FESTIVAL_COUPON_INVALID(HttpStatus.BAD_REQUEST, "COUPON-001", "유효하지 않은 쿠폰 코드입니다."),
     FESTIVAL_COUPON_ALREADY_REDEEMED(HttpStatus.CONFLICT, "COUPON-002", "이미 사용된 쿠폰 코드입니다."),

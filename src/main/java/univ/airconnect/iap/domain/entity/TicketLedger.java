@@ -200,6 +200,22 @@ public class TicketLedger {
                 .build();
     }
 
+    public static TicketLedger grantByAdminBulk(Long userId,
+                                                int amount,
+                                                int beforeAmount,
+                                                int afterAmount,
+                                                String operationId) {
+        return TicketLedger.builder()
+                .userId(userId)
+                .changeAmount(amount)
+                .beforeAmount(beforeAmount)
+                .afterAmount(afterAmount)
+                .reason("ADMIN_BULK_GRANT")
+                .refType(LedgerRefType.ADMIN_ADJUSTMENT)
+                .refId("admin-bulk-grant:" + operationId + ":user:" + userId)
+                .build();
+    }
+
     public static TicketLedger grantForFestivalCoupon(Long userId,
                                                        int amount,
                                                        int beforeAmount,

@@ -15,6 +15,7 @@ import org.springframework.data.repository.query.Param;
 import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserStatus;
+import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.entity.User;
 
 import jakarta.persistence.LockModeType;
@@ -68,6 +69,18 @@ public interface UserRepository extends JpaRepository<User, Long>, UserTicketLoc
         ORDER BY u.id ASC
     """)
     List<Long> findIdsByStatusNot(@Param("status") UserStatus status);
+
+    long countByStatusAndRole(UserStatus status, UserRole role);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT u
+        FROM User u
+        WHERE u.status = univ.airconnect.user.domain.UserStatus.ACTIVE
+          AND u.role = univ.airconnect.user.domain.UserRole.USER
+        ORDER BY u.id ASC
+    """)
+    List<User> findActiveRegularUsersForBulkTicketUpdate();
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT u FROM User u WHERE u.id = :userId")

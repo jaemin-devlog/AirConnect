@@ -360,6 +360,25 @@ public final class AdminDtos {
     ) {
     }
 
+    public record BulkTicketGrantPreview(
+            long targetCount,
+            String targetDescription,
+            LocalDateTime queriedAt
+    ) {
+    }
+
+    public record BulkTicketGrantResult(
+            String operationId,
+            String status,
+            int amount,
+            String message,
+            int targetCount,
+            int grantedCount,
+            long totalGrantedTickets,
+            LocalDateTime completedAt
+    ) {
+    }
+
     public record ChatHistory(Long roomId, List<ChatMessageItem> items, Long nextBeforeId,
                               boolean hasMore, LocalDateTime inspectedAt) {
     }
