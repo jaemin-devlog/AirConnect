@@ -29,7 +29,11 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@DataJpaTest(properties = "app.rewards.referral-tickets=5")
+@DataJpaTest(properties = {
+        "app.rewards.referral-base-tickets=3",
+        "app.rewards.referral-milestone-interval=10",
+        "app.rewards.referral-milestone-bonus-tickets=5"
+})
 @ActiveProfiles("test")
 @Import(ReferralService.class)
 class ReferralServiceTest {
@@ -52,26 +56,30 @@ class ReferralServiceTest {
         assertThat(first.referralCode()).containsPattern("[A-Z]");
         assertThat(first.referralCode()).containsPattern("[0-9]");
         assertThat(second.referralCode()).isEqualTo(first.referralCode());
-        assertThat(first.rewardTickets()).isEqualTo(5);
+        assertThat(first.rewardTickets()).isEqualTo(3);
+        assertThat(first.milestoneInterval()).isEqualTo(10);
+        assertThat(first.milestoneBonusTickets()).isEqualTo(5);
         assertThat(first.referredFriendCount()).isZero();
+        assertThat(first.nextMilestoneAt()).isEqualTo(10);
+        assertThat(first.remainingForNextMilestone()).isEqualTo(10);
         assertThat(first.hasEnteredReferralCode()).isFalse();
         assertThat(first.canEnterReferralCode()).isTrue();
         assertThat(referralCodeRepository.count()).isEqualTo(1);
     }
 
     @Test
-    void redeemGrantsFiveTicketsToBothUsersAndRecordsTwoLedgers() {
+    void redeemGrantsThreeTicketsToBothUsersAndRecordsTwoLedgers() {
         User referrer = saveEligibleUser("referrer");
         User friend = saveEligibleUser("friend");
         String code = referralService.getMe(referrer.getId()).referralCode();
 
         var result = referralService.redeem(friend.getId(), code.toLowerCase());
 
-        assertThat(result.rewardTickets()).isEqualTo(5);
-        assertThat(result.myTickets()).isEqualTo(15);
+        assertThat(result.rewardTickets()).isEqualTo(3);
+        assertThat(result.myTickets()).isEqualTo(13);
         assertThat(result.firstApplied()).isTrue();
-        assertThat(userRepository.findById(referrer.getId()).orElseThrow().getTickets()).isEqualTo(15);
-        assertThat(userRepository.findById(friend.getId()).orElseThrow().getTickets()).isEqualTo(15);
+        assertThat(userRepository.findById(referrer.getId()).orElseThrow().getTickets()).isEqualTo(13);
+        assertThat(userRepository.findById(friend.getId()).orElseThrow().getTickets()).isEqualTo(13);
         assertThat(referralRedemptionRepository.countByReferrerUserId(referrer.getId())).isEqualTo(1);
 
         List<TicketLedger> ledgers = ticketLedgerRepository.findAll();
@@ -80,9 +88,45 @@ class ReferralServiceTest {
                 .containsOnly(LedgerRefType.REFERRAL_REWARD);
         assertThat(ledgers).extracting(TicketLedger::getUserId)
                 .containsExactlyInAnyOrder(referrer.getId(), friend.getId());
-        assertThat(ledgers).extracting(TicketLedger::getChangeAmount).containsOnly(5);
+        assertThat(ledgers).extracting(TicketLedger::getChangeAmount).containsOnly(3);
         assertThat(ledgers).extracting(TicketLedger::getBeforeAmount).containsOnly(10);
-        assertThat(ledgers).extracting(TicketLedger::getAfterAmount).containsOnly(15);
+        assertThat(ledgers).extracting(TicketLedger::getAfterAmount).containsOnly(13);
+
+        var me = referralService.getMe(referrer.getId());
+        assertThat(me.referredFriendCount()).isEqualTo(1);
+        assertThat(me.nextMilestoneAt()).isEqualTo(10);
+        assertThat(me.remainingForNextMilestone()).isEqualTo(9);
+    }
+
+    @Test
+    void everyTenthReferralGrantsEightTicketsToCodeOwnerAndThreeToFriend() {
+        User referrer = saveEligibleUser("owner");
+        String code = referralService.getMe(referrer.getId()).referralCode();
+
+        for (int number = 1; number <= 20; number++) {
+            User friend = saveEligibleUser("friend-" + number);
+            var result = referralService.redeem(friend.getId(), code);
+
+            assertThat(result.rewardTickets()).isEqualTo(3);
+            assertThat(result.myTickets()).isEqualTo(13);
+            if (number == 9) {
+                assertThat(userRepository.findById(referrer.getId()).orElseThrow().getTickets()).isEqualTo(37);
+            } else if (number == 10) {
+                assertThat(userRepository.findById(referrer.getId()).orElseThrow().getTickets()).isEqualTo(45);
+            } else if (number == 20) {
+                assertThat(userRepository.findById(referrer.getId()).orElseThrow().getTickets()).isEqualTo(80);
+            }
+        }
+
+        var me = referralService.getMe(referrer.getId());
+        assertThat(me.referredFriendCount()).isEqualTo(20);
+        assertThat(me.nextMilestoneAt()).isEqualTo(30);
+        assertThat(me.remainingForNextMilestone()).isEqualTo(10);
+
+        assertThat(ticketLedgerRepository.findAll())
+                .filteredOn(ledger -> ledger.getUserId().equals(referrer.getId()))
+                .extracting(TicketLedger::getChangeAmount)
+                .containsExactly(3, 3, 3, 3, 3, 3, 3, 3, 3, 8, 3, 3, 3, 3, 3, 3, 3, 3, 3, 8);
     }
 
     @Test
@@ -95,7 +139,7 @@ class ReferralServiceTest {
         var retried = referralService.redeem(friend.getId(), code);
 
         assertThat(retried.firstApplied()).isFalse();
-        assertThat(retried.myTickets()).isEqualTo(15);
+        assertThat(retried.myTickets()).isEqualTo(13);
         assertThat(referralRedemptionRepository.count()).isEqualTo(1);
         assertThat(ticketLedgerRepository.count()).isEqualTo(2);
     }
@@ -113,7 +157,7 @@ class ReferralServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.REFERRAL_ALREADY_REDEEMED);
-        assertThat(userRepository.findById(friend.getId()).orElseThrow().getTickets()).isEqualTo(15);
+        assertThat(userRepository.findById(friend.getId()).orElseThrow().getTickets()).isEqualTo(13);
         assertThat(userRepository.findById(secondReferrer.getId()).orElseThrow().getTickets()).isEqualTo(10);
     }
 
@@ -191,8 +235,8 @@ class ReferralServiceTest {
             executor.shutdownNow();
         }
 
-        assertThat(userRepository.findById(ids[0]).orElseThrow().getTickets()).isEqualTo(15);
-        assertThat(userRepository.findById(ids[1]).orElseThrow().getTickets()).isEqualTo(15);
+        assertThat(userRepository.findById(ids[0]).orElseThrow().getTickets()).isEqualTo(13);
+        assertThat(userRepository.findById(ids[1]).orElseThrow().getTickets()).isEqualTo(13);
         assertThat(referralRedemptionRepository.count()).isEqualTo(1);
         assertThat(ticketLedgerRepository.count()).isEqualTo(2);
     }

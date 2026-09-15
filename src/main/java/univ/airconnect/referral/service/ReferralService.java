@@ -36,8 +36,14 @@ public class ReferralService {
     private final UserRepository userRepository;
     private final TicketLedgerRepository ticketLedgerRepository;
 
-    @Value("${app.rewards.referral-tickets:5}")
-    private int rewardTickets;
+    @Value("${app.rewards.referral-base-tickets:3}")
+    private int baseRewardTickets;
+
+    @Value("${app.rewards.referral-milestone-interval:10}")
+    private int milestoneInterval;
+
+    @Value("${app.rewards.referral-milestone-bonus-tickets:5}")
+    private int milestoneBonusTickets;
 
     @Transactional
     public ReferralMeResponse getMe(Long userId) {
@@ -46,10 +52,16 @@ public class ReferralService {
                 .orElseGet(() -> referralCodeRepository.save(ReferralCode.issue(user.getId(), generateUniqueCode())));
         boolean hasEntered = referralRedemptionRepository.findByReferredUserId(userId).isPresent();
 
+        long referredFriendCount = referralRedemptionRepository.countByReferrerUserId(userId);
+        int remainingForNextMilestone = remainingForNextMilestone(referredFriendCount);
         return new ReferralMeResponse(
                 referralCode.getCode(),
-                rewardTickets,
-                referralRedemptionRepository.countByReferrerUserId(userId),
+                baseRewardTickets,
+                milestoneInterval,
+                milestoneBonusTickets,
+                referredFriendCount,
+                referredFriendCount + remainingForNextMilestone,
+                remainingForNextMilestone,
                 hasEntered,
                 !hasEntered
         );
@@ -95,11 +107,15 @@ public class ReferralService {
         }
 
         ReferralRedemption redemption = referralRedemptionRepository.saveAndFlush(
-                ReferralRedemption.create(referrerUserId, userId, code, rewardTickets)
+                ReferralRedemption.create(referrerUserId, userId, code, baseRewardTickets)
         );
 
-        grantReward(referrerUser, redemption.getId(), "referrer");
-        grantReward(referredUser, redemption.getId(), "friend");
+        long referredFriendCount = referralRedemptionRepository.countByReferrerUserId(referrerUserId);
+        boolean milestoneReached = referredFriendCount % milestoneInterval == 0;
+        int referrerRewardTickets = baseRewardTickets + (milestoneReached ? milestoneBonusTickets : 0);
+
+        grantReward(referrerUser, redemption.getId(), "referrer", referrerRewardTickets);
+        grantReward(referredUser, redemption.getId(), "friend", baseRewardTickets);
         return response(redemption, referredUser.getTickets(), true);
     }
 
@@ -112,17 +128,22 @@ public class ReferralService {
         return user;
     }
 
-    private void grantReward(User user, Long redemptionId, String role) {
+    private void grantReward(User user, Long redemptionId, String role, int amount) {
         int before = user.getTickets();
-        user.addTickets(rewardTickets);
+        user.addTickets(amount);
         ticketLedgerRepository.save(TicketLedger.grantForReferral(
                 user.getId(),
-                rewardTickets,
+                amount,
                 before,
                 user.getTickets(),
                 redemptionId,
                 role
         ));
+    }
+
+    private int remainingForNextMilestone(long referredFriendCount) {
+        int remainder = (int) (referredFriendCount % milestoneInterval);
+        return remainder == 0 ? milestoneInterval : milestoneInterval - remainder;
     }
 
     private ReferralRedeemResponse response(ReferralRedemption redemption, int myTickets, boolean firstApplied) {

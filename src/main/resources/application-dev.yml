@@ -113,7 +113,6 @@ auth:
     smoking: ${AUTH_REVIEW_ACCOUNT_SMOKING:NO}
     gender: ${AUTH_REVIEW_ACCOUNT_GENDER:FEMALE}
     military: ${AUTH_REVIEW_ACCOUNT_MILITARY:NOT_APPLICABLE}
-    religion: ${AUTH_REVIEW_ACCOUNT_RELIGION:NONE}
     residence: ${AUTH_REVIEW_ACCOUNT_RESIDENCE:서울 강남구}
     intro: ${AUTH_REVIEW_ACCOUNT_INTRO:애플 심사용 계정입니다.}
     instagram: ${AUTH_REVIEW_ACCOUNT_INSTAGRAM:}
@@ -160,6 +159,9 @@ moderation:
 
 app:
   rewards:
+    referral-base-tickets: ${REFERRAL_BASE_REWARD_TICKETS:3}
+    referral-milestone-interval: ${REFERRAL_MILESTONE_INTERVAL:10}
+    referral-milestone-bonus-tickets: ${REFERRAL_MILESTONE_BONUS_TICKETS:5}
     milestone:
       profile-image-uploaded-tickets: ${PROFILE_IMAGE_UPLOADED_REWARD_TICKETS:1}
       email-verified-tickets: ${EMAIL_VERIFIED_REWARD_TICKETS:1}
