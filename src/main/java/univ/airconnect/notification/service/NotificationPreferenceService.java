@@ -110,7 +110,7 @@ public class NotificationPreferenceService {
                     Boolean.TRUE.equals(preference.getGroupMatchingEnabled());
             case CHAT_MESSAGE_RECEIVED ->
                     Boolean.TRUE.equals(preference.getChatMessageEnabled());
-            case MILESTONE_REWARDED ->
+            case MILESTONE_REWARDED, REFERRAL_MILESTONE_REWARDED ->
                     Boolean.TRUE.equals(preference.getMilestoneEnabled());
             case APPOINTMENT_REMINDER_1H, APPOINTMENT_REMINDER_10M ->
                     Boolean.TRUE.equals(preference.getReminderEnabled());

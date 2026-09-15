@@ -17,6 +17,8 @@ public enum NotificationType {
     CHAT_MESSAGE_RECEIVED(NotificationCategory.CHAT, true),
     /** 마일스톤 달성과 함께 보상이 지급됐을 때 */
     MILESTONE_REWARDED(NotificationCategory.MILESTONE, true),
+    /** 추천 친구 누적 10명 단위 달성으로 추가 티켓이 지급됐을 때 */
+    REFERRAL_MILESTONE_REWARDED(NotificationCategory.MILESTONE, true),
     /** 팀원이 모두 모여 준비 체크가 필요할 때 */
     TEAM_READY_REQUIRED(NotificationCategory.GROUP_MATCHING, true),
     /** 전원이 ready 상태가 되어 방장이 매칭을 시작할 수 있을 때 */

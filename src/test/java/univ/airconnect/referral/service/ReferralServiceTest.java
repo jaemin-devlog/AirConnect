@@ -6,6 +6,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +16,8 @@ import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.iap.domain.LedgerRefType;
 import univ.airconnect.iap.domain.entity.TicketLedger;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
+import univ.airconnect.notification.domain.NotificationType;
+import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.referral.repository.ReferralCodeRepository;
 import univ.airconnect.referral.repository.ReferralRedemptionRepository;
 import univ.airconnect.user.domain.entity.User;
@@ -28,6 +31,9 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 @DataJpaTest(properties = {
         "app.rewards.referral-base-tickets=3",
@@ -44,6 +50,7 @@ class ReferralServiceTest {
     @Autowired UserRepository userRepository;
     @Autowired TicketLedgerRepository ticketLedgerRepository;
     @Autowired PlatformTransactionManager transactionManager;
+    @MockitoBean NotificationService notificationService;
 
     @Test
     void getMeIssuesOneStableReferralCode() {
@@ -127,6 +134,19 @@ class ReferralServiceTest {
                 .filteredOn(ledger -> ledger.getUserId().equals(referrer.getId()))
                 .extracting(TicketLedger::getChangeAmount)
                 .containsExactly(3, 3, 3, 3, 3, 3, 3, 3, 3, 8, 3, 3, 3, 3, 3, 3, 3, 3, 3, 8);
+
+        verify(notificationService, times(1)).createAndEnqueue(argThat(command ->
+                command.type() == NotificationType.REFERRAL_MILESTONE_REWARDED
+                        && command.dedupeKey().endsWith(":" + 10)
+                        && command.payloadJson().contains("\"referralCount\":10")
+                        && command.payloadJson().contains("\"grantedTickets\":8")
+                        && command.payloadJson().contains("\"showCelebrationPopup\":true")
+        ));
+        verify(notificationService, times(1)).createAndEnqueue(argThat(command ->
+                command.type() == NotificationType.REFERRAL_MILESTONE_REWARDED
+                        && command.dedupeKey().endsWith(":" + 20)
+                        && command.payloadJson().contains("\"nextMilestoneAt\":30")
+        ));
     }
 
     @Test

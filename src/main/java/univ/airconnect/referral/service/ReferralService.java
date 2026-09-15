@@ -8,6 +8,8 @@ import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.iap.domain.entity.TicketLedger;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
+import univ.airconnect.notification.domain.NotificationType;
+import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.referral.domain.entity.ReferralCode;
 import univ.airconnect.referral.domain.entity.ReferralRedemption;
 import univ.airconnect.referral.dto.response.ReferralMeResponse;
@@ -35,6 +37,7 @@ public class ReferralService {
     private final ReferralRedemptionRepository referralRedemptionRepository;
     private final UserRepository userRepository;
     private final TicketLedgerRepository ticketLedgerRepository;
+    private final NotificationService notificationService;
 
     @Value("${app.rewards.referral-base-tickets:3}")
     private int baseRewardTickets;
@@ -116,7 +119,39 @@ public class ReferralService {
 
         grantReward(referrerUser, redemption.getId(), "referrer", referrerRewardTickets);
         grantReward(referredUser, redemption.getId(), "friend", baseRewardTickets);
+        if (milestoneReached) {
+            notifyMilestoneReward(referrerUser, referredFriendCount, referrerRewardTickets);
+        }
         return response(redemption, referredUser.getTickets(), true);
+    }
+
+    private void notifyMilestoneReward(User referrerUser, long referredFriendCount, int grantedTickets) {
+        long nextMilestoneAt = referredFriendCount + milestoneInterval;
+        String payloadJson = String.format(Locale.ROOT,
+                "{\"eventType\":\"REFERRAL_MILESTONE_REWARDED\","
+                        + "\"referralCount\":%d,\"baseRewardTickets\":%d,"
+                        + "\"bonusRewardTickets\":%d,\"grantedTickets\":%d,"
+                        + "\"currentTickets\":%d,\"nextMilestoneAt\":%d,"
+                        + "\"showCelebrationPopup\":true}",
+                referredFriendCount,
+                baseRewardTickets,
+                milestoneBonusTickets,
+                grantedTickets,
+                referrerUser.getTickets(),
+                nextMilestoneAt
+        );
+        notificationService.createAndEnqueue(new NotificationService.CreateCommand(
+                referrerUser.getId(),
+                NotificationType.REFERRAL_MILESTONE_REWARDED,
+                "친구 초대 보너스가 도착했어요!",
+                String.format(Locale.ROOT, "추천 친구 %d명을 달성해 추가 티켓 %d장을 받았어요.",
+                        referredFriendCount, milestoneBonusTickets),
+                "airconnect://mypage/referrals",
+                null,
+                null,
+                payloadJson,
+                "referral-milestone:" + referrerUser.getId() + ":" + referredFriendCount
+        ));
     }
 
     private User lockEligibleUser(Long userId) {
