@@ -1,5 +1,7 @@
 package univ.airconnect.notification.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -40,6 +42,7 @@ public class NotificationOutboxDispatchService {
     private final UserRepository userRepository;
     private final PushDeviceRepository pushDeviceRepository;
     private final PushNotificationSender pushNotificationSender;
+    private final ObjectMapper objectMapper;
 
     /**
      * PROCESSING outbox 한 건을 잠근 뒤 현재 수신 자격을 검증하고 발송한다.
@@ -59,7 +62,7 @@ public class NotificationOutboxDispatchService {
         }
 
         User recipient = userRepository.findByIdForUpdate(outbox.getUserId()).orElse(null);
-        if (recipient == null || recipient.getStatus() != UserStatus.ACTIVE) {
+        if (!canReceivePush(recipient, outbox)) {
             skip(outbox, RECIPIENT_NOT_ACTIVE, "수신 사용자가 없거나 활성 상태가 아닙니다.");
             return;
         }
@@ -72,6 +75,35 @@ public class NotificationOutboxDispatchService {
         }
 
         sendLocked(outbox, device);
+    }
+
+    /**
+     * 활성 사용자는 모든 정상 Push를 받을 수 있다. 정지 사용자는 계정 정지를 알리는
+     * 관리자 Push만 예외적으로 허용하며, payload가 손상되거나 값이 다르면 차단한다.
+     */
+    private boolean canReceivePush(User recipient, NotificationOutbox outbox) {
+        if (recipient == null) {
+            return false;
+        }
+        if (recipient.getStatus() == UserStatus.ACTIVE) {
+            return true;
+        }
+        return recipient.getStatus() == UserStatus.SUSPENDED && isSuspendNotification(outbox);
+    }
+
+    private boolean isSuspendNotification(NotificationOutbox outbox) {
+        try {
+            JsonNode payload = objectMapper.readTree(outbox.getDataJson());
+            return payload != null
+                    && payload.isObject()
+                    && "SYSTEM_ANNOUNCEMENT".equals(payload.path("notificationType").asText())
+                    && "ADMIN_USER_ACTION".equals(payload.path("kind").asText())
+                    && "SUSPEND".equals(payload.path("action").asText());
+        } catch (Exception e) {
+            log.warn("Blocking suspended-recipient Push with invalid payload: outboxId={}, reason={}",
+                    outbox.getId(), e.getMessage());
+            return false;
+        }
     }
 
     private String validateCurrentDevice(NotificationOutbox outbox, PushDevice device) {

@@ -1,8 +1,11 @@
 package univ.airconnect.notification.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -50,7 +53,8 @@ class NotificationOutboxDispatchServiceTest {
                 notificationOutboxRepository,
                 userRepository,
                 pushDeviceRepository,
-                pushNotificationSender
+                pushNotificationSender,
+                new ObjectMapper()
         );
     }
 
@@ -103,6 +107,56 @@ class NotificationOutboxDispatchServiceTest {
         User deletedUser = user(USER_ID, UserStatus.DELETED);
         when(notificationOutboxRepository.findByIdForUpdate(OUTBOX_ID)).thenReturn(Optional.of(outbox));
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(deletedUser));
+
+        service.dispatch(OUTBOX_ID);
+
+        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushDeviceRepository, never()).findByIdForUpdate(DEVICE_ID);
+        assertSkipped(outbox, NotificationOutboxDispatchService.RECIPIENT_NOT_ACTIVE);
+    }
+
+    @Test
+    void suspendedAccountReceivesOnlyItsSuspendAdminNotification() {
+        NotificationOutbox outbox = processingOutbox("token-1", """
+                {"notificationType":"SYSTEM_ANNOUNCEMENT","kind":"ADMIN_USER_ACTION","action":"SUSPEND"}
+                """);
+        User suspendedUser = user(USER_ID, UserStatus.SUSPENDED);
+        PushDevice device = device(USER_ID, "token-1");
+        stubLockedRows(outbox, suspendedUser, device);
+        when(pushNotificationSender.send(outbox))
+                .thenReturn(PushNotificationSender.PushSendResult.success("fcm-suspend-message"));
+
+        service.dispatch(OUTBOX_ID);
+
+        verify(pushNotificationSender).send(outbox);
+        assertThat(outbox.getStatus()).isEqualTo(NotificationDeliveryStatus.SENT);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"notificationType\":\"MATCH_REQUEST_RECEIVED\",\"kind\":\"ADMIN_USER_ACTION\",\"action\":\"SUSPEND\"}",
+            "{\"notificationType\":\"SYSTEM_ANNOUNCEMENT\",\"kind\":\"ADMIN_NOTICE\",\"action\":\"SUSPEND\"}",
+            "{\"notificationType\":\"SYSTEM_ANNOUNCEMENT\",\"kind\":\"ADMIN_USER_ACTION\",\"action\":\"RESTRICT_MATCHING\"}"
+    })
+    void suspendedAccountSkipsPushWhenAnySuspendPayloadFieldDiffers(String dataJson) {
+        NotificationOutbox outbox = processingOutbox("token-1", dataJson);
+        User suspendedUser = user(USER_ID, UserStatus.SUSPENDED);
+        when(notificationOutboxRepository.findByIdForUpdate(OUTBOX_ID)).thenReturn(Optional.of(outbox));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(suspendedUser));
+
+        service.dispatch(OUTBOX_ID);
+
+        verify(pushNotificationSender, never()).send(outbox);
+        verify(pushDeviceRepository, never()).findByIdForUpdate(DEVICE_ID);
+        assertSkipped(outbox, NotificationOutboxDispatchService.RECIPIENT_NOT_ACTIVE);
+    }
+
+    @Test
+    void suspendedAccountSkipsMalformedPayload() {
+        NotificationOutbox outbox = processingOutbox("token-1", "{not-json");
+        User suspendedUser = user(USER_ID, UserStatus.SUSPENDED);
+        when(notificationOutboxRepository.findByIdForUpdate(OUTBOX_ID)).thenReturn(Optional.of(outbox));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(suspendedUser));
 
         service.dispatch(OUTBOX_ID);
 
@@ -194,6 +248,10 @@ class NotificationOutboxDispatchServiceTest {
     }
 
     private NotificationOutbox processingOutbox(String token) {
+        return processingOutbox(token, "{\"notificationType\":\"MATCH_REQUEST_RECEIVED\"}");
+    }
+
+    private NotificationOutbox processingOutbox(String token, String dataJson) {
         NotificationOutbox outbox = NotificationOutbox.create(
                 101L,
                 USER_ID,
@@ -202,7 +260,7 @@ class NotificationOutboxDispatchServiceTest {
                 token,
                 "알림 제목",
                 "알림 본문",
-                "{\"notificationType\":\"MATCH_REQUEST_RECEIVED\"}",
+                dataJson,
                 LocalDateTime.now()
         );
         ReflectionTestUtils.setField(outbox, "id", OUTBOX_ID);
