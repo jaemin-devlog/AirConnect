@@ -105,7 +105,8 @@ public class NotificationPreferenceService {
                     Boolean.TRUE.equals(preference.getMatchRequestEnabled());
             case MATCH_REQUEST_ACCEPTED, MATCH_REQUEST_REJECTED ->
                     Boolean.TRUE.equals(preference.getMatchResultEnabled());
-            case GROUP_MATCHED, TEAM_READY_REQUIRED, TEAM_ALL_READY, TEAM_ROOM_CANCELLED, TEAM_MATCHING_STOPPED,
+            case GROUP_MATCHED, TEAM_READY_REQUIRED, TEAM_ALL_READY, TEAM_ROOM_CANCELLED,
+                    TEAM_MATCHING_STARTED, TEAM_MATCHING_STOPPED,
                     TEAM_MEMBER_JOINED, TEAM_MEMBER_LEFT, TEAM_MEMBER_READY_CHANGED ->
                     Boolean.TRUE.equals(preference.getGroupMatchingEnabled());
             case CHAT_MESSAGE_RECEIVED ->

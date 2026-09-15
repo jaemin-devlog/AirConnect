@@ -28,6 +28,7 @@ import univ.airconnect.groupmatching.repository.GMatchResultRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
+import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.OnboardingStatus;
@@ -45,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -172,6 +174,43 @@ class GMatchingServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REQUEST);
         assertThat(room.getStatus()).isEqualTo(GTemporaryTeamRoomStatus.OPEN);
+    }
+
+    @Test
+    void startMatching_notifiesNonLeaderMembers() {
+        GTemporaryTeamRoom room = room(100L, 1L, GTeamGender.M, GTeamSize.TWO);
+        room.addMember();
+        List<GTemporaryTeamMember> active = List.of(
+                GTemporaryTeamMember.create(100L, 1L, true),
+                GTemporaryTeamMember.create(100L, 2L, false));
+        User leader = user(1L, "방장", 10);
+        User friend = user(2L, "친구", 10);
+
+        when(rooms.findByIdForUpdate(100L)).thenReturn(Optional.of(room));
+        when(members.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(100L, 1L)).thenReturn(true);
+        when(members.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(100L)).thenReturn(active);
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile(leader, Gender.MALE)));
+        when(profiles.findByUserId(2L)).thenReturn(Optional.of(profile(friend, Gender.MALE)));
+        when(users.findById(1L)).thenReturn(Optional.of(leader));
+        when(users.findById(2L)).thenReturn(Optional.of(friend));
+        when(lists.range(any(), anyLong(), anyLong())).thenReturn(List.of());
+        when(rooms.findAllQueueWaitingRooms(GTeamSize.TWO)).thenReturn(List.of(room));
+
+        GMatchingService.QueueSnapshot snapshot = service.startMatching(100L, 1L);
+
+        assertThat(snapshot.status()).isEqualTo(GTemporaryTeamRoomStatus.QUEUE_WAITING.name());
+        assertThat(snapshot.position()).isEqualTo(1);
+        verify(notifications).createAndEnqueue(argThat(command ->
+                command.userId().equals(2L)
+                        && command.type() == NotificationType.TEAM_MATCHING_STARTED
+                        && command.actorUserId().equals(1L)
+                        && command.title().equals("매칭 대기 시작")
+                        && command.body().equals("방장이 그룹매칭을 시작했어요.")
+                        && command.deeplink().equals("airconnect://matching/team-rooms/100")
+                        && command.payloadJson().contains("\"teamRoomId\":100")
+                        && command.payloadJson().contains("\"position\":1")
+                        && command.payloadJson().contains("\"totalWaitingTeams\":1")
+                        && command.dedupeKey().startsWith("group-matching:queue-started:100:")));
     }
 
     @Test

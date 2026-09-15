@@ -14,6 +14,8 @@ import univ.airconnect.chat.repository.*;
 import univ.airconnect.notification.service.NotificationService;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +28,50 @@ public class ChatDeliveryDispatcher {
     private final ObjectMapper mapper;
     private final RedisTemplate<String, Object> redis;
     private final SimpMessageSendingOperations broker;
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void deliverReadReceipts(List<Long> ids) {
+        if (ids.isEmpty()) return;
+        if (ids.size() > 100) throw new IllegalArgumentException("Read receipt batch exceeds 100");
+        var batch = events.findBatchForUpdate(ids);
+        if (batch.isEmpty()) return;
+        var first = batch.get(0);
+        // Never overtake a chat message or an earlier reader's receipt in this lane.
+        if (events.existsByLaneAndIdLessThan(first.getLane(), first.getId())) return;
+        var now = LocalDateTime.now(Clock.systemUTC());
+        boolean contiguous = batch.stream().allMatch(e -> e.getKind() == ChatDeliveryEvent.Kind.MESSAGE
+                && first.getLane().equals(e.getLane()) && !e.getNextAttemptAt().isAfter(now))
+                && events.countByLaneAndIdBetween(first.getLane(), first.getId(), batch.get(batch.size() - 1).getId()) == batch.size();
+        if (!contiguous) {
+            // Conservative path if a caller supplied a non-contiguous set or a deferred event.
+            for (var event : batch) deliver(event.getId());
+            return;
+        }
+        try {
+            var payloads = new java.util.ArrayList<ChatMessageResponse>();
+            for (var event : batch) {
+                var payload = mapper.readValue(event.getPayloadJson(), ChatMessageResponse.class);
+                if (!"READ_RECEIPT".equals(payload.getEventType())) {
+                    for (var item : batch) deliver(item.getId());
+                    return;
+                }
+                payloads.add(payload);
+            }
+            if (rooms.existsById(first.getRoomId())) {
+                var existing = messages.findAllById(batch.stream().map(ChatDeliveryEvent::getMessageId).toList())
+                        .stream().map(m -> m.getId()).collect(Collectors.toSet());
+                for (int i = 0; i < batch.size(); i++) {
+                    if (existing.contains(batch.get(i).getMessageId())) {
+                        redis.convertAndSend(first.getRoomId().toString(), mapper.writeValueAsString(payloads.get(i)));
+                    }
+                }
+            }
+            // On failure the entire batch stays durable. Retries may repeat receipts, as before.
+            events.deleteAllInBatch(batch);
+        } catch (JsonProcessingException failure) {
+            throw new IllegalStateException("Invalid stored chat read receipt", failure);
+        }
+    }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void deliver(Long id) {

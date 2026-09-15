@@ -131,47 +131,6 @@ public class GMatchingService {
         return teamRoom;
     }
 
-    @Transactional
-    public GTemporaryTeamRoom expelTeamMember(Long teamRoomId, Long requestUserId, Long targetUserId) {
-        GTemporaryTeamRoom teamRoom = temporaryTeamRoomRepository.findByIdForUpdate(teamRoomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_ROOM_NOT_FOUND));
-
-        validateLeaderMembership(teamRoom, teamRoomId, requestUserId);
-        if (Objects.equals(requestUserId, targetUserId)) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "방장은 본인을 추방할 수 없습니다.");
-        }
-
-        GTemporaryTeamMember member = temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(teamRoomId, targetUserId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_MEMBER_NOT_FOUND));
-        if (!member.isActiveMember()) {
-            throw new BusinessException(ErrorCode.TEAM_MEMBER_NOT_FOUND);
-        }
-        if (member.isLeader()) {
-            throw new BusinessException(ErrorCode.LEADER_ONLY_ACTION);
-        }
-        if (!teamRoom.getStatus().canModifyMembers()) {
-            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID);
-        }
-
-        User targetUser = findUserOrThrow(targetUserId);
-        member.markExpelled();
-        teamRoom.removeMember();
-
-        notifyTeamMemberLeft(teamRoom, targetUserId, targetUser.getNickname());
-        matchingEventPublisher.publishStatus(teamRoomId, teamRoom.getStatus().name());
-        analyticsService.trackServerEvent(
-                AnalyticsEventType.TEAM_ROOM_LEFT,
-                targetUserId,
-                Map.of(
-                        "teamRoomId", teamRoomId,
-                        "memberCount", teamRoom.getCurrentMemberCount(),
-                        "expelled", true
-                )
-        );
-
-        return teamRoom;
-    }
-
     /**
      * 초대 코드로 임시 팀방에 입장한다.
      */
@@ -269,6 +228,7 @@ public class GMatchingService {
             return buildQueueSnapshot(teamRoom);
         });
         publishWaitingQueueSnapshots(teamRoom.getTeamSize());
+        notifyMatchingStarted(teamRoom, requestUserId, queueToken, snapshot);
         analyticsService.trackServerEvent(
                 AnalyticsEventType.GROUP_QUEUE_STARTED,
                 requestUserId,
@@ -741,6 +701,45 @@ public class GMatchingService {
                     joinedUserId,
                     payload.toString(),
                     null,
+                    true
+            );
+        }
+    }
+
+    private void notifyMatchingStarted(
+            GTemporaryTeamRoom teamRoom,
+            Long startedByUserId,
+            String queueToken,
+            QueueSnapshot snapshot
+    ) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("teamRoomId", teamRoom.getId());
+        payload.put("startedByUserId", startedByUserId);
+        payload.put("status", snapshot.status());
+        payload.put("position", snapshot.position());
+        payload.put("aheadCount", snapshot.aheadCount());
+        payload.put("totalWaitingTeams", snapshot.totalWaitingTeams());
+
+        String dedupeKey = buildGroupMatchingDedupeKey(
+                "queue-started",
+                teamRoom.getId(),
+                queueToken
+        );
+
+        for (GTemporaryTeamMember member : temporaryTeamMemberRepository
+                .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoom.getId())) {
+            if (Objects.equals(member.getUserId(), startedByUserId)) {
+                continue;
+            }
+            sendGroupNotification(
+                    member.getUserId(),
+                    NotificationType.TEAM_MATCHING_STARTED,
+                    "매칭 대기 시작",
+                    "방장이 그룹매칭을 시작했어요.",
+                    teamRoomDeeplink(teamRoom.getId()),
+                    startedByUserId,
+                    payload.toString(),
+                    dedupeKey,
                     true
             );
         }

@@ -16,6 +16,12 @@ public interface ChatDeliveryEventRepository extends JpaRepository<ChatDeliveryE
 
     boolean existsByLaneAndIdLessThan(String lane, Long id);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select e from ChatDeliveryEvent e where e.id in :ids order by e.id")
+    List<ChatDeliveryEvent> findBatchForUpdate(@Param("ids") List<Long> ids);
+
+    long countByLaneAndIdBetween(String lane, Long firstId, Long lastId);
+
     @Query("select e.id from ChatDeliveryEvent e where e.nextAttemptAt <= :now " +
             "and not exists (select older.id from ChatDeliveryEvent older where older.lane = e.lane and older.id < e.id) " +
             "order by e.nextAttemptAt, e.id")

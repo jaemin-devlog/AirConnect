@@ -11,6 +11,9 @@ final class ChatDeliveryTestSupport {
     static ChatDeliveryService immediate(NotificationService notifications, RedisTemplate<String, Object> redis,
                                          SimpMessageSendingOperations broker, ObjectMapper mapper) {
         return new ChatDeliveryService(null, null, mapper) {
+            @Override public void enqueueReadReceipts(Long room, java.util.List<univ.airconnect.chat.dto.response.ChatMessageResponse> receipts) {
+                for (var receipt : receipts) enqueue(ChatDeliveryEvent.Kind.MESSAGE, room, receipt.getId(), null, receipt);
+            }
             @Override public void enqueue(ChatDeliveryEvent.Kind kind, Long room, Long message, Long user, Object payload) {
                 try {
                     switch (kind) {

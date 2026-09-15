@@ -1416,6 +1416,7 @@ public class ChatService {
         }
 
         Set<Long> publishedMessageIds = new HashSet<>();
+        List<ChatMessageResponse> receipts = new ArrayList<>();
         for (ChatMessage message : messages) {
             if (message == null || !message.isUnreadTrackable()) {
                 continue;
@@ -1431,8 +1432,9 @@ public class ChatService {
                     actionTime,
                     resolveMessageUnreadCount(room, message, roomMembers)
             );
-            publishToRedisSilently(room.getId(), readReceipt);
+            receipts.add(readReceipt);
         }
+        chatDeliveryService.enqueueReadReceipts(room.getId(), receipts);
     }
 
     private void markMessageAsFullyReadIfNeeded(ChatRoom room,

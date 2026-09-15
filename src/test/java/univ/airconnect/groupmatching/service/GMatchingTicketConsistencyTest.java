@@ -61,9 +61,12 @@ import univ.airconnect.iap.domain.entity.TicketLedger;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.notification.service.NotificationService;
+import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
+import univ.airconnect.user.domain.entity.UserProfile;
+import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 
 import javax.sql.DataSource;
@@ -104,6 +107,7 @@ class GMatchingTicketConsistencyTest {
     @Autowired GMatchingService matching;
     @Autowired ChatService chat;
     @Autowired UserRepository users;
+    @Autowired UserProfileRepository profiles;
     @Autowired GTemporaryTeamRoomRepository teamRooms;
     @Autowired GTeamReadyStateRepository readiness;
     @Autowired GFinalGroupChatRoomRepository finalRooms;
@@ -176,6 +180,32 @@ class GMatchingTicketConsistencyTest {
         verify(matchingEvents, times(2)).publishMatched(any());
         verify(notifications, times(size.getValue() * 2)).createAndEnqueue(any());
         verify(matchingPush, never()).notifyMatched(any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(GTeamSize.class)
+    void finalizedMembersCanCreateJoinAndRecoverANewTeamRoom(GTeamSize size) {
+        Fixture fixture = committedFixture(size, false);
+        assertThat(matching.finalizePendingMatches()).isEqualTo(1);
+
+        Long leaderId = fixture.userIds().get(0);
+        Long teammateId = fixture.userIds().get(1);
+        GTemporaryTeamRoom newRoom = matching.createTemporaryTeamRoom(leaderId, size);
+
+        assertThat(newRoom.getStatus()).isEqualTo(GTemporaryTeamRoomStatus.OPEN);
+        assertThat(newRoom.getInviteCode()).matches("\\d{6}");
+        assertThat(matching.findMyActiveTeamRoom(leaderId))
+                .get()
+                .extracting(GTemporaryTeamRoom::getId)
+                .isEqualTo(newRoom.getId());
+
+        GTemporaryTeamRoom joinedRoom = matching.joinRoomByInviteCode(newRoom.getInviteCode(), teammateId);
+        assertThat(joinedRoom.getId()).isEqualTo(newRoom.getId());
+        assertThat(joinedRoom.getCurrentMemberCount()).isEqualTo(2);
+        assertThat(matching.findMyActiveTeamRoom(teammateId))
+                .get()
+                .extracting(GTemporaryTeamRoom::getId)
+                .isEqualTo(newRoom.getId());
     }
 
     @Test
@@ -328,6 +358,11 @@ class GMatchingTicketConsistencyTest {
                         .socialId("ticket-fixture-" + UUID.randomUUID()).nickname("fixture member " + i)
                         .status(UserStatus.ACTIVE).onboardingStatus(OnboardingStatus.FULL)
                         .tickets(balance).createdAt(LocalDateTime.now()).build());
+                profiles.save(UserProfile.builder()
+                        .user(user)
+                        .gender(i < size.getValue() ? Gender.MALE : Gender.FEMALE)
+                        .updatedAt(LocalDateTime.now())
+                        .build());
                 ids.add(user.getId());
                 balances.put(user.getId(), balance);
             }

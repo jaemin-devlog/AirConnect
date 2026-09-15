@@ -198,17 +198,6 @@ public class GMatchingController {
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/{teamRoomId}/members/{targetUserId}")
-    public ResponseEntity<GMatchingResponse.TemporaryTeamRoomResponse> expelTeamMember(
-            @PathVariable Long teamRoomId,
-            @PathVariable Long targetUserId,
-            Authentication authentication
-    ) {
-        Long userId = currentUserId(authentication);
-        GTemporaryTeamRoom teamRoom = matchingService.expelTeamMember(teamRoomId, userId, targetUserId);
-        return ResponseEntity.ok(toRoomResponse(teamRoom, userId));
-    }
-
     /**
      * 방장이 임시 팀방을 해산한다.
      */
