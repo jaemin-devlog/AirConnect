@@ -144,7 +144,6 @@ class UserServiceTest {
                 "N",
                 null,
                 null,
-                "none",
                 "seoul",
                 "hello",
                 "insta"
@@ -240,7 +239,6 @@ class UserServiceTest {
                 "NO",
                 Gender.FEMALE,
                 MilitaryStatus.NOT_APPLICABLE,
-                "NONE",
                 "서울 강남구",
                 "기존 소개",
                 "old_insta"
@@ -251,7 +249,6 @@ class UserServiceTest {
 
         UpdateProfileRequest request = new UpdateProfileRequest(
                 186,
-                null,
                 null,
                 null,
                 null,

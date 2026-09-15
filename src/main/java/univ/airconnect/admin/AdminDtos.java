@@ -109,7 +109,6 @@ public final class AdminDtos {
             String smoking,
             Gender gender,
             MilitaryStatus military,
-            String religion,
             String residence,
             String intro,
             String instagram,

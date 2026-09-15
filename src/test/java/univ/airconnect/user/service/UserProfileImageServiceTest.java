@@ -267,7 +267,6 @@ class UserProfileImageServiceTest {
                 null,
                 null,
                 null,
-                null,
                 null
         );
         ReflectionTestUtils.setField(profile, "userId", user.getId());

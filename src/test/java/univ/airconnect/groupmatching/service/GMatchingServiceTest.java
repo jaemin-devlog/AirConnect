@@ -294,6 +294,6 @@ class GMatchingServiceTest {
     }
 
     private UserProfile profile(User user, Gender gender) {
-        return UserProfile.create(user, 175, 23, "INTJ", "NO", gender, null, null, null, null, null);
+        return UserProfile.create(user, 175, 23, "INTJ", "NO", gender, null, null, null, null);
     }
 }

@@ -11,7 +11,6 @@ public record CompatibilityProfile(
         Integer height,
         String mbti,
         String smoking,
-        String religion,
         String residence
 ) {
 
@@ -25,7 +24,6 @@ public record CompatibilityProfile(
                 profile != null ? profile.getHeight() : null,
                 profile != null ? profile.getMbti() : null,
                 profile != null ? profile.getSmoking() : null,
-                profile != null ? profile.getReligion() : null,
                 profile != null ? profile.getResidence() : null
         );
     }

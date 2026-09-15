@@ -955,7 +955,6 @@ class ChatServiceTest {
                 null,
                 null,
                 null,
-                null,
                 null
         );
         ReflectionTestUtils.setField(profile, "userId", user.getId());
@@ -973,7 +972,6 @@ class ChatServiceTest {
                 "비흡연",
                 gender,
                 MilitaryStatus.NOT_APPLICABLE,
-                "무교",
                 residence,
                 "소개글",
                 instagram

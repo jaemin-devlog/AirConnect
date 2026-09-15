@@ -30,7 +30,6 @@ public class SignUpRequest {
     private String smoking;
     private Gender gender;
     private MilitaryStatus military;
-    private String religion;
     private String residence;
     private String intro;
     private String instagram;

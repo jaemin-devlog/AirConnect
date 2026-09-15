@@ -70,7 +70,6 @@ public class ReviewAccountBootstrapService {
                                 props.resolvedSmoking(),
                                 props.resolvedGender(),
                                 props.resolvedMilitary(),
-                                props.resolvedReligion(),
                                 props.resolvedResidence(),
                                 props.intro(),
                                 props.instagram()
@@ -84,7 +83,6 @@ public class ReviewAccountBootstrapService {
                                         props.resolvedSmoking(),
                                         props.resolvedGender(),
                                         props.resolvedMilitary(),
-                                        props.resolvedReligion(),
                                         props.resolvedResidence(),
                                         props.intro(),
                                         props.instagram()

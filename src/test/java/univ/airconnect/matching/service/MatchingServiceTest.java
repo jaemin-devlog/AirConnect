@@ -647,7 +647,6 @@ class MatchingServiceTest {
                 "NO",
                 gender,
                 MilitaryStatus.NOT_APPLICABLE,
-                "NONE",
                 "Seoul",
                 "hello",
                 "insta"

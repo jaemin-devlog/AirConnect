@@ -19,8 +19,8 @@ import univ.airconnect.compatibility.domain.MbtiCompatibilityTier;
 @Component
 public class CompatibilityScoreCalculator {
 
-    private static final int RAW_SCORE_MIN = 25;
-    private static final int RAW_SCORE_MAX = 100;
+    private static final int RAW_SCORE_MIN = 23;
+    private static final int RAW_SCORE_MAX = 92;
     private static final int DISPLAY_SCORE_MIN = 50;
     private static final int DISPLAY_SCORE_MAX = 100;
     private static final int AGE_MAX = 15;
@@ -29,7 +29,6 @@ public class CompatibilityScoreCalculator {
     private static final int HEIGHT_MAX = 10;
     private static final int MBTI_MAX = 25;
     private static final int SMOKING_MAX = 10;
-    private static final int RELIGION_MAX = 8;
     private static final int RESIDENCE_MAX = 10;
     private static final int MATCHING_POINT_COUNT = 1;
     private static final int CHECK_POINT_COUNT = 1;
@@ -44,7 +43,6 @@ public class CompatibilityScoreCalculator {
                 scoreHeight(me.height(), target.height()),
                 scoreMbti(me.mbti(), target.mbti(), mbtiTier),
                 scoreSmoking(me.smoking(), target.smoking()),
-                scoreReligion(me.religion(), target.religion()),
                 scoreResidence(me.residence(), target.residence())
         );
 
@@ -222,31 +220,6 @@ public class CompatibilityScoreCalculator {
         );
     }
 
-    private CompatibilityScoreDetail scoreReligion(String myReligion, String targetReligion) {
-        String my = normalizeText(myReligion);
-        String target = normalizeText(targetReligion);
-
-        int score;
-        String reason;
-        String caution;
-
-        if (my.equals(target)) {
-            score = 8;
-            reason = "종교 정보가 같아 가치관 대화를 시작하기 편해요.";
-            caution = "종교가 같아도 신앙의 깊이나 참여 빈도는 다를 수 있어요.";
-        } else if (isNoReligion(my) || isNoReligion(target)) {
-            score = 4;
-            reason = "종교가 다르지만 한쪽이 무교라 조율 여지가 있어요.";
-            caution = "종교 활동을 연애 안에서 어디까지 공유할지 미리 이야기해 보세요.";
-        } else {
-            score = 2;
-            reason = "종교가 달라 가치관을 더 깊게 알아갈 대화가 생길 수 있어요.";
-            caution = "종교가 서로 달라 예배, 모임, 기념일에 대한 기대가 다를 수 있어요.";
-        }
-
-        return detail(CompatibilityFactor.RELIGION, score, RELIGION_MAX, reason, caution);
-    }
-
     private CompatibilityScoreDetail scoreResidence(String myResidence, String targetResidence) {
         ResidenceRegion my = ResidenceRegion.from(myResidence);
         ResidenceRegion target = ResidenceRegion.from(targetResidence);
@@ -385,10 +358,6 @@ public class CompatibilityScoreCalculator {
 
     private String normalizeText(String value) {
         return value.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
-    }
-
-    private boolean isNoReligion(String religion) {
-        return religion.equals("none") || religion.equals("무교") || religion.equals("없음") || religion.equals("no");
     }
 
     private record ResidenceRegion(String province, String zone) {

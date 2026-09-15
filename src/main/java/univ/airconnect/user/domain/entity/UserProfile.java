@@ -56,9 +56,6 @@ public class UserProfile {
     @Enumerated(EnumType.STRING)
     private MilitaryStatus military;
 
-    @Column(length = 50)
-    private String religion;
-
     @Column(length = 100)
     private String residence;
 
@@ -83,7 +80,6 @@ public class UserProfile {
             String smoking,
             Gender gender,
             MilitaryStatus military,
-            String religion,
             String residence,
             String intro,
             String instagram,
@@ -97,7 +93,6 @@ public class UserProfile {
         this.smoking = smoking;
         this.gender = gender;
         this.military = military;
-        this.religion = religion;
         this.residence = residence;
         this.intro = intro;
         this.instagram = instagram;
@@ -113,7 +108,6 @@ public class UserProfile {
             String smoking,
             Gender gender,
             MilitaryStatus military,
-            String religion,
             String residence,
             String intro,
             String instagram
@@ -126,7 +120,6 @@ public class UserProfile {
                 .smoking(smoking)
                 .gender(gender)
                 .military(military)
-                .religion(religion)
                 .residence(residence)
                 .intro(intro)
                 .instagram(instagram)
@@ -141,7 +134,6 @@ public class UserProfile {
             String smoking,
             Gender gender,
             MilitaryStatus military,
-            String religion,
             String residence,
             String intro,
             String instagram
@@ -152,7 +144,6 @@ public class UserProfile {
         this.smoking = smoking;
         this.gender = gender;
         this.military = military;
-        this.religion = religion;
         this.residence = residence;
         this.intro = intro;
         this.instagram = instagram;
@@ -166,7 +157,6 @@ public class UserProfile {
             String smoking,
             Gender gender,
             MilitaryStatus military,
-            String religion,
             String residence,
             String intro,
             String instagram
@@ -189,9 +179,6 @@ public class UserProfile {
         if (military != null) {
             this.military = military;
         }
-        if (religion != null) {
-            this.religion = religion;
-        }
         if (residence != null) {
             this.residence = residence;
         }
@@ -211,7 +198,6 @@ public class UserProfile {
         this.smoking = null;
         this.gender = null;
         this.military = null;
-        this.religion = null;
         this.residence = null;
         this.intro = null;
         this.instagram = null;

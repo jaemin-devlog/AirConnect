@@ -22,7 +22,6 @@ class CompatibilityScoreCalculatorTest {
                 170,
                 "INTJ",
                 "NO",
-                "NONE",
                 "서울 강남구"
         );
         CompatibilityProfile target = profile(
@@ -33,7 +32,6 @@ class CompatibilityScoreCalculatorTest {
                 176,
                 "ENFP",
                 "NO",
-                "NONE",
                 "서울 송파구"
         );
 
@@ -56,7 +54,6 @@ class CompatibilityScoreCalculatorTest {
                 160,
                 "INTJ",
                 "NO",
-                "NONE",
                 "서울 강남구"
         );
         CompatibilityProfile target = profile(
@@ -67,7 +64,6 @@ class CompatibilityScoreCalculatorTest {
                 195,
                 "ESFP",
                 "YES",
-                "CHRISTIAN",
                 "부산 해운대구"
         );
 
@@ -89,7 +85,6 @@ class CompatibilityScoreCalculatorTest {
                 170,
                 "INTJ",
                 "NO",
-                "NONE",
                 "서울 강남구"
         );
         CompatibilityProfile target = profile(
@@ -100,7 +95,6 @@ class CompatibilityScoreCalculatorTest {
                 171,
                 "INFP",
                 "NO",
-                "NONE",
                 "서울 서초구"
         );
 
@@ -119,7 +113,6 @@ class CompatibilityScoreCalculatorTest {
             Integer height,
             String mbti,
             String smoking,
-            String religion,
             String residence
     ) {
         return new CompatibilityProfile(
@@ -130,7 +123,6 @@ class CompatibilityScoreCalculatorTest {
                 height,
                 mbti,
                 smoking,
-                religion,
                 residence
         );
     }

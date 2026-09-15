@@ -19,7 +19,6 @@ public record ReviewAccountProperties(
         String smoking,
         Gender gender,
         MilitaryStatus military,
-        String religion,
         String residence,
         String intro,
         String instagram
@@ -67,10 +66,6 @@ public record ReviewAccountProperties(
 
     public MilitaryStatus resolvedMilitary() {
         return military != null ? military : MilitaryStatus.NOT_APPLICABLE;
-    }
-
-    public String resolvedReligion() {
-        return hasText(religion) ? religion : "NONE";
     }
 
     public String resolvedResidence() {

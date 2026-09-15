@@ -36,9 +36,6 @@ public class UserProfileResponse {
     @JsonProperty("military")
     private MilitaryStatus military;
 
-    @JsonProperty("religion")
-    private String religion;
-
     @JsonProperty("residence")
     private String residence;
 
@@ -68,7 +65,6 @@ public class UserProfileResponse {
                 .smoking(userProfile.getSmoking())
                 .gender(userProfile.getGender())
                 .military(userProfile.getMilitary())
-                .religion(userProfile.getReligion())
                 .residence(userProfile.getResidence())
                 .intro(userProfile.getIntro())
                 .instagram(userProfile.getInstagram())

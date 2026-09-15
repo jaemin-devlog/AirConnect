@@ -359,7 +359,7 @@ class GroupChatJoinSecurityTest {
         User user = users.save(User.builder().provider(SocialProvider.KAKAO).socialId(UUID.randomUUID().toString())
                 .nickname(nickname).status(UserStatus.ACTIVE).onboardingStatus(OnboardingStatus.FULL)
                 .tickets(10).createdAt(LocalDateTime.now()).build());
-        profiles.save(UserProfile.create(user, null, null, null, null, gender, null, null, null, null, null));
+        profiles.save(UserProfile.create(user, null, null, null, null, gender, null, null, null, null));
         return user;
     }
 

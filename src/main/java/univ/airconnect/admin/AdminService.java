@@ -629,7 +629,6 @@ public class AdminService {
                 || trimToNull(profile.getSmoking()) != null
                 || profile.getGender() != null
                 || profile.getMilitary() != null
-                || trimToNull(profile.getReligion()) != null
                 || trimToNull(profile.getResidence()) != null
                 || trimToNull(profile.getIntro()) != null
                 || trimToNull(profile.getInstagram()) != null
@@ -647,7 +646,6 @@ public class AdminService {
                 profile.getSmoking(),
                 profile.getGender(),
                 profile.getMilitary(),
-                profile.getReligion(),
                 profile.getResidence(),
                 profile.getIntro(),
                 profile.getInstagram(),

@@ -417,7 +417,7 @@ class MatchingSafetyIntegrationTest {
                 .build());
         userProfileRepository.save(UserProfile.create(
                 user, 170, 24, "INTJ", "NO", gender,
-                MilitaryStatus.NOT_APPLICABLE, "NONE", "Seoul", "hello", "instagram"
+                MilitaryStatus.NOT_APPLICABLE, "Seoul", "hello", "instagram"
         ));
         return user;
     }

@@ -155,7 +155,7 @@ class MatchingServiceRaceTest {
                 .build();
         UserProfile profile = UserProfile.create(
                 user, 175, 22, "INTJ", "NO", Gender.MALE,
-                MilitaryStatus.NOT_APPLICABLE, "NONE", "Seosan", "intro", null
+                MilitaryStatus.NOT_APPLICABLE, "Seosan", "intro", null
         );
         when(userProfileRepository.findByUserId(id)).thenReturn(Optional.of(profile));
         return user;

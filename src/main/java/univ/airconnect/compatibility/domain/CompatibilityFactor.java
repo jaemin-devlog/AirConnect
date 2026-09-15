@@ -7,7 +7,6 @@ public enum CompatibilityFactor {
     HEIGHT("키"),
     MBTI("MBTI"),
     SMOKING("흡연 여부"),
-    RELIGION("종교"),
     RESIDENCE("본가 거주지");
 
     private final String label;

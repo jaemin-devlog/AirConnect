@@ -108,7 +108,6 @@ public class UserService {
                                 request.getSmoking(),
                                 request.getGender(),
                                 request.getMilitary(),
-                                request.getReligion(),
                                 request.getResidence(),
                                 request.getIntro(),
                                 request.getInstagram()
@@ -121,8 +120,7 @@ public class UserService {
                                 request.getSmoking(),
                                 request.getGender(),
                                 request.getMilitary(),
-                                request.getReligion(),
-                                request.getResidence(),
+                                        request.getResidence(),
                                 request.getIntro(),
                                 request.getInstagram()
                         ))
@@ -221,7 +219,6 @@ public class UserService {
                 request.getSmoking(),
                 request.getGender(),
                 request.getMilitary(),
-                request.getReligion(),
                 request.getResidence(),
                 request.getIntro(),
                 request.getInstagram()
@@ -253,7 +250,6 @@ public class UserService {
                 request.getSmoking(),
                 request.getGender(),
                 request.getMilitary(),
-                request.getReligion(),
                 request.getResidence(),
                 request.getIntro(),
                 request.getInstagram()

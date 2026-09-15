@@ -47,35 +47,34 @@ INSERT INTO user_profiles (
   smoking,
   gender,
   military,
-  religion,
   residence,
   intro,
   instagram,
   updated_at
 ) VALUES
 -- 남성 10명 (user_id 1~10)
-(1, 180, 'INTJ', 'NO', 'MALE', 'NOT_APPLICABLE', 'NONE', '서울 강남구', '안녕하세요! 개발을 좋아합니다', 'hong_gd', NOW()),
-(2, 175, 'ISTP', 'NO', 'MALE', 'NOT_APPLICABLE', 'CHRISTIAN', '서울 송파구', '프로그래밍이 취미입니다', 'kim_cs', NOW()),
-(3, 178, 'ENFP', 'NO', 'MALE', 'NOT_APPLICABLE', 'NONE', '경기 분당구', '새로운 사람 만나기를 좋아합니다', 'lee_yh', NOW()),
-(4, 182, 'ESTJ', 'NO', 'MALE', 'NOT_APPLICABLE', 'CATHOLIC', '서울 강북구', '운동과 코딩 둘 다 좋아해요', 'park_jh', NOW()),
-(5, 176, 'INFP', 'NO', 'MALE', 'NOT_APPLICABLE', 'NONE', '서울 마포구', '영화 보는 것을 좋아합니다', 'choi_mj', NOW()),
-(6, 179, 'INTP', 'NO', 'MALE', 'NOT_APPLICABLE', 'NONE', '경기 용인시', 'AI에 관심이 많습니다', 'jung_sh', NOW()),
-(7, 181, 'ENFJ', 'NO', 'MALE', 'NOT_APPLICABLE', 'CHRISTIAN', '서울 서초구', '따뜻한 마음으로 만나요', 'oh_jh', NOW()),
-(8, 177, 'ESFP', 'NO', 'MALE', 'NOT_APPLICABLE', 'NONE', '서울 중구', '재미있는 일들을 함께 하고 싶어요', 'son_dw', NOW()),
-(9, 174, 'ISFJ', 'NO', 'MALE', 'NOT_APPLICABLE', 'NONE', '경기 안양시', '차분하고 성실한 사람입니다', 'ryu_jh', NOW()),
-(10, 183, 'ISTJ', 'NO', 'MALE', 'NOT_APPLICABLE', 'CATHOLIC', '서울 종로구', '책과 음악을 사랑합니다', 'shin_sm', NOW()),
+(1, 180, 'INTJ', 'NO', 'MALE', 'NOT_APPLICABLE', '서울 강남구', '안녕하세요! 개발을 좋아합니다', 'hong_gd', NOW()),
+(2, 175, 'ISTP', 'NO', 'MALE', 'NOT_APPLICABLE', '서울 송파구', '프로그래밍이 취미입니다', 'kim_cs', NOW()),
+(3, 178, 'ENFP', 'NO', 'MALE', 'NOT_APPLICABLE', '경기 분당구', '새로운 사람 만나기를 좋아합니다', 'lee_yh', NOW()),
+(4, 182, 'ESTJ', 'NO', 'MALE', 'NOT_APPLICABLE', '서울 강북구', '운동과 코딩 둘 다 좋아해요', 'park_jh', NOW()),
+(5, 176, 'INFP', 'NO', 'MALE', 'NOT_APPLICABLE', '서울 마포구', '영화 보는 것을 좋아합니다', 'choi_mj', NOW()),
+(6, 179, 'INTP', 'NO', 'MALE', 'NOT_APPLICABLE', '경기 용인시', 'AI에 관심이 많습니다', 'jung_sh', NOW()),
+(7, 181, 'ENFJ', 'NO', 'MALE', 'NOT_APPLICABLE', '서울 서초구', '따뜻한 마음으로 만나요', 'oh_jh', NOW()),
+(8, 177, 'ESFP', 'NO', 'MALE', 'NOT_APPLICABLE', '서울 중구', '재미있는 일들을 함께 하고 싶어요', 'son_dw', NOW()),
+(9, 174, 'ISFJ', 'NO', 'MALE', 'NOT_APPLICABLE', '경기 안양시', '차분하고 성실한 사람입니다', 'ryu_jh', NOW()),
+(10, 183, 'ISTJ', 'NO', 'MALE', 'NOT_APPLICABLE', '서울 종로구', '책과 음악을 사랑합니다', 'shin_sm', NOW()),
 
 -- 여성 10명 (user_id 11~20)
-(11, 165, 'INTJ', 'NO', 'FEMALE', 'NOT_APPLICABLE', 'NONE', '서울 강남구', '똑똑하고 자유로운 마음', 'lee_jy', NOW()),
-(12, 162, 'ISFP', 'NO', 'FEMALE', 'NOT_APPLICABLE', 'CHRISTIAN', '서울 강동구', '예술을 사랑하는 사람입니다', 'park_sj', NOW()),
-(13, 168, 'ENFP', 'NO', 'FEMALE', 'NOT_APPLICABLE', 'NONE', '경기 수원시', '밝고 긍정적인 에너지입니다', 'kim_mj', NOW()),
-(14, 160, 'ESFJ', 'NO', 'FEMALE', 'NOT_APPLICABLE', 'CATHOLIC', '서울 서대문구', '배려심 깊고 친절한 성격', 'jung_yn', NOW()),
-(15, 167, 'INFP', 'NO', 'FEMALE', 'NOT_APPLICABLE', 'NONE', '서울 영등포구', '감수성 풍부한 영혼입니다', 'lee_sy', NOW()),
-(16, 164, 'INTP', 'NO', 'FEMALE', 'NOT_APPLICABLE', 'NONE', '경기 성남시', '분석적이고 논리적입니다', 'kang_hj', NOW()),
-(17, 169, 'ENFJ', 'NO', 'FEMALE', 'NOT_APPLICABLE', 'NONE', '서울 은평구', '리더십 있고 따뜻해요', 'jo_hn', NOW()),
-(18, 161, 'ESFP', 'NO', 'FEMALE', 'NOT_APPLICABLE', 'CHRISTIAN', '서울 중랑구', '활발하고 재미있는 성격입니다', 'hong_yj', NOW()),
-(19, 166, 'ISFJ', 'NO', 'FEMALE', 'NOT_APPLICABLE', 'NONE', '경기 부천시', '신뢰할 수 있는 사람입니다', 'yun_sg', NOW()),
-(20, 163, 'ISTJ', 'NO', 'FEMALE', 'NOT_APPLICABLE', 'NONE', '서울 동작구', '차근차근 계획하는 성격이에요', 'bae_sy', NOW());
+(11, 165, 'INTJ', 'NO', 'FEMALE', 'NOT_APPLICABLE', '서울 강남구', '똑똑하고 자유로운 마음', 'lee_jy', NOW()),
+(12, 162, 'ISFP', 'NO', 'FEMALE', 'NOT_APPLICABLE', '서울 강동구', '예술을 사랑하는 사람입니다', 'park_sj', NOW()),
+(13, 168, 'ENFP', 'NO', 'FEMALE', 'NOT_APPLICABLE', '경기 수원시', '밝고 긍정적인 에너지입니다', 'kim_mj', NOW()),
+(14, 160, 'ESFJ', 'NO', 'FEMALE', 'NOT_APPLICABLE', '서울 서대문구', '배려심 깊고 친절한 성격', 'jung_yn', NOW()),
+(15, 167, 'INFP', 'NO', 'FEMALE', 'NOT_APPLICABLE', '서울 영등포구', '감수성 풍부한 영혼입니다', 'lee_sy', NOW()),
+(16, 164, 'INTP', 'NO', 'FEMALE', 'NOT_APPLICABLE', '경기 성남시', '분석적이고 논리적입니다', 'kang_hj', NOW()),
+(17, 169, 'ENFJ', 'NO', 'FEMALE', 'NOT_APPLICABLE', '서울 은평구', '리더십 있고 따뜻해요', 'jo_hn', NOW()),
+(18, 161, 'ESFP', 'NO', 'FEMALE', 'NOT_APPLICABLE', '서울 중랑구', '활발하고 재미있는 성격입니다', 'hong_yj', NOW()),
+(19, 166, 'ISFJ', 'NO', 'FEMALE', 'NOT_APPLICABLE', '경기 부천시', '신뢰할 수 있는 사람입니다', 'yun_sg', NOW()),
+(20, 163, 'ISTJ', 'NO', 'FEMALE', 'NOT_APPLICABLE', '서울 동작구', '차근차근 계획하는 성격이에요', 'bae_sy', NOW());
 
 -- 3. 확인 쿼리
 SELECT

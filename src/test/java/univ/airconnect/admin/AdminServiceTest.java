@@ -406,7 +406,7 @@ class AdminServiceTest {
         ReflectionTestUtils.setField(user, "lastNicknameChangedAt", nicknameChangedAt);
         UserProfile profile = UserProfile.create(
                 user, 178, 24, "ENFP", "NON_SMOKER", Gender.MALE,
-                MilitaryStatus.COMPLETED, "무교", "서울", "반갑습니다", "airconnect_member"
+                MilitaryStatus.COMPLETED, "서울", "반갑습니다", "airconnect_member"
         );
         profile.updateProfileImagePath("profile-5.png");
         ReflectionTestUtils.setField(user, "userProfile", profile);
@@ -455,7 +455,7 @@ class AdminServiceTest {
         ReflectionTestUtils.setField(user, "nickname", "기록 보존");
         UserProfile profile = UserProfile.create(
                 user, 170, 23, "ISFJ", "NON_SMOKER", Gender.FEMALE,
-                MilitaryStatus.NOT_APPLICABLE, "무교", "서울", "소개", "account"
+                MilitaryStatus.NOT_APPLICABLE, "서울", "소개", "account"
         );
         profile.updateProfileImagePath("profile-7.png");
         ReflectionTestUtils.setField(user, "userProfile", profile);

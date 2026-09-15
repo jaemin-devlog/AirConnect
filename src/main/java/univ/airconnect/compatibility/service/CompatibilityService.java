@@ -79,7 +79,6 @@ public class CompatibilityService {
                 || profile.height() == null
                 || isBlank(profile.mbti())
                 || isBlank(profile.smoking())
-                || isBlank(profile.religion())
                 || isBlank(profile.residence())) {
             throw new CompatibilityException(CompatibilityErrorCode.PROFILE_INCOMPLETE);
         }

@@ -78,7 +78,6 @@ INSERT INTO user_profiles (
     smoking,
     gender,
     military,
-    religion,
     residence,
     intro,
     instagram,
@@ -106,12 +105,6 @@ SELECT
         ELSE 'FEMALE'
     END AS gender,
     'NOT_APPLICABLE' AS military,
-    CASE MOD(s.n, 4)
-        WHEN 0 THEN 'NONE'
-        WHEN 1 THEN 'CHRISTIAN'
-        WHEN 2 THEN 'CATHOLIC'
-        ELSE 'BUDDHIST'
-    END AS religion,
     CASE MOD(s.n, 6)
         WHEN 0 THEN '서울 강남구'
         WHEN 1 THEN '서울 마포구'
