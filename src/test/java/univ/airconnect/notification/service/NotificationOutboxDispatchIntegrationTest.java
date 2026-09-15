@@ -19,8 +19,12 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 @org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
@@ -93,6 +97,33 @@ class NotificationOutboxDispatchIntegrationTest {
     }
 
     @Test
+    void suspendedRecipientCanReceiveOnlyTheCommittedSuspensionAnnouncement() {
+        User user = saveUser("suspended-user");
+        PushDevice device = saveDevice(user.getId(), "device-suspended", "token-suspended");
+        NotificationOutbox outbox = saveProcessingOutbox(
+                user.getId(),
+                device.getId(),
+                "token-suspended",
+                "{\"notificationType\":\"SYSTEM_ANNOUNCEMENT\","
+                        + "\"kind\":\"ADMIN_USER_ACTION\",\"action\":\"SUSPEND\"}"
+        );
+        user.suspend(LocalDateTime.now().plusDays(1), "운영 정책 위반");
+        when(pushNotificationSender.sendAsync(any(NotificationOutbox.class), eq(PushPlatform.ANDROID)))
+                .thenReturn(CompletableFuture.completedFuture(
+                        PushNotificationSender.PushSendResult.success("fcm-suspension-integration")));
+
+        flushAndClear();
+        dispatchService.dispatch(outbox.getId());
+
+        NotificationOutbox reloaded = notificationOutboxRepository.findById(outbox.getId()).orElseThrow();
+        assertThat(reloaded.getStatus())
+                .withFailMessage("Expected suspension Push to be sent, but code=%s message=%s payload=%s",
+                        reloaded.getLastErrorCode(), reloaded.getLastErrorMessage(), reloaded.getDataJson())
+                .isEqualTo(NotificationDeliveryStatus.SENT);
+        assertThat(reloaded.getProviderMessageId()).isEqualTo("fcm-suspension-integration");
+    }
+
+    @Test
     void tokenRefreshMakesOldTokenOutboxIneligible() {
         User user = saveUser("refresh-user");
         PushDevice device = saveDevice(user.getId(), "device-4", "token-old");
@@ -130,6 +161,18 @@ class NotificationOutboxDispatchIntegrationTest {
     }
 
     private NotificationOutbox saveProcessingOutbox(Long userId, Long pushDeviceId, String token) {
+        return saveProcessingOutbox(
+                userId,
+                pushDeviceId,
+                token,
+                "{\"notificationType\":\"MATCH_REQUEST_RECEIVED\"}"
+        );
+    }
+
+    private NotificationOutbox saveProcessingOutbox(Long userId,
+                                                     Long pushDeviceId,
+                                                     String token,
+                                                     String dataJson) {
         NotificationOutbox outbox = NotificationOutbox.create(
                 10_000L + pushDeviceId,
                 userId,
@@ -138,7 +181,7 @@ class NotificationOutboxDispatchIntegrationTest {
                 token,
                 "테스트 알림",
                 "테스트 본문",
-                "{\"notificationType\":\"MATCH_REQUEST_RECEIVED\"}",
+                dataJson,
                 LocalDateTime.now()
         );
         outbox.claim();

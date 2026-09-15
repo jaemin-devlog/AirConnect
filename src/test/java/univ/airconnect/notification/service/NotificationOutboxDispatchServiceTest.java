@@ -137,6 +137,36 @@ class NotificationOutboxDispatchServiceTest {
     }
 
     @Test
+    void suspendedRecipientReceivesItsAccountSuspensionAnnouncement() {
+        NotificationOutbox outbox = processingAccountSuspensionOutbox("token-1");
+        User suspendedUser = user(USER_ID, UserStatus.SUSPENDED);
+        PushDevice device = device(USER_ID, "token-1");
+        stubLockedRows(outbox, suspendedUser, device);
+        when(pushNotificationSender.sendAsync(outbox, PushPlatform.ANDROID))
+                .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(
+                        PushNotificationSender.PushSendResult.success("fcm-suspension-1")));
+
+        service.dispatch(OUTBOX_ID);
+
+        verify(pushNotificationSender).sendAsync(outbox, PushPlatform.ANDROID);
+        assertThat(outbox.getStatus()).isEqualTo(NotificationDeliveryStatus.SENT);
+    }
+
+    @Test
+    void suspendedRecipientStillCannotReceiveOtherPushes() {
+        NotificationOutbox outbox = processingOutbox("token-1");
+        User suspendedUser = user(USER_ID, UserStatus.SUSPENDED);
+        when(notificationOutboxRepository.findByIdForUpdate(OUTBOX_ID)).thenReturn(Optional.of(outbox));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(suspendedUser));
+
+        service.dispatch(OUTBOX_ID);
+
+        verify(pushNotificationSender, never()).sendAsync(outbox, PushPlatform.ANDROID);
+        verify(pushDeviceRepository, never()).findByIdForUpdate(DEVICE_ID);
+        assertSkipped(outbox, NotificationOutboxDispatchService.RECIPIENT_NOT_ACTIVE);
+    }
+
+    @Test
     void tokenRefreshSkipsOutboxContainingPreviousToken() {
         NotificationOutbox outbox = processingOutbox("token-old");
         User user = user(USER_ID, UserStatus.ACTIVE);
@@ -299,6 +329,24 @@ class NotificationOutboxDispatchServiceTest {
                 "새 메시지",
                 "{\"notificationType\":\"CHAT_MESSAGE_RECEIVED\",\"chatRoomId\":\"" + ROOM_ID
                         + "\",\"messageId\":\"" + MESSAGE_ID + "\"}",
+                LocalDateTime.now()
+        );
+        ReflectionTestUtils.setField(outbox, "id", OUTBOX_ID);
+        outbox.claim();
+        return outbox;
+    }
+
+    private NotificationOutbox processingAccountSuspensionOutbox(String token) {
+        NotificationOutbox outbox = NotificationOutbox.create(
+                103L,
+                USER_ID,
+                DEVICE_ID,
+                PushProvider.FCM,
+                token,
+                "운영팀",
+                "회원님의 계정이 정지되었습니다.",
+                "{\"notificationType\":\"SYSTEM_ANNOUNCEMENT\","
+                        + "\"kind\":\"ADMIN_USER_ACTION\",\"action\":\"SUSPEND\"}",
                 LocalDateTime.now()
         );
         ReflectionTestUtils.setField(outbox, "id", OUTBOX_ID);

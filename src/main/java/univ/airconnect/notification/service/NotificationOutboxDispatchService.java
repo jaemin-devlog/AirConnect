@@ -50,6 +50,9 @@ public class NotificationOutboxDispatchService {
 
     private static final int MAX_ATTEMPTS = 3;
     private static final String CHAT_NOTIFICATION_TYPE = "CHAT_MESSAGE_RECEIVED";
+    private static final String SYSTEM_ANNOUNCEMENT_TYPE = "SYSTEM_ANNOUNCEMENT";
+    private static final String ADMIN_USER_ACTION_KIND = "ADMIN_USER_ACTION";
+    private static final String SUSPEND_ACTION = "SUSPEND";
     private static final ObjectMapper PAYLOAD_MAPPER = new ObjectMapper();
 
     private final NotificationOutboxRepository notificationOutboxRepository;
@@ -106,7 +109,7 @@ public class NotificationOutboxDispatchService {
         }
 
         User recipient = userRepository.findByIdForUpdate(outbox.getUserId()).orElse(null);
-        if (recipient == null || recipient.getStatus() != UserStatus.ACTIVE) {
+        if (!isRecipientEligible(recipient, outbox)) {
             skip(outbox, RECIPIENT_NOT_ACTIVE, "수신 사용자가 없거나 활성 상태가 아닙니다.");
             return null;
         }
@@ -135,10 +138,38 @@ public class NotificationOutboxDispatchService {
         return new Attempt(outbox.getId(), token, outbox.getUserId(), device.getId(), outbox.getTargetToken(), future);
     }
 
+    /**
+     * 일반 Push는 현재 ACTIVE 사용자에게만 발송한다. 다만 계정 정지 안내는 조치와 같은
+     * 트랜잭션에서 생성되고 워커가 커밋 이후 처리하므로, 그 시점에는 수신자가 이미
+     * SUSPENDED 상태다. 해당 관리자 조치 payload만 제한적으로 허용한다.
+     */
+    private boolean isRecipientEligible(User recipient, NotificationOutbox outbox) {
+        if (recipient == null) {
+            return false;
+        }
+        if (recipient.getStatus() == UserStatus.ACTIVE) {
+            return true;
+        }
+        return recipient.getStatus() == UserStatus.SUSPENDED && isAccountSuspensionAnnouncement(outbox);
+    }
+
+    private boolean isAccountSuspensionAnnouncement(NotificationOutbox outbox) {
+        try {
+            JsonNode payload = parsePayload(outbox.getDataJson());
+            return payload != null
+                    && SYSTEM_ANNOUNCEMENT_TYPE.equals(payload.path("notificationType").asText())
+                    && ADMIN_USER_ACTION_KIND.equals(payload.path("kind").asText())
+                    && SUSPEND_ACTION.equals(payload.path("action").asText());
+        } catch (Exception exception) {
+            log.warn("Unable to validate suspended-recipient outbox payload: outboxId={}", outbox.getId());
+            return false;
+        }
+    }
+
     private String validateCurrentChatDelivery(NotificationOutbox outbox) {
         JsonNode payload;
         try {
-            payload = PAYLOAD_MAPPER.readTree(outbox.getDataJson());
+            payload = parsePayload(outbox.getDataJson());
         } catch (Exception exception) {
             log.warn("Unable to parse outbox payload before dispatch: outboxId={}", outbox.getId());
             return null;
@@ -175,6 +206,22 @@ public class NotificationOutboxDispatchService {
             return CHAT_ROOM_ACCESS_REVOKED;
         }
         return null;
+    }
+
+    /**
+     * MySQL의 JSON 컬럼과 테스트용 H2가 String 값을 반환하는 형태가 다를 수 있어,
+     * JSON 문자열로 한두 번 감싸진 payload도 실제 객체까지 제한적으로 해제한다.
+     */
+    private JsonNode parsePayload(String dataJson) throws Exception {
+        JsonNode payload = PAYLOAD_MAPPER.readTree(dataJson);
+        for (int depth = 0; depth < 3 && payload != null && payload.isTextual(); depth++) {
+            String nestedJson = payload.asText();
+            if (nestedJson == null || nestedJson.isBlank()) {
+                break;
+            }
+            payload = PAYLOAD_MAPPER.readTree(nestedJson);
+        }
+        return payload;
     }
 
     private Long positiveLong(JsonNode node) {
