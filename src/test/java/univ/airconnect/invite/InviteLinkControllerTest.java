@@ -44,6 +44,35 @@ class InviteLinkControllerTest {
     }
 
     @Test
+    void download_redirectsAndroidToGooglePlay() throws Exception {
+        mvc.perform(get("/download").header("User-Agent", "Mozilla/5.0 (Linux; Android 15)"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location",
+                        "https://play.google.com/store/apps/details?id=org.airconnect.hsu"));
+    }
+
+    @Test
+    void download_redirectsIosToAppStore() throws Exception {
+        mvc.perform(get("/download").header("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location",
+                        "https://apps.apple.com/kr/app/%EC%97%90%EC%96%B4%EC%BB%A4%EB%84%A5%ED%8A%B8-airconnect/id6761365188"));
+    }
+
+    @Test
+    void download_showsBothStoresForDesktop() throws Exception {
+        String html = mvc.perform(get("/download").header("User-Agent", "Mozilla/5.0 (Windows NT 10.0)"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/html"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(html)
+                .contains("에어커넥트 시작하기")
+                .contains("Google Play에서 받기")
+                .contains("App Store에서 받기");
+    }
+
+    @Test
     void androidAssociation_containsPackageAndAllSigningFingerprints() throws Exception {
         mvc.perform(get("/.well-known/assetlinks.json"))
                 .andExpect(status().isOk())

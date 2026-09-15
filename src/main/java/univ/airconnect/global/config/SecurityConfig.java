@@ -63,6 +63,7 @@ public class SecurityConfig {
                         // 앱 설치 여부에 따라 스토어 또는 앱으로 연결되는 공개 초대 링크
                         .requestMatchers(HttpMethod.GET,
                                 "/join",
+                                "/download",
                                 "/.well-known/assetlinks.json",
                                 "/.well-known/apple-app-site-association"
                         ).permitAll()
