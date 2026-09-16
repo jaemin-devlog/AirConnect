@@ -7,6 +7,7 @@ import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.repository.SocialLoginDeviceBindingRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
+import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
@@ -22,6 +23,7 @@ import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.repository.UserSchoolConsentRepository;
+import univ.airconnect.verification.repository.VerifiedSchoolEmailRepository;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -38,6 +40,8 @@ public class AdminUserPurgeService {
     private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final MatchingConnectionRepository matchingConnectionRepository;
     private final MatchingLifecycleService matchingLifecycleService;
+    private final ChatMessageRepository chatMessageRepository;
+    private final VerifiedSchoolEmailRepository verifiedSchoolEmailRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final SocialLoginDeviceBindingRepository socialLoginDeviceBindingRepository;
     private final PushDeviceRepository pushDeviceRepository;
@@ -58,7 +62,6 @@ public class AdminUserPurgeService {
         }
 
         String provider = user.getProvider() != null ? user.getProvider().name() : null;
-        String socialId = user.getSocialId();
         String status = user.getStatus().name();
 
         long deletedNotificationOutboxRows = notificationOutboxRepository.deleteByUserId(userId);
@@ -69,6 +72,8 @@ public class AdminUserPurgeService {
         long deletedSocialDeviceBindingRows = socialLoginDeviceBindingRepository.deleteByUserId(userId);
         long deletedRefreshTokenRows = deleteRefreshTokens(userId);
         long deletedUserMilestoneRows = userMilestoneRepository.deleteByUserId(userId);
+        long deletedVerifiedSchoolEmailRows = verifiedSchoolEmailRepository.deleteByLinkedUserId(userId);
+        long anonymizedChatMessageRows = chatMessageRepository.anonymizeSenderNickname(userId, "탈퇴한 사용자");
         long deletedChatRoomMemberRows = chatRoomMemberRepository.deleteByUserId(userId);
         matchingLifecycleService.deleteUserMatchingArtifacts(userId);
         matchingConnectionRepository.deleteByUser1IdOrUser2Id(userId, userId);
@@ -81,7 +86,7 @@ public class AdminUserPurgeService {
         AdminDtos.UserPermanentDeleteResult result = new AdminDtos.UserPermanentDeleteResult(
                 userId,
                 provider,
-                socialId,
+                null,
                 status,
                 deletedProfileRows,
                 deletedSchoolConsentRows,
@@ -94,6 +99,8 @@ public class AdminUserPurgeService {
                 deletedNotificationOutboxRows,
                 deletedPushEventRows,
                 deletedUserMilestoneRows,
+                deletedVerifiedSchoolEmailRows,
+                anonymizedChatMessageRows,
                 true
         );
 
@@ -126,7 +133,8 @@ public class AdminUserPurgeService {
     private Map<String, Object> metadata(AdminDtos.UserPermanentDeleteResult result) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("provider", result.provider());
-        metadata.put("socialId", result.socialId());
+        metadata.put("deletedVerifiedSchoolEmailRows", result.deletedVerifiedSchoolEmailRows());
+        metadata.put("anonymizedChatMessageRows", result.anonymizedChatMessageRows());
         metadata.put("deletedProfileRows", result.deletedProfileRows());
         metadata.put("deletedSchoolConsentRows", result.deletedSchoolConsentRows());
         metadata.put("deletedChatRoomMemberRows", result.deletedChatRoomMemberRows());
@@ -140,4 +148,5 @@ public class AdminUserPurgeService {
         metadata.put("deletedUserMilestoneRows", result.deletedUserMilestoneRows());
         return metadata;
     }
+
 }

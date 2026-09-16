@@ -33,5 +33,9 @@ public class IapProperties {
         private String packageName;
         private String serviceAccountJsonPath;
         private boolean verifyEnabled = false;
+        /** Exact audience configured on the authenticated Pub/Sub push subscription. */
+        private String pubsubAudience;
+        /** Service account selected as the Pub/Sub push authentication identity. */
+        private String pubsubServiceAccountEmail;
     }
 }

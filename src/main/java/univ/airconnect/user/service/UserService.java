@@ -12,6 +12,7 @@ import univ.airconnect.auth.domain.entity.RefreshToken;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.service.oauth.apple.AppleAccountRevocationService;
 import univ.airconnect.chat.service.ChatService;
+import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.department.domain.DepartmentNames;
 import univ.airconnect.department.repository.DepartmentRepository;
 import univ.airconnect.matching.service.MatchingLifecycleService;
@@ -35,6 +36,7 @@ import univ.airconnect.user.exception.UserException;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
+import univ.airconnect.verification.repository.VerifiedSchoolEmailRepository;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -59,6 +61,8 @@ public class UserService {
     private final AppleAccountRevocationService appleAccountRevocationService;
     private final DepartmentRepository departmentRepository;
     private final MatchingLifecycleService matchingLifecycleService;
+    private final VerifiedSchoolEmailRepository verifiedSchoolEmailRepository;
+    private final ChatMessageRepository chatMessageRepository;
 
     private static final String USER_ACTIVITY_TOUCH_KEY_PREFIX = "analytics:user:last-active:";
     private static final int NICKNAME_MAX_LENGTH = 6;
@@ -346,6 +350,7 @@ public class UserService {
             user.markDeleted();
         }
         matchingLifecycleService.cleanupOnAccountDeletion(userId);
+        purgeDeletionIdentifiers(userId);
 
         int refreshTokensRevoked = purgeRefreshTokens(userId);
         int chatSessionsRevoked = purgeChatSessions(userId);
@@ -358,6 +363,13 @@ public class UserService {
                 refreshTokensRevoked,
                 chatSessionsRevoked,
                 pushDevicesRevoked);
+    }
+
+    private void purgeDeletionIdentifiers(Long userId) {
+        long deletedEmailReservations = verifiedSchoolEmailRepository.deleteByLinkedUserId(userId);
+        int anonymizedChatMessages = chatMessageRepository.anonymizeSenderNickname(userId, "탈퇴한 사용자");
+        log.info("탈퇴 사용자 식별정보 정리 완료: userId={}, schoolEmailReservations={}, chatSenderSnapshots={}",
+                userId, deletedEmailReservations, anonymizedChatMessages);
     }
 
     private void revokeAppleTokenOnDelete(User user, DeleteAccountRequest request, String traceId) {

@@ -11,6 +11,7 @@ import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.repository.SocialLoginDeviceBindingRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
+import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.matching.service.MatchingLifecycleService;
@@ -26,6 +27,7 @@ import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
 import univ.airconnect.user.repository.UserSchoolConsentRepository;
+import univ.airconnect.verification.repository.VerifiedSchoolEmailRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -53,6 +55,10 @@ class AdminUserPurgeServiceTest {
     private MatchingConnectionRepository matchingConnectionRepository;
     @Mock
     private MatchingLifecycleService matchingLifecycleService;
+    @Mock
+    private ChatMessageRepository chatMessageRepository;
+    @Mock
+    private VerifiedSchoolEmailRepository verifiedSchoolEmailRepository;
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
@@ -83,6 +89,8 @@ class AdminUserPurgeServiceTest {
                 chatRoomMemberRepository,
                 matchingConnectionRepository,
                 matchingLifecycleService,
+                chatMessageRepository,
+                verifiedSchoolEmailRepository,
                 refreshTokenRepository,
                 socialLoginDeviceBindingRepository,
                 pushDeviceRepository,
@@ -109,6 +117,8 @@ class AdminUserPurgeServiceTest {
         when(socialLoginDeviceBindingRepository.deleteByUserId(7L)).thenReturn(1L);
         when(refreshTokenRepository.findByUserId(7L)).thenReturn(List.of(refreshToken));
         when(userMilestoneRepository.deleteByUserId(7L)).thenReturn(2L);
+        when(verifiedSchoolEmailRepository.deleteByLinkedUserId(7L)).thenReturn(1L);
+        when(chatMessageRepository.anonymizeSenderNickname(7L, "탈퇴한 사용자")).thenReturn(5);
         when(chatRoomMemberRepository.deleteByUserId(7L)).thenReturn(1L);
         when(userProfileRepository.deleteByUserId(7L)).thenReturn(1L);
         when(userSchoolConsentRepository.deleteByUserId(7L)).thenReturn(1L);
@@ -119,7 +129,9 @@ class AdminUserPurgeServiceTest {
         assertThat(result.userDeleted()).isTrue();
         assertThat(result.userId()).isEqualTo(7L);
         assertThat(result.provider()).isEqualTo("APPLE");
-        assertThat(result.socialId()).isEqualTo("apple-sub-7");
+        assertThat(result.socialId()).isNull();
+        assertThat(result.deletedVerifiedSchoolEmailRows()).isEqualTo(1L);
+        assertThat(result.anonymizedChatMessageRows()).isEqualTo(5L);
         assertThat(result.deletedSocialDeviceBindingRows()).isEqualTo(1L);
         assertThat(result.deletedRefreshTokenRows()).isEqualTo(1L);
         assertThat(result.deletedNotificationOutboxRows()).isEqualTo(2L);

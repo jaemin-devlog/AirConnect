@@ -16,6 +16,11 @@ import java.util.Optional;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE ChatMessage m SET m.senderNickname = :replacement WHERE m.senderId = :senderId")
+    int anonymizeSenderNickname(@Param("senderId") Long senderId,
+                                @Param("replacement") String replacement);
+
     // Source validation deliberately avoids loading either current or legacy message content.
     @Query("SELECT m.id AS id, m.roomId AS roomId, m.senderId AS senderId FROM ChatMessage m WHERE m.id = :id")
     Optional<ReportMessageSource> findReportSourceById(@Param("id") Long id);

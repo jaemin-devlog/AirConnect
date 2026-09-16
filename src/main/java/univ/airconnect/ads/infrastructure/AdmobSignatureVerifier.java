@@ -25,7 +25,7 @@ public class AdmobSignatureVerifier {
             verifier.verify(rewardUrl);
             return true;
         } catch (Exception e) {
-            log.warn("AdMob signature verification failed: {}", e.getMessage(), e);
+            log.warn("AdMob signature verification failed. type={}", e.getClass().getSimpleName());
             return false;
         }
     }

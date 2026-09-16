@@ -55,18 +55,6 @@ public class AdRewardCallbackService {
 
         // AdMob 콘솔 URL 확인(probe) 또는 세션 없는 호출은 무해하게 200 응답
         if (sessionKey.isBlank()) {
-            try {
-                adRewardCallbackRepository.save(
-                        AdRewardCallback.of(
-                                null,
-                                transactionId.isBlank() ? null : transactionId,
-                                truncate(rawQuery),
-                                false
-                        )
-                );
-            } catch (Exception e) {
-                log.error("Failed to save AdRewardCallback log for probe request", e);
-            }
             return ignoredResponse("", transactionId);
         }
 
@@ -74,18 +62,6 @@ public class AdRewardCallbackService {
         if (signature.isBlank() || keyId.isBlank()) {
             log.warn("Ad reward callback ignored due to missing signature metadata. txId={}, sessionKeyMasked={}",
                     mask(transactionId), mask(sessionKey));
-            try {
-                adRewardCallbackRepository.save(
-                        AdRewardCallback.of(
-                                sessionKey,
-                                transactionId.isBlank() ? null : transactionId,
-                                truncate(rawQuery),
-                                false
-                        )
-                );
-            } catch (Exception e) {
-                log.error("Failed to save AdRewardCallback log for missing signature metadata", e);
-            }
             return ignoredResponse(sessionKey, transactionId);
         }
 

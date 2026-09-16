@@ -72,6 +72,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/statistics/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/departments").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/chat/ops/**").hasRole("ADMIN")
 
                         // 프로필 이미지 조회
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/profile-images/**").permitAll()

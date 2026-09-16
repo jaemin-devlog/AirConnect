@@ -641,6 +641,8 @@ public final class AdminDtos {
             long deletedNotificationOutboxRows,
             long deletedPushEventRows,
             long deletedUserMilestoneRows,
+            long deletedVerifiedSchoolEmailRows,
+            long anonymizedChatMessageRows,
             boolean userDeleted
     ) {
     }

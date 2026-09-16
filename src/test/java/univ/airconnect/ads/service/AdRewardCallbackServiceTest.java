@@ -78,7 +78,7 @@ class AdRewardCallbackServiceTest {
         AdRewardCallbackResponse response = adRewardCallbackService.handleAdmobCallback(request);
 
         assertThat(response.getGrantStatus()).isEqualTo("IGNORED");
-        verify(adRewardCallbackRepository).save(any());
+        verify(adRewardCallbackRepository, never()).save(any());
     }
 
     @Test
@@ -109,7 +109,7 @@ class AdRewardCallbackServiceTest {
 
         assertThat(response.getGrantStatus()).isEqualTo("IGNORED");
         assertThat(response.getGrantedTickets()).isEqualTo(0);
-        verify(adRewardCallbackRepository).save(any());
+        verify(adRewardCallbackRepository, never()).save(any());
     }
 
     @Test
@@ -123,6 +123,6 @@ class AdRewardCallbackServiceTest {
 
         assertThat(response.getGrantStatus()).isEqualTo("IGNORED");
         assertThat(response.getGrantedTickets()).isEqualTo(0);
-        verify(adRewardCallbackRepository).save(any());
+        verify(adRewardCallbackRepository, never()).save(any());
     }
 }

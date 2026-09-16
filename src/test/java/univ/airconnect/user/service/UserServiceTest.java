@@ -13,6 +13,7 @@ import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.service.oauth.apple.AppleAccountRevocationService;
 import univ.airconnect.chat.service.ChatService;
+import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.department.repository.DepartmentRepository;
 import univ.airconnect.matching.service.MatchingLifecycleService;
 import univ.airconnect.notification.domain.PushPlatform;
@@ -37,6 +38,7 @@ import univ.airconnect.user.exception.UserException;
 import univ.airconnect.user.repository.UserMilestoneRepository;
 import univ.airconnect.user.repository.UserProfileRepository;
 import univ.airconnect.user.repository.UserRepository;
+import univ.airconnect.verification.repository.VerifiedSchoolEmailRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -144,6 +146,10 @@ class UserServiceTest {
                 .isInstanceOfSatisfying(UserException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(UserErrorCode.INVALID_INPUT));
     }
+    @Mock
+    private VerifiedSchoolEmailRepository verifiedSchoolEmailRepository;
+    @Mock
+    private ChatMessageRepository chatMessageRepository;
 
     @Test
     void deleteAccount_marksUserDeleted_andRevokesSessions() {
@@ -213,6 +219,8 @@ class UserServiceTest {
         verify(chatService).invalidateSessionsByUserId(userId);
         verify(redisTemplate).delete("analytics:user:last-active:" + userId);
         verify(pushDeviceRepository).findByUserIdAndActiveTrue(userId);
+        verify(verifiedSchoolEmailRepository).deleteByLinkedUserId(userId);
+        verify(chatMessageRepository).anonymizeSenderNickname(userId, "탈퇴한 사용자");
 
         assertThat(pushDevice.getActive()).isFalse();
         assertThat(pushDevice.getPushToken()).startsWith("released:");
@@ -453,7 +461,9 @@ class UserServiceTest {
                 redisTemplate,
                 appleAccountRevocationService,
                 departmentRepository,
-                matchingLifecycleService
+                matchingLifecycleService,
+                verifiedSchoolEmailRepository,
+                chatMessageRepository
         );
         ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
         return service;
