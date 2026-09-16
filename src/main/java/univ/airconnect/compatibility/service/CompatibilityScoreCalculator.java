@@ -15,6 +15,7 @@ import univ.airconnect.compatibility.domain.CompatibilityResult;
 import univ.airconnect.compatibility.domain.CompatibilityScoreDetail;
 import univ.airconnect.compatibility.domain.MbtiCompatibilityTable;
 import univ.airconnect.compatibility.domain.MbtiCompatibilityTier;
+import univ.airconnect.user.domain.AdmissionYear;
 
 @Component
 public class CompatibilityScoreCalculator {
@@ -339,21 +340,9 @@ public class CompatibilityScoreCalculator {
     }
 
     private int admissionYear(Integer studentNum) {
-        int value = studentNum;
-        if (value >= 19000000 && value <= 20999999) {
-            return value / 10000;
-        }
-        if (value >= 1900 && value <= 2099) {
-            return value;
-        }
-        if (value >= 0 && value <= 99) {
-            return value >= 70 ? 1900 + value : 2000 + value;
-        }
-        String text = String.valueOf(value);
-        if (text.length() >= 4) {
-            return Integer.parseInt(text.substring(0, 4));
-        }
-        return value;
+        Integer value = AdmissionYear.from(studentNum);
+        if (value == null) throw new IllegalArgumentException("지원하지 않는 입학 연도 형식입니다.");
+        return value >= 70 ? 1900 + value : 2000 + value;
     }
 
     private String normalizeText(String value) {

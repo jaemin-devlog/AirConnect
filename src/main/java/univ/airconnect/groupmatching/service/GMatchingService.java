@@ -1193,13 +1193,15 @@ public class GMatchingService {
         UserProfile profile = user.getUserProfile();
         UserProfileResponse profileResponse = profile != null ? UserProfileResponse.from(profile, imageUrlBase) : null;
 
+        Integer admissionYear = univ.airconnect.user.domain.AdmissionYear.from(user.getStudentNum());
         return MatchingCandidateResponse.builder()
                 .userId(user.getId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
                 .profileImage(profile != null ? toFullImageUrl(profile.getProfileImagePath()) : null)
                 .gender(profile != null ? profile.getGender() : null)
-                .admissionYear(univ.airconnect.user.domain.AdmissionYear.from(user.getStudentNum()))
+                .admissionYear(admissionYear)
+                .studentNum(admissionYear)
                 .onboardingStatus(user.getOnboardingStatus())
                 .emailVerified(user.hasVerifiedSchoolEmail())
                 .profileExists(profile != null)

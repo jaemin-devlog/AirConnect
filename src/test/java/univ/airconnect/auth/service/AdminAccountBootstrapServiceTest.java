@@ -62,6 +62,6 @@ class AdminAccountBootstrapServiceTest {
         assertThat(user.getName()).isEqualTo("Ops Admin");
         assertThat(user.getNickname()).isEqualTo("opsadmin");
         assertThat(user.getDeptName()).isEqualTo("운영팀");
-        assertThat(user.getStudentNum()).isEqualTo(99999999);
+        assertThat(user.getStudentNum()).isEqualTo(99);
     }
 }

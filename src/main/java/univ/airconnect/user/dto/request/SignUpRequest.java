@@ -20,7 +20,8 @@ public class SignUpRequest {
     // 회원가입 추가 정보
     private String name;             // 사용자명
     private String nickname;         // 닉네임
-    private Integer studentNum;      // 전화번호
+    /** 하위 호환 필드명. 값은 전체 학번이 아니라 두 자리 입학 연도(예: 21)다. */
+    private Integer studentNum;
     private String deptName;        // 학과명
 
     // 프로필 정보

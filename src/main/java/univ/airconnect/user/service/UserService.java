@@ -17,6 +17,7 @@ import univ.airconnect.department.repository.DepartmentRepository;
 import univ.airconnect.matching.service.MatchingLifecycleService;
 import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.PushDeviceRepository;
+import univ.airconnect.user.domain.AdmissionYear;
 import univ.airconnect.user.domain.MilestoneType;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
@@ -90,6 +91,10 @@ public class UserService {
         if (departmentName == null || departmentName.isBlank()
                 || !departmentRepository.existsByName(departmentName)) {
             throw new UserException(UserErrorCode.INVALID_DEPARTMENT);
+        }
+        if (!AdmissionYear.isCanonical(request.getStudentNum())) {
+            log.warn("회원가입 입학 연도 형식이 올바르지 않습니다: userId={}", userId);
+            throw new UserException(UserErrorCode.INVALID_INPUT);
         }
 
         user.completeSignUp(
@@ -179,7 +184,7 @@ public class UserService {
                 .name(user.getName())
                 .deptName(user.getDeptName())
                 .nickname(user.getNickname())
-                .studentNum(user.getStudentNum())
+                .studentNum(AdmissionYear.from(user.getStudentNum()))
                 .age(profile != null ? profile.getAge() : null)
                 .status(user.getStatus())
                 .role(user.getRole())

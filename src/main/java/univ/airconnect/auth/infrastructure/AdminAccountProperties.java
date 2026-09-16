@@ -1,6 +1,7 @@
 package univ.airconnect.auth.infrastructure;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import univ.airconnect.user.domain.AdmissionYear;
 
 @ConfigurationProperties(prefix = "auth.admin-account")
 public record AdminAccountProperties(
@@ -30,7 +31,8 @@ public record AdminAccountProperties(
     }
 
     public Integer resolvedStudentNum() {
-        return studentNum != null ? studentNum : 99999999;
+        Integer admissionYear = AdmissionYear.from(studentNum);
+        return admissionYear != null ? admissionYear : 99;
     }
 
     private boolean hasText(String value) {

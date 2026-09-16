@@ -102,7 +102,25 @@ class UserServiceTest {
         service.signUp(userId, request);
 
         assertThat(user.getDeptName()).isEqualTo("디지털산업디자인학과");
+        assertThat(user.getStudentNum()).isEqualTo(26);
         verify(departmentRepository).existsByName("디지털산업디자인학과");
+    }
+
+    @Test
+    void signUp_rejectsFullYearOrFullStudentNumberWithoutChangingAppContract() {
+        UserService service = createService();
+        Long userId = 21L;
+        User user = User.create(SocialProvider.KAKAO, "signup-invalid-admission-year");
+        SignUpRequest request = signUpRequest("디지털산업디자인학과");
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(departmentRepository.existsByName("디지털산업디자인학과")).thenReturn(true);
+
+        for (Integer invalidValue : List.of(2021, 202100048)) {
+            ReflectionTestUtils.setField(request, "studentNum", invalidValue);
+            assertThatThrownBy(() -> service.signUp(userId, request))
+                    .isInstanceOfSatisfying(UserException.class, exception ->
+                            assertThat(exception.getErrorCode()).isEqualTo(UserErrorCode.INVALID_INPUT));
+        }
     }
 
     @Test
@@ -411,6 +429,7 @@ class UserServiceTest {
         assertThat(response.getRole()).isEqualTo(UserRole.ADMIN);
         assertThat(response.getAppAccountToken()).isEqualTo(user.getIosAppAccountToken());
         assertThat(response.getIosAppAccountToken()).isEqualTo(user.getIosAppAccountToken());
+        assertThat(response.getStudentNum()).isEqualTo(23);
     }
 
     @Test
@@ -444,7 +463,7 @@ class UserServiceTest {
         SignUpRequest request = new SignUpRequest();
         ReflectionTestUtils.setField(request, "name", "테스트 사용자");
         ReflectionTestUtils.setField(request, "nickname", "테스트닉");
-        ReflectionTestUtils.setField(request, "studentNum", 20260001);
+        ReflectionTestUtils.setField(request, "studentNum", 26);
         ReflectionTestUtils.setField(request, "deptName", departmentName);
         return request;
     }

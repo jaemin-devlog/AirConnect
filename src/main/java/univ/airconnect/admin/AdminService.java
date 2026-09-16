@@ -34,6 +34,7 @@ import univ.airconnect.notification.service.NotificationService;
 import univ.airconnect.statistics.dto.response.MainStatisticsResponse;
 import univ.airconnect.statistics.dto.response.DepartmentRankingResponse;
 import univ.airconnect.statistics.service.StatisticsService;
+import univ.airconnect.user.domain.AdmissionYear;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.entity.User;
@@ -586,7 +587,7 @@ public class AdminService {
                 user.getDeptName(),
                 user.getNickname(),
                 user.getName(),
-                user.getStudentNum(),
+                AdmissionYear.from(user.getStudentNum()),
                 user.getLastNicknameChangedAt(),
                 user.getRole(),
                 user.getStatus(),

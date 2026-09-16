@@ -96,7 +96,7 @@ auth:
     name: ${AUTH_ADMIN_ACCOUNT_NAME:AirConnect Admin}
     nickname: ${AUTH_ADMIN_ACCOUNT_NICKNAME:admin}
     dept-name: ${AUTH_ADMIN_ACCOUNT_DEPT_NAME:운영팀}
-    student-num: ${AUTH_ADMIN_ACCOUNT_STUDENT_NUM:99999999}
+    student-num: ${AUTH_ADMIN_ACCOUNT_STUDENT_NUM:99}
   refresh-token:
     hash-pepper: ${REFRESH_TOKEN_HASH_PEPPER:${JWT_SECRET}}
   review-account:
@@ -106,7 +106,7 @@ auth:
     name: ${AUTH_REVIEW_ACCOUNT_NAME:Apple Review}
     nickname: ${AUTH_REVIEW_ACCOUNT_NICKNAME:reviewer}
     dept-name: ${AUTH_REVIEW_ACCOUNT_DEPT_NAME:컴퓨터공학과}
-    student-num: ${AUTH_REVIEW_ACCOUNT_STUDENT_NUM:20240001}
+    student-num: ${AUTH_REVIEW_ACCOUNT_STUDENT_NUM:24}
     height: ${AUTH_REVIEW_ACCOUNT_HEIGHT:168}
     age: ${AUTH_REVIEW_ACCOUNT_AGE:24}
     mbti: ${AUTH_REVIEW_ACCOUNT_MBTI:ENFP}

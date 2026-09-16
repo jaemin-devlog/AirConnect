@@ -60,7 +60,8 @@ public class User {
     @Column(name = "last_nickname_changed_at")
     private LocalDateTime lastNicknameChangedAt;
 
-    @Column(length = 20)
+    /** 레거시 컬럼명 student_num을 유지하지만 값은 두 자리 입학 연도다. */
+    @Column(name = "student_num", length = 20)
     private Integer studentNum;
 
     @Enumerated(EnumType.STRING)

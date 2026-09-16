@@ -1,6 +1,7 @@
 package univ.airconnect.auth.infrastructure;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import univ.airconnect.user.domain.AdmissionYear;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.MilitaryStatus;
 
@@ -41,7 +42,8 @@ public record ReviewAccountProperties(
     }
 
     public Integer resolvedStudentNum() {
-        return studentNum != null ? studentNum : 20240001;
+        Integer admissionYear = AdmissionYear.from(studentNum);
+        return admissionYear != null ? admissionYear : 24;
     }
 
     public Integer resolvedHeight() {

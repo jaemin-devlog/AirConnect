@@ -34,6 +34,7 @@ public class UserMeResponse {
     private String nickname;
     
     @JsonProperty("studentNum")
+    // 앱 하위 호환 필드명. 응답값은 항상 두 자리 입학 연도다.
     private Integer studentNum;
 
     @JsonProperty("age")
