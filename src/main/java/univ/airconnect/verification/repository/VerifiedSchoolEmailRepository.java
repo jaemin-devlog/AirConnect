@@ -10,4 +10,6 @@ public interface VerifiedSchoolEmailRepository extends JpaRepository<VerifiedSch
     boolean existsByEmailIgnoreCase(String email);
 
     Optional<VerifiedSchoolEmail> findByEmailIgnoreCase(String email);
+
+    long deleteByLinkedUserId(Long linkedUserId);
 }

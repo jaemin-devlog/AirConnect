@@ -18,6 +18,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -64,13 +65,15 @@ class IapWebhookServiceTest {
 
     @Test
     void ingestGoogleNotification_decodesPubSubEnvelopeAndStoresEvent() throws Exception {
+        IapProperties properties = new IapProperties();
+        properties.getGoogle().setPackageName("com.airconnect.app");
         IapWebhookService service = new IapWebhookService(
                 iapEventRepository,
                 new PayloadSecurityUtil(),
                 new ObjectMapper(),
                 appleSignedTransactionVerifier,
                 iapRefundService,
-                new IapProperties()
+                properties
         );
 
         String encoded = java.util.Base64.getEncoder().encodeToString("""
@@ -84,5 +87,44 @@ class IapWebhookServiceTest {
 
         assertThat(response.isAccepted()).isTrue();
         verify(iapEventRepository).save(any(IapEvent.class));
+    }
+
+    @Test
+    void ingestAppleNotification_rejectsUnsignedPayloadWithoutPersisting() {
+        IapWebhookService service = new IapWebhookService(
+                iapEventRepository,
+                new PayloadSecurityUtil(),
+                new ObjectMapper(),
+                appleSignedTransactionVerifier,
+                iapRefundService,
+                new IapProperties()
+        );
+
+        var response = service.ingestAppleNotification(Map.of("unexpected", "payload"));
+
+        assertThat(response.isAccepted()).isFalse();
+        verify(iapEventRepository, never()).save(any());
+        verify(appleSignedTransactionVerifier, never()).verifyAndExtractPayload(any());
+    }
+
+    @Test
+    void ingestGoogleNotification_rejectsMismatchedPackageWithoutPersisting() throws Exception {
+        IapProperties properties = new IapProperties();
+        properties.getGoogle().setPackageName("com.airconnect.app");
+        IapWebhookService service = new IapWebhookService(
+                iapEventRepository,
+                new PayloadSecurityUtil(),
+                new ObjectMapper(),
+                appleSignedTransactionVerifier,
+                iapRefundService,
+                properties
+        );
+        String encoded = java.util.Base64.getEncoder().encodeToString(
+                "{\"packageName\":\"other.app\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        var response = service.ingestGoogleNotification(Map.of("message", Map.of("data", encoded)));
+
+        assertThat(response.isAccepted()).isFalse();
+        verify(iapEventRepository, never()).save(any());
     }
 }

@@ -138,8 +138,8 @@ public class IapProcessingService {
     }
 
     private IapVerifyResponse process(Long userId, StoreVerificationResult result) {
-        log.info("IAP process started. userId={}, store={}, key={}, productId={}, valid={}",
-                userId, result.getStore(), keyOf(result), result.getProductId(), result.isValid());
+        log.info("IAP process started. userId={}, store={}, keyState={}, productId={}, valid={}",
+                userId, result.getStore(), logKeyState(keyOf(result)), result.getProductId(), result.isValid());
         IapProductPolicy productPolicy = IapProductPolicy.fromProductId(result.getProductId());
         if (productPolicy == null) {
             log.warn("IAP process invalid product. userId={}, store={}, productId={}",
@@ -158,12 +158,12 @@ public class IapProcessingService {
         if (order.getStatus() == IapOrderStatus.GRANTED) {
             if (result.isTransactionRevoked()) {
                 iapRefundService.refundGrantedOrder(order, "verify:" + result.getStore());
-                log.warn("IAP process transaction refunded after prior grant. userId={}, store={}, orderId={}, key={}",
-                        userId, result.getStore(), order.getId(), order.idempotencyKey());
+                log.warn("IAP process transaction refunded after prior grant. userId={}, store={}, orderId={}, keyState={}",
+                        userId, result.getStore(), order.getId(), logKeyState(order.idempotencyKey()));
                 return toRejected(order, result);
             }
-            log.info("IAP process already granted. userId={}, store={}, orderId={}, key={}",
-                    userId, result.getStore(), order.getId(), order.idempotencyKey());
+            log.info("IAP process already granted. userId={}, store={}, orderId={}, keyState={}",
+                    userId, result.getStore(), order.getId(), logKeyState(order.idempotencyKey()));
             return toAlreadyGranted(order);
         }
 
@@ -175,26 +175,26 @@ public class IapProcessingService {
 
         if (result.isTransactionRevoked()) {
             order.markRevoked();
-            log.warn("IAP process revoked transaction. userId={}, store={}, orderId={}, key={}",
-                    userId, result.getStore(), order.getId(), order.idempotencyKey());
+            log.warn("IAP process revoked transaction. userId={}, store={}, orderId={}, keyState={}",
+                    userId, result.getStore(), order.getId(), logKeyState(order.idempotencyKey()));
             return toRejected(order, result);
         }
 
         if (!result.isValid()) {
             order.markRejected();
-            log.warn("IAP process rejected. userId={}, store={}, orderId={}, key={}",
-                    userId, result.getStore(), order.getId(), order.idempotencyKey());
+            log.warn("IAP process rejected. userId={}, store={}, orderId={}, keyState={}",
+                    userId, result.getStore(), order.getId(), logKeyState(order.idempotencyKey()));
             return toRejected(order, result);
         }
 
         order.markVerified();
-        log.info("IAP process marked verified. userId={}, store={}, orderId={}, key={}",
-                userId, result.getStore(), order.getId(), order.idempotencyKey());
+        log.info("IAP process marked verified. userId={}, store={}, orderId={}, keyState={}",
+                userId, result.getStore(), order.getId(), logKeyState(order.idempotencyKey()));
         TicketGrantService.TicketGrantResult grant = ticketGrantService.grantTickets(order, productPolicy.getTickets());
         order.markGranted(productPolicy.getTickets(), grant.beforeTickets(), grant.afterTickets());
 
-        log.info("IAP granted. userId={}, store={}, key={}, productId={}, tickets={}",
-                userId, result.getStore(), order.idempotencyKey(), result.getProductId(), productPolicy.getTickets());
+        log.info("IAP granted. userId={}, store={}, keyState={}, productId={}, tickets={}",
+                userId, result.getStore(), logKeyState(order.idempotencyKey()), result.getProductId(), productPolicy.getTickets());
 
         return IapVerifyResponse.builder()
                 .transactionId(order.getTransactionId())
@@ -245,12 +245,12 @@ public class IapProcessingService {
                     result.getVerificationHash(),
                     result.getRawPayloadMasked()
             ));
-            log.info("IAP pending order created. userId={}, store={}, orderId={}, key={}",
-                    userId, result.getStore(), created.getId(), created.idempotencyKey());
+            log.info("IAP pending order created. userId={}, store={}, orderId={}, keyState={}",
+                    userId, result.getStore(), created.getId(), logKeyState(created.idempotencyKey()));
             return created;
         } catch (DataIntegrityViolationException e) {
-            log.warn("IAP pending order creation hit unique constraint. userId={}, store={}, key={}",
-                    userId, result.getStore(), keyOf(result));
+            log.warn("IAP pending order creation hit unique constraint. userId={}, store={}, keyState={}",
+                    userId, result.getStore(), logKeyState(keyOf(result)));
             IapOrder existing = findExisting(result);
             if (existing != null) {
                 return existing;
@@ -307,8 +307,8 @@ public class IapProcessingService {
     }
 
     private IapVerifyResponse toAlreadyGranted(IapOrder order) {
-        log.info("IAP already granted response generated. orderId={}, store={}, key={}",
-                order.getId(), order.getStore(), order.idempotencyKey());
+        log.info("IAP already granted response generated. orderId={}, store={}, keyState={}",
+                order.getId(), order.getStore(), logKeyState(order.idempotencyKey()));
         return IapVerifyResponse.builder()
                 .transactionId(order.getTransactionId())
                 .purchaseToken(order.getPurchaseToken())
@@ -328,6 +328,13 @@ public class IapProcessingService {
             return result.getTransactionId();
         }
         return result.getPurchaseToken() != null ? "PRESENT" : "MISSING";
+    }
+
+    private String logKeyState(String value) {
+        if (value == null || value.isBlank()) {
+            return "MISSING";
+        }
+        return "PRESENT";
     }
 
     private boolean hasText(String value) {

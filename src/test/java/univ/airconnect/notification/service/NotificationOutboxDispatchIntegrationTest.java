@@ -1,5 +1,6 @@
 package univ.airconnect.notification.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,8 @@ class NotificationOutboxDispatchIntegrationTest {
 
     @MockitoBean
     private PushNotificationSender pushNotificationSender;
+    @MockitoBean
+    private ObjectMapper objectMapper;
 
     @Test
     void logoutMakesExistingProcessingOutboxIneligible() {

@@ -47,8 +47,8 @@ public class IapWebhookService {
         try {
             String signedPayload = text(payload, "signedPayload");
             if (signedPayload == null || signedPayload.isBlank()) {
-                saveEvent(IapStore.APPLE, "APPLE_SERVER_NOTIFICATION_V2", payload, null, null);
-                return new IapWebhookAckResponse(true);
+                log.warn("IAP Apple webhook rejected because signedPayload is missing.");
+                return new IapWebhookAckResponse(false);
             }
 
             var envelope = appleSignedTransactionVerifier.verifyAndExtractPayload(signedPayload);
@@ -65,28 +65,27 @@ public class IapWebhookService {
                 revoked = hasNonNull(transactionPayload, "revocationDate") || hasNonNull(transactionPayload, "revocationReason");
             }
 
+            if (bundleId == null
+                    || iapProperties.getApple().getBundleId() == null
+                    || !iapProperties.getApple().getBundleId().equals(bundleId)) {
+                log.warn("IAP Apple webhook rejected due to missing or mismatched bundleId.");
+                return new IapWebhookAckResponse(false);
+            }
+
             saveEvent(IapStore.APPLE,
                     firstNonBlank(notificationType, "APPLE_SERVER_NOTIFICATION_V2"),
                     payload,
                     transactionId,
                     null);
 
-            if (bundleId != null
-                    && iapProperties.getApple().getBundleId() != null
-                    && !iapProperties.getApple().getBundleId().equals(bundleId)) {
-                log.warn("IAP Apple webhook ignored due to bundle mismatch. expected={}, actual={}",
-                        iapProperties.getApple().getBundleId(), bundleId);
-                return new IapWebhookAckResponse(true);
-            }
-
             if (revoked && transactionId != null) {
                 iapRefundService.refundAppleTransaction(transactionId, "apple_webhook:" + notificationType);
             }
-            log.info("IAP webhook ingest completed. store=APPLE, notificationType={}, transactionId={}",
-                    notificationType, transactionId);
+            log.info("IAP webhook ingest completed. store=APPLE, notificationType={}, transactionIdState={}",
+                    notificationType, hasText(transactionId) ? "PRESENT" : "MISSING");
             return new IapWebhookAckResponse(true);
         } catch (Exception e) {
-            log.warn("IAP Apple webhook processing failed. reason={}", e.getMessage());
+            log.warn("IAP Apple webhook processing failed. type={}", e.getClass().getSimpleName());
             return new IapWebhookAckResponse(false);
         }
     }
@@ -96,6 +95,13 @@ public class IapWebhookService {
         log.info("IAP webhook ingest started. store=GOOGLE, payloadKeys={}", payload.keySet());
         try {
             Map<String, Object> developerNotification = extractGoogleDeveloperNotification(payload);
+            String packageName = text(developerNotification, "packageName");
+            if (packageName == null
+                    || iapProperties.getGoogle().getPackageName() == null
+                    || !iapProperties.getGoogle().getPackageName().equals(packageName)) {
+                log.warn("IAP Google webhook rejected due to missing or mismatched packageName.");
+                return new IapWebhookAckResponse(false);
+            }
             String eventType = "GOOGLE_RTDN";
             String purchaseToken = null;
 
@@ -114,7 +120,7 @@ public class IapWebhookService {
                     eventType, purchaseToken != null);
             return new IapWebhookAckResponse(true);
         } catch (Exception e) {
-            log.warn("IAP Google webhook processing failed. reason={}", e.getMessage());
+            log.warn("IAP Google webhook processing failed. type={}", e.getClass().getSimpleName());
             return new IapWebhookAckResponse(false);
         }
     }
@@ -137,8 +143,8 @@ public class IapWebhookService {
             ));
             log.info("IAP webhook event saved. store={}, eventType={}, payloadHash={}", store, eventType, payloadHash);
         } catch (Exception e) {
-            log.warn("IAP webhook event save failed but ignored. store={}, eventType={}, reason={}",
-                    store, eventType, e.getMessage());
+            log.warn("IAP webhook event save failed but ignored. store={}, eventType={}, type={}",
+                    store, eventType, e.getClass().getSimpleName());
             // webhook 수신 실패로 전체 API를 실패시키지 않기 위해 이벤트 저장 오류는 무시한다.
         }
     }
@@ -178,6 +184,10 @@ public class IapWebhookService {
 
     private boolean hasNonNull(com.fasterxml.jackson.databind.JsonNode node, String key) {
         return node != null && node.hasNonNull(key);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private String firstNonBlank(String first, String second) {

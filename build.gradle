@@ -1,9 +1,19 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.4.3'
+    id 'org.springframework.boot' version '3.5.16'
     id 'io.spring.dependency-management' version '1.1.7'
     id 'jacoco'
 }
+
+// Security patch levels released after the Spring Boot 3.5.16 BOM.
+ext['jackson-bom.version'] = '2.21.5'
+ext['httpclient5.version'] = '5.6.3'
+ext['httpcore5.version'] = '5.4.3'
+ext['log4j2.version'] = '2.26.1'
+ext['netty.version'] = '4.1.138.Final'
+ext['opentelemetry.version'] = '1.62.0'
+ext['postgresql.version'] = '42.7.13'
+ext['tomcat.version'] = '10.1.59'
 
 def sensitivePackagingExcludes = [
         'application-local.yml',
@@ -35,7 +45,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-    implementation 'com.google.firebase:firebase-admin:9.7.0'
+    implementation('com.google.firebase:firebase-admin:9.10.0') {
+        // AirConnect uses Firebase Messaging only. Keeping the optional XML mapper
+        // off the MVC classpath prevents */* API responses from negotiating to XML.
+        exclude group: 'com.fasterxml.jackson.dataformat', module: 'jackson-dataformat-xml'
+    }
 
     // Email
     implementation 'org.springframework.boot:spring-boot-starter-mail'
@@ -70,7 +84,7 @@ dependencies {
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
     // IAP (Google Play API access token)
-    implementation 'com.google.auth:google-auth-library-oauth2-http:1.30.0'
+    implementation 'com.google.auth:google-auth-library-oauth2-http:1.52.0'
 
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
@@ -84,7 +98,7 @@ dependencies {
 
     //admod
     implementation "com.google.crypto.tink:apps-rewardedads:1.14.0"
-    implementation "com.google.crypto.tink:tink:1.14.0"
+    implementation "com.google.crypto.tink:tink:1.23.0"
 
     //openai
     implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -94,6 +108,8 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Keep date-boundary tests deterministic regardless of the developer/CI host timezone.
+    systemProperty 'user.timezone', 'UTC'
     finalizedBy tasks.named('jacocoTestReport')
 }
 
