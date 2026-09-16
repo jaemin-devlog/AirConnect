@@ -239,6 +239,7 @@ public class GMatchingController {
                     User user = userMap.get(member.getUserId());
                     return new GMatchingResponse.TeamMemberSummaryResponse(member.getUserId(),
                             user != null ? user.getNickname() : null, extractProfileImage(user),
+                            user != null && user.hasVerifiedSchoolEmail(),
                             member.isLeader(), member.getJoinedAt(),
                             user != null && user.getTickets() >= requiredTickets);
                 }).toList();

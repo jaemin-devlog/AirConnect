@@ -19,6 +19,7 @@ public final class GMatchingResponse {
             Long userId,
             String nickname,
             String profileImage,
+            boolean emailVerified,
             boolean leader,
             LocalDateTime joinedAt,
             boolean hasEnoughTickets

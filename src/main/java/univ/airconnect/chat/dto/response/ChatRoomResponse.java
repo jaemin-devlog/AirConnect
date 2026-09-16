@@ -27,6 +27,7 @@ public class ChatRoomResponse {
     private String targetNickname;
     private Integer targetAdmissionYear;
     private String targetProfileImage;
+    private boolean targetEmailVerified;
     private ChatParticipantDetailResponse targetProfile;
 
     public static ChatRoomResponse from(ChatRoom entity, String latestMessage, LocalDateTime latestMessageTime, int unreadCount) {
@@ -51,7 +52,7 @@ public class ChatRoomResponse {
                                         Integer targetAdmissionYear,
                                         String targetProfileImage) {
         return from(entity, entity.getName(), latestMessage, latestMessageTime, unreadCount,
-                targetUserId, targetNickname, targetAdmissionYear, targetProfileImage, null);
+                targetUserId, targetNickname, targetAdmissionYear, targetProfileImage, false, null);
     }
 
     public static ChatRoomResponse from(ChatRoom entity,
@@ -64,7 +65,7 @@ public class ChatRoomResponse {
                                         Integer targetAdmissionYear,
                                         String targetProfileImage) {
         return from(entity, displayName, latestMessage, latestMessageTime, unreadCount,
-                targetUserId, targetNickname, targetAdmissionYear, targetProfileImage, null);
+                targetUserId, targetNickname, targetAdmissionYear, targetProfileImage, false, null);
     }
 
     public static ChatRoomResponse from(ChatRoom entity,
@@ -76,6 +77,21 @@ public class ChatRoomResponse {
                                         String targetNickname,
                                         Integer targetAdmissionYear,
                                         String targetProfileImage,
+                                        ChatParticipantDetailResponse targetProfile) {
+        return from(entity, displayName, latestMessage, latestMessageTime, unreadCount,
+                targetUserId, targetNickname, targetAdmissionYear, targetProfileImage, false, targetProfile);
+    }
+
+    public static ChatRoomResponse from(ChatRoom entity,
+                                        String displayName,
+                                        String latestMessage,
+                                        LocalDateTime latestMessageTime,
+                                        int unreadCount,
+                                        Long targetUserId,
+                                        String targetNickname,
+                                        Integer targetAdmissionYear,
+                                        String targetProfileImage,
+                                        boolean targetEmailVerified,
                                         ChatParticipantDetailResponse targetProfile) {
         return ChatRoomResponse.builder()
                 .id(entity.getId())
@@ -90,6 +106,7 @@ public class ChatRoomResponse {
                 .targetNickname(targetNickname)
                 .targetAdmissionYear(targetAdmissionYear)
                 .targetProfileImage(targetProfileImage)
+                .targetEmailVerified(targetEmailVerified)
                 .targetProfile(targetProfile)
                 .build();
     }

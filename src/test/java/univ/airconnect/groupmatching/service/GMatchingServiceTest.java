@@ -128,6 +128,26 @@ class GMatchingServiceTest {
     }
 
     @Test
+    void getTeamMemberProfile_returnsActualSchoolVerificationStatus() {
+        GTemporaryTeamRoom room = room(100L, 1L, GTeamGender.M, GTeamSize.TWO);
+        User target = user(2L, "친구", 10);
+        target.updateVerifiedSchoolEmail("friend@school.ac.kr");
+        UserProfile targetProfile = profile(target, Gender.MALE);
+        ReflectionTestUtils.setField(target, "userProfile", targetProfile);
+
+        when(rooms.findById(100L)).thenReturn(Optional.of(room));
+        when(members.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(100L, 1L)).thenReturn(true);
+        when(members.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(100L, 2L)).thenReturn(true);
+        when(users.findAllByIdWithProfile(List.of(2L))).thenReturn(List.of(target));
+
+        var response = service.getTeamMemberProfile(100L, 1L, 2L);
+
+        assertThat(response.isEmailVerified()).isTrue();
+        assertThat(response.getProfile()).isNotNull();
+        assertThat(response.getProfile().isEmailVerified()).isTrue();
+    }
+
+    @Test
     void joinByInvite_rejectsDifferentGender() {
         GTemporaryTeamRoom room = room(100L, 1L, GTeamGender.M, GTeamSize.TWO);
         room.assignInviteCode("123456");

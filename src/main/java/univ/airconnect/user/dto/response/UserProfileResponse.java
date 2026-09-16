@@ -48,6 +48,9 @@ public class UserProfileResponse {
     @JsonProperty("profileImagePath")
     private String profileImagePath;
 
+    @JsonProperty("emailVerified")
+    private boolean emailVerified;
+
     @JsonProperty("updatedAt")
     private LocalDateTime updatedAt;
 
@@ -69,6 +72,8 @@ public class UserProfileResponse {
                 .intro(userProfile.getIntro())
                 .instagram(userProfile.getInstagram())
                 .profileImagePath(profileImagePath)
+                .emailVerified(userProfile.getUser() != null
+                        && userProfile.getUser().hasVerifiedSchoolEmail())
                 .updatedAt(userProfile.getUpdatedAt())
                 .build();
     }

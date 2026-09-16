@@ -600,9 +600,11 @@ public class ChatService {
         message.softDelete();
         refreshRoomLastMessage(room);
         List<ChatRoomMember> roomMembers = loadVisibleRoomMembers(roomId);
+        User sender = findUserOrThrow(userId);
         ChatMessageResponse response = ChatMessageResponse.from(
                 message,
-                extractProfileImage(findUserOrThrow(userId)),
+                extractProfileImage(sender),
+                sender.hasVerifiedSchoolEmail(),
                 resolveMessageUnreadCount(room, message, roomMembers)
         );
         publishToRedisSilently(roomId, response);
@@ -660,6 +662,7 @@ public class ChatService {
         ChatMessageResponse response = ChatMessageResponse.from(
                 chatMessage,
                 extractProfileImage(sender),
+                sender.hasVerifiedSchoolEmail(),
                 resolveMessageUnreadCount(room, chatMessage, roomMembers)
         );
         publishToRedisSilently(roomId, response);
@@ -684,6 +687,7 @@ public class ChatService {
         return ChatMessageResponse.from(
                 existing,
                 extractProfileImage(sender),
+                sender.hasVerifiedSchoolEmail(),
                 resolveMessageUnreadCount(room, existing, roomMembers)
         );
     }
@@ -711,6 +715,7 @@ public class ChatService {
         ChatMessageResponse response = ChatMessageResponse.from(
                 exitMessage,
                 extractProfileImage(user),
+                user.hasVerifiedSchoolEmail(),
                 resolveMessageUnreadCount(room, exitMessage, roomMembers)
         );
         publishToRedisSilently(roomId, response);
@@ -788,7 +793,9 @@ public class ChatService {
                     return ChatRoomResponse.from(room, displayName, content, time, unreadCount,
                             targetUserId, targetNickname,
                             targetUser != null ? AdmissionYear.from(targetUser.getStudentNum()) : null,
-                            targetProfileImage, targetProfile);
+                            targetProfileImage,
+                            targetUser != null && targetUser.hasVerifiedSchoolEmail(),
+                            targetProfile);
                 })
                 .sorted((r1, r2) -> {
                     java.time.OffsetDateTime t1 = (r1.getLatestMessageTime() != null) ? r1.getLatestMessageTime() : r1.getCreatedAt();
@@ -875,7 +882,12 @@ public class ChatService {
                     String profileImage = (sender != null && sender.getUserProfile() != null)
                             ? sender.getUserProfile().getProfileImagePath()
                             : null;
-                    return ChatMessageResponse.from(msg, profileImage, resolveMessageUnreadCount(room, msg, roomMembers));
+                    return ChatMessageResponse.from(
+                            msg,
+                            profileImage,
+                            sender != null && sender.hasVerifiedSchoolEmail(),
+                            resolveMessageUnreadCount(room, msg, roomMembers)
+                    );
                 })
                 .collect(Collectors.toList());
 
@@ -951,6 +963,7 @@ public class ChatService {
                 targetNickname,
                 AdmissionYear.from(counterpart.getStudentNum()),
                 extractProfileImage(counterpart),
+                counterpart.hasVerifiedSchoolEmail(),
                 toParticipantDetailResponse(counterpart)
         );
     }
@@ -1481,6 +1494,7 @@ public class ChatService {
                 .admissionYear(admissionYear)
                 .studentNum(admissionYear)
                 .profileImage(profile != null ? profile.getProfileImagePath() : null)
+                .emailVerified(user.hasVerifiedSchoolEmail())
                 .gender(profile != null ? profile.getGender() : null)
                 .age(profile != null ? profile.getAge() : null)
                 .profileExists(profile != null)
@@ -1506,6 +1520,7 @@ public class ChatService {
                 .admissionYear(admissionYear)
                 .studentNum(admissionYear)
                 .profileImage(profile != null ? profile.getProfileImagePath() : null)
+                .emailVerified(user.hasVerifiedSchoolEmail())
                 .gender(profile != null ? profile.getGender() : null)
                 .age(profile != null ? profile.getAge() : null)
                 .profileExists(profile != null)

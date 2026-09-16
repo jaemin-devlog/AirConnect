@@ -20,6 +20,7 @@ public class ChatParticipantDetailResponse {
     private Integer age;
     private Gender gender;
     private String profileImage;
+    private boolean emailVerified;
     private boolean profileExists;
     private boolean profileImageUploaded;
     private UserProfileResponse profile;

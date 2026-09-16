@@ -297,6 +297,26 @@ class UserServiceTest {
     }
 
     @Test
+    void getProfile_includesSchoolVerificationStatus() {
+        UserService service = createService();
+        Long userId = 7L;
+        User user = User.createEmailUser("verified@school.ac.kr", "encoded-password");
+        ReflectionTestUtils.setField(user, "id", userId);
+        user.updateVerifiedSchoolEmail("verified@school.ac.kr");
+        UserProfile profile = UserProfile.create(
+                user, 175, 23, "INTJ", "NO", Gender.FEMALE,
+                MilitaryStatus.NOT_APPLICABLE, "서울", "소개", "insta"
+        );
+        ReflectionTestUtils.setField(profile, "userId", userId);
+
+        when(userProfileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
+
+        UserProfileResponse response = service.getProfile(userId);
+
+        assertThat(response.isEmailVerified()).isTrue();
+    }
+
+    @Test
     void updateNickname_trimsAndPersistsNickname() {
         UserService service = createService();
         Long userId = 7L;

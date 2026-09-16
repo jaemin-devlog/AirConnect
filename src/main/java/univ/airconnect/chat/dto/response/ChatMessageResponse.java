@@ -26,6 +26,7 @@ public class ChatMessageResponse {
     private Long senderId;
     private String senderNickname;
     private String senderProfileImage;
+    private boolean senderEmailVerified;
     private String content;
     private String message;
     private MessageType messageType;
@@ -51,6 +52,13 @@ public class ChatMessageResponse {
     }
 
     public static ChatMessageResponse from(ChatMessage entity, String profileImage, Integer unreadCount) {
+        return from(entity, profileImage, false, unreadCount);
+    }
+
+    public static ChatMessageResponse from(ChatMessage entity,
+                                           String profileImage,
+                                           boolean senderEmailVerified,
+                                           Integer unreadCount) {
         String renderedContent = entity.isDeleted() ? DELETED_CONTENT : entity.getDisplayContent();
         return ChatMessageResponse.builder()
                 .eventType(EVENT_MESSAGE)
@@ -62,6 +70,7 @@ public class ChatMessageResponse {
                 .senderId(entity.getSenderId())
                 .senderNickname(entity.getSenderNickname())
                 .senderProfileImage(profileImage)
+                .senderEmailVerified(senderEmailVerified)
                 .content(renderedContent)
                 .message(renderedContent)
                 .messageType(entity.getType())

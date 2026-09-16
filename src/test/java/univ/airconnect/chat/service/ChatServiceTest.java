@@ -253,6 +253,7 @@ class ChatServiceTest {
         Long userB = 2L;
         User a = createUser(userA, "a");
         User b = createUser(userB, "b");
+        b.updateVerifiedSchoolEmail("b@school.ac.kr");
         createDetailedProfile(b, Gender.FEMALE, "ENFP", "Seoul", "b_insta");
         ChatRoom room = ChatRoom.createPersonal("기존 채팅방", userA, userB, connectionId);
         ReflectionTestUtils.setField(room, "id", 556L);
@@ -271,7 +272,9 @@ class ChatServiceTest {
         assertThat(response.getTargetNickname()).isEqualTo("b");
         assertThat(response.getTargetAdmissionYear()).isEqualTo(23);
         assertThat(response.getTargetProfileImage()).isEqualTo("profiles/" + userB + ".png");
+        assertThat(response.isTargetEmailVerified()).isTrue();
         assertThat(response.getTargetProfile()).isNotNull();
+        assertThat(response.getTargetProfile().isEmailVerified()).isTrue();
         assertThat(response.getTargetProfile().getUserId()).isEqualTo(userB);
         assertThat(response.getTargetProfile().getAdmissionYear()).isEqualTo(23);
         assertThat(response.getTargetProfile().getGender()).isEqualTo(Gender.FEMALE);
@@ -287,6 +290,7 @@ class ChatServiceTest {
         Long requestUserId = 1L;
         Long targetUserId = 2L;
         User targetUser = createUser(targetUserId, "target");
+        targetUser.updateVerifiedSchoolEmail("target@school.ac.kr");
         createProfile(targetUser, Gender.FEMALE);
 
         when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(roomId, requestUserId)).thenReturn(true);
@@ -299,6 +303,7 @@ class ChatServiceTest {
         assertThat(response.getNickname()).isEqualTo("target");
         assertThat(response.getAdmissionYear()).isEqualTo(23);
         assertThat(response.isProfileExists()).isTrue();
+        assertThat(response.isEmailVerified()).isTrue();
         assertThat(response.getGender()).isEqualTo(Gender.FEMALE);
         assertThat(response.
                 getProfileImage()).isEqualTo("profiles/" + targetUserId + ".png");
@@ -312,6 +317,7 @@ class ChatServiceTest {
         Long targetUserId = 2L;
         User me = createUser(requestUserId, "me");
         User target = createUser(targetUserId, "target");
+        target.updateVerifiedSchoolEmail("target@school.ac.kr");
         createDetailedProfile(target, Gender.FEMALE, "INTJ", "Daegu", "counterpart_insta");
 
         ChatRoom room = ChatRoom.create("room-900", ChatRoomType.PERSONAL);
@@ -327,7 +333,9 @@ class ChatServiceTest {
         assertThat(response.getNickname()).isEqualTo("target");
         assertThat(response.getAdmissionYear()).isEqualTo(23);
         assertThat(response.getGender()).isEqualTo(Gender.FEMALE);
+        assertThat(response.isEmailVerified()).isTrue();
         assertThat(response.getProfile()).isNotNull();
+        assertThat(response.getProfile().isEmailVerified()).isTrue();
         assertThat(response.getProfile().getMbti()).isEqualTo("INTJ");
         assertThat(response.getProfile().getResidence()).isEqualTo("Daegu");
         assertThat(response.getProfile().getInstagram()).isEqualTo("counterpart_insta");
@@ -342,6 +350,7 @@ class ChatServiceTest {
         User me = createUser(requestUserId, "me");
         createDetailedProfile(me, Gender.MALE, "ENTP", "서울", "me_insta");
         User targetA = createUser(2L, "targetA");
+        targetA.updateVerifiedSchoolEmail("target-a@school.ac.kr");
         createDetailedProfile(targetA, Gender.FEMALE, "INFJ", "부산", "targetA_insta");
         User targetB = createUser(3L, "targetB");
         createDetailedProfile(targetB, Gender.MALE, "ISTJ", "대전", "targetB_insta");
@@ -367,6 +376,8 @@ class ChatServiceTest {
         assertThat(response).extracting(ChatParticipantDetailResponse::getProfileImage)
                 .containsExactly("profiles/" + requestUserId + ".png", "profiles/2.png");
         assertThat(response.get(1).getProfile()).isNotNull();
+        assertThat(response.get(1).isEmailVerified()).isTrue();
+        assertThat(response.get(1).getProfile().isEmailVerified()).isTrue();
         assertThat(response.get(1).getProfile().getMbti()).isEqualTo("INFJ");
         assertThat(response.get(1).getProfile().getResidence()).isEqualTo("부산");
         assertThat(response.get(1).getProfile().getInstagram()).isEqualTo("targetA_insta");
@@ -527,6 +538,7 @@ class ChatServiceTest {
         Long roomId = 300L;
         User me = createUser(myUserId, "me");
         User other = createUser(2L, "other");
+        other.updateVerifiedSchoolEmail("other@school.ac.kr");
         createDetailedProfile(other, Gender.FEMALE, "ISFP", "Incheon", "other_insta");
         ChatRoom room = ChatRoom.createPersonal("소개팅 1:1", myUserId, other.getId(), 88L);
         ReflectionTestUtils.setField(room, "id", roomId);
@@ -548,7 +560,9 @@ class ChatServiceTest {
         assertThat(response.get(0).getTargetUserId()).isEqualTo(other.getId());
         assertThat(response.get(0).getTargetNickname()).isEqualTo("other");
         assertThat(response.get(0).getTargetAdmissionYear()).isEqualTo(23);
+        assertThat(response.get(0).isTargetEmailVerified()).isTrue();
         assertThat(response.get(0).getTargetProfile()).isNotNull();
+        assertThat(response.get(0).getTargetProfile().isEmailVerified()).isTrue();
         assertThat(response.get(0).getTargetProfile().getUserId()).isEqualTo(other.getId());
         assertThat(response.get(0).getTargetProfile().getAdmissionYear()).isEqualTo(23);
         assertThat(response.get(0).getTargetProfile().getGender()).isEqualTo(Gender.FEMALE);
@@ -662,6 +676,7 @@ class ChatServiceTest {
         Long roomId = 700L;
         Long userId = 1L;
         User sender = createUser(2L, "sender");
+        sender.updateVerifiedSchoolEmail("sender@school.ac.kr");
         createProfile(sender, Gender.FEMALE);
         User reader = createUser(userId, "reader");
         ChatRoom room = ChatRoom.create("room-700", ChatRoomType.GROUP);
@@ -685,6 +700,7 @@ class ChatServiceTest {
         assertThat(response).hasSize(2);
         assertThat(response.get(0).getId()).isEqualTo(10L);
         assertThat(response.get(1).getId()).isEqualTo(20L);
+        assertThat(response).allMatch(ChatMessageResponse::isSenderEmailVerified);
     }
 
     @Test

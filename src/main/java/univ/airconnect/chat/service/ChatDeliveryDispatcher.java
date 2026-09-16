@@ -116,7 +116,12 @@ public class ChatDeliveryDispatcher {
         var response = mapper.readValue(event.getPayloadJson(), ChatMessageResponse.class);
         // A delayed original MESSAGE must never reveal content deleted while Redis was down.
         if ("MESSAGE".equals(response.getEventType()) && current.isDeleted()) {
-            response = ChatMessageResponse.from(current, response.getSenderProfileImage(), response.getUnreadCount());
+            response = ChatMessageResponse.from(
+                    current,
+                    response.getSenderProfileImage(),
+                    response.isSenderEmailVerified(),
+                    response.getUnreadCount()
+            );
         }
         redis.convertAndSend(event.getRoomId().toString(), mapper.writeValueAsString(response));
     }
