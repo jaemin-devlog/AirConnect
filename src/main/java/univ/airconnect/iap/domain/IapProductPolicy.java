@@ -5,16 +5,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public enum IapProductPolicy {
-    IOS_ECONOMY_5("AirConnect_Economy_5", 5),
-    IOS_PREMIUM_ECONOMY_10("AirConnect_PremiumEconomy_10", 12),
-    IOS_BUSINESS_30("AirConnect_Business_30", 30),
-    IOS_FIRST_CLASS_50("AirConnect_FirstClass_50", 70),
-    LEGACY_PACK_5("com.airconnect.tickets.pack5", 5),
-    LEGACY_PACK_12("com.airconnect.tickets.pack12", 12),
+    IOS_ECONOMY_5("AirConnect_Economy_5", 8),
+    IOS_PREMIUM_ECONOMY_10("AirConnect_PremiumEconomy_10", 19),
+    IOS_BUSINESS_30("AirConnect_Business_30", 50),
+    IOS_FIRST_CLASS_50("AirConnect_FirstClass_50", 115),
+    LEGACY_PACK_5("com.airconnect.tickets.pack5", 8),
+    LEGACY_PACK_12("com.airconnect.tickets.pack12", 19),
     LEGACY_PACK_10("com.airconnect.tickets.pack10", 10),
-    LEGACY_PACK_30("com.airconnect.tickets.pack30", 30),
+    LEGACY_PACK_30("com.airconnect.tickets.pack30", 50),
     LEGACY_PACK_50("com.airconnect.tickets.pack50", 50),
-    LEGACY_PACK_70("com.airconnect.tickets.pack70", 70);
+    LEGACY_PACK_70("com.airconnect.tickets.pack70", 115);
 
     private static final Map<String, IapProductPolicy> BY_PRODUCT_ID = new LinkedHashMap<>();
 

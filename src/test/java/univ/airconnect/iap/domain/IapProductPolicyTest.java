@@ -7,18 +7,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 class IapProductPolicyTest {
 
     @Test
-    void fromProductId_returnsPolicy_forAndroidPack12() {
-        IapProductPolicy policy = IapProductPolicy.fromProductId("com.airconnect.tickets.pack12");
-
-        assertThat(policy).isEqualTo(IapProductPolicy.LEGACY_PACK_12);
-        assertThat(policy.getTickets()).isEqualTo(12);
+    void activeAndroidProducts_returnFestivalTicketAmounts() {
+        assertThat(IapProductPolicy.fromProductId("com.airconnect.tickets.pack5").getTickets()).isEqualTo(8);
+        assertThat(IapProductPolicy.fromProductId("com.airconnect.tickets.pack12").getTickets()).isEqualTo(19);
+        assertThat(IapProductPolicy.fromProductId("com.airconnect.tickets.pack30").getTickets()).isEqualTo(50);
+        assertThat(IapProductPolicy.fromProductId("com.airconnect.tickets.pack70").getTickets()).isEqualTo(115);
     }
 
     @Test
-    void fromProductId_returnsPolicy_forAndroidPack70() {
-        IapProductPolicy policy = IapProductPolicy.fromProductId("com.airconnect.tickets.pack70");
-
-        assertThat(policy).isEqualTo(IapProductPolicy.LEGACY_PACK_70);
-        assertThat(policy.getTickets()).isEqualTo(70);
+    void activeIosProducts_returnFestivalTicketAmounts() {
+        assertThat(IapProductPolicy.fromProductId("AirConnect_Economy_5").getTickets()).isEqualTo(8);
+        assertThat(IapProductPolicy.fromProductId("AirConnect_PremiumEconomy_10").getTickets()).isEqualTo(19);
+        assertThat(IapProductPolicy.fromProductId("AirConnect_Business_30").getTickets()).isEqualTo(50);
+        assertThat(IapProductPolicy.fromProductId("AirConnect_FirstClass_50").getTickets()).isEqualTo(115);
     }
 }
