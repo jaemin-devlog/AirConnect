@@ -80,15 +80,15 @@ class IapProcessingServiceTest {
         when(iapOrderRepository.findByStoreAndPurchaseToken(IapStore.GOOGLE, "purchase-token-12")).thenReturn(Optional.empty());
         when(iapOrderRepository.save(any(IapOrder.class))).thenReturn(order);
         when(iapOrderRepository.findByIdForUpdate(12L)).thenReturn(Optional.of(order));
-        when(ticketGrantService.grantTickets(any(IapOrder.class), eq(12)))
-                .thenReturn(new TicketGrantService.TicketGrantResult(8, 20, "TICKET_LEDGER_12"));
+        when(ticketGrantService.grantTickets(any(IapOrder.class), eq(19)))
+                .thenReturn(new TicketGrantService.TicketGrantResult(8, 27, "TICKET_LEDGER_12"));
 
         IapVerifyResponse response = iapProcessingService.verifyAndroid(userId, request);
 
         assertThat(response.getGrantStatus()).isEqualTo(GrantStatus.GRANTED);
-        assertThat(response.getGrantedTickets()).isEqualTo(12);
+        assertThat(response.getGrantedTickets()).isEqualTo(19);
         assertThat(response.getBeforeTickets()).isEqualTo(8);
-        assertThat(response.getAfterTickets()).isEqualTo(20);
+        assertThat(response.getAfterTickets()).isEqualTo(27);
     }
 
     @Test
@@ -230,8 +230,8 @@ class IapProcessingServiceTest {
         when(iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, "tx-ok")).thenReturn(Optional.empty());
         when(iapOrderRepository.save(any(IapOrder.class))).thenReturn(order);
         when(iapOrderRepository.findByIdForUpdate(99L)).thenReturn(Optional.of(order));
-        when(ticketGrantService.grantTickets(any(IapOrder.class), eq(5)))
-                .thenReturn(new TicketGrantService.TicketGrantResult(10, 15, "TICKET_LEDGER_99"));
+        when(ticketGrantService.grantTickets(any(IapOrder.class), eq(8)))
+                .thenReturn(new TicketGrantService.TicketGrantResult(10, 18, "TICKET_LEDGER_99"));
 
         IapSyncResponse response = iapProcessingService.syncIos(userId, req);
 
@@ -337,14 +337,14 @@ class IapProcessingServiceTest {
                 .thenReturn(Optional.empty())
                 .thenReturn(Optional.of(order));
         when(iapOrderRepository.findByIdForUpdate(55L)).thenReturn(Optional.of(order));
-        when(ticketGrantService.grantTickets(any(IapOrder.class), eq(5)))
-                .thenReturn(new TicketGrantService.TicketGrantResult(10, 15, "TICKET_LEDGER_55"));
+        when(ticketGrantService.grantTickets(any(IapOrder.class), eq(8)))
+                .thenReturn(new TicketGrantService.TicketGrantResult(10, 18, "TICKET_LEDGER_55"));
 
         IapVerifyResponse first = iapProcessingService.verifyIos(userId, request);
         IapVerifyResponse second = iapProcessingService.verifyIos(userId, request);
 
         assertThat(first.getGrantStatus()).isEqualTo(GrantStatus.GRANTED);
         assertThat(second.getGrantStatus()).isEqualTo(GrantStatus.ALREADY_GRANTED);
-        verify(ticketGrantService, times(1)).grantTickets(any(IapOrder.class), eq(5));
+        verify(ticketGrantService, times(1)).grantTickets(any(IapOrder.class), eq(8));
     }
 }
