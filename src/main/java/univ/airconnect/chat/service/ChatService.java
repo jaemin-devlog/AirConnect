@@ -1486,13 +1486,12 @@ public class ChatService {
                 && profile.getProfileImagePath() != null
                 && !profile.getProfileImagePath().isBlank();
 
-        Integer admissionYear = AdmissionYear.from(user.getStudentNum());
+        Integer studentNum = AdmissionYear.from(user.getStudentNum());
         return ChatParticipantProfileResponse.builder()
                 .userId(user.getId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
-                .admissionYear(admissionYear)
-                .studentNum(admissionYear)
+                .studentNum(studentNum)
                 .profileImage(profile != null ? profile.getProfileImagePath() : null)
                 .emailVerified(user.hasVerifiedSchoolEmail())
                 .gender(profile != null ? profile.getGender() : null)
@@ -1512,13 +1511,12 @@ public class ChatService {
                 ? UserProfileResponse.from(profile, imageUrlBase)
                 : null;
 
-        Integer admissionYear = AdmissionYear.from(user.getStudentNum());
+        Integer studentNum = AdmissionYear.from(user.getStudentNum());
         return ChatParticipantDetailResponse.builder()
                 .userId(user.getId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
-                .admissionYear(admissionYear)
-                .studentNum(admissionYear)
+                .studentNum(studentNum)
                 .profileImage(profile != null ? profile.getProfileImagePath() : null)
                 .emailVerified(user.hasVerifiedSchoolEmail())
                 .gender(profile != null ? profile.getGender() : null)

@@ -494,7 +494,7 @@ class MatchingServiceTest {
         assertThat(fields).doesNotContain(
                 "name", "email", "provider", "socialId", "tickets", "userStatus"
         );
-        assertThat(received.getAdmissionYear()).isEqualTo(24);
+        assertThat(received.getStudentNum()).isEqualTo(24);
         assertThat(received.getStudentNum()).isEqualTo(24);
         assertThat(received.getOnboardingStatus()).isEqualTo(OnboardingStatus.FULL);
         assertThat(received.isProfileExists()).isTrue();
@@ -544,7 +544,7 @@ class MatchingServiceTest {
         assertThat(fields).doesNotContain(
                 "name", "email", "provider", "socialId", "tickets", "status"
         );
-        assertThat(response.getCandidates().get(0).getAdmissionYear()).isEqualTo(24);
+        assertThat(response.getCandidates().get(0).getStudentNum()).isEqualTo(24);
         assertThat(response.getCandidates().get(0).getStudentNum()).isEqualTo(24);
         assertThat(response.getCandidates().get(0).getOnboardingStatus()).isEqualTo(OnboardingStatus.FULL);
         assertThat(response.getCandidates().get(0).isProfileExists()).isTrue();

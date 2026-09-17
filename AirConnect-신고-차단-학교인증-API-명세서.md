@@ -1,7 +1,7 @@
 # AirConnect 신고·차단·학교 인증 마크 API 명세서
 
 - 기준 브랜치: `develop`
-- 기준 커밋: `24eb51e` + 학교 인증 마크 응답 확장 작업분
+- 기준 커밋: `e0e5281` + 입학 연도 응답 필드 통일 작업분
 - Base URL: `https://airconnect.cloud`
 - 작성일: 2026-09-17
 - 대상: Android / iOS
@@ -27,7 +27,9 @@ false -> 학교 인증 마크 숨김
 | 채팅 상대·참여자 프로필 | `emailVerified` |
 | 채팅 메시지 | `senderEmailVerified` |
 
-기존 필드를 삭제하거나 이름을 바꾸지 않았다. 새 Boolean 필드만 추가했으므로 구버전 앱은 알 수 없는 필드를 무시하면 기존처럼 동작한다. 학교 이메일 주소 원문은 다른 사용자에게 반환하지 않는다.
+학교 인증 상태는 기존 응답에 Boolean 필드로 추가되며, 학교 이메일 주소 원문은 다른 사용자에게 반환하지 않는다.
+
+프로필 상세에서 두 자리 입학 연도를 중복 제공하던 `admissionYear`는 제거하고 `studentNum` 하나로 통일한다. 이 부분은 응답 계약 변경이므로 앱도 함께 변경해야 한다. `studentNum: 26`은 전체 학번이 아니라 2026학년도 입학을 뜻한다.
 
 ## 2. 공통 규칙
 
@@ -148,9 +150,11 @@ GET /api/v1/matching/recommendations/same-gender
 ```text
 data.candidates[].emailVerified
 data.candidates[].profile.emailVerified
+data.candidates[].studentNum
 ```
 
 카드나 목록에서는 후보 최상위의 `emailVerified` 사용을 권장한다.
+입학 연도는 `studentNum`만 사용하며 `admissionYear`는 반환하지 않는다.
 
 ```json
 {
@@ -163,6 +167,7 @@ data.candidates[].profile.emailVerified
         "userId": 123,
         "nickname": "하늘",
         "deptName": "항공관광학과",
+        "studentNum": 26,
         "emailVerified": true,
         "profileExists": true,
         "profileImageUploaded": true,
@@ -195,7 +200,11 @@ data.sent[].emailVerified
 data.sent[].profile.emailVerified
 data.received[].emailVerified
 data.received[].profile.emailVerified
+data.sent[].studentNum
+data.received[].studentNum
 ```
+
+보낸 신청과 받은 신청 모두 입학 연도 필드는 `studentNum` 하나만 반환한다.
 
 ```json
 {
@@ -209,6 +218,7 @@ data.received[].profile.emailVerified
         "connectionId": 501,
         "userId": 123,
         "nickname": "하늘",
+        "studentNum": 26,
         "emailVerified": true,
         "profile": {
           "userId": 123,
@@ -294,15 +304,18 @@ GET /api/v1/matching/team-rooms/{teamRoomId}/members/{targetUserId}/profile
 ```text
 emailVerified
 profile.emailVerified
+studentNum
 ```
 
 이 응답도 공통 `data` 래퍼 없이 바로 반환된다.
+입학 연도는 `studentNum`만 사용하며 `admissionYear`는 반환하지 않는다.
 
 ```json
 {
   "userId": 11,
   "nickname": "커넥트",
   "deptName": "항공운항학과",
+  "studentNum": 26,
   "emailVerified": true,
   "profileExists": true,
   "profileImageUploaded": true,
@@ -352,6 +365,7 @@ data[].targetProfile.profile.emailVerified
       "targetProfile": {
         "userId": 123,
         "nickname": "하늘",
+        "studentNum": 26,
         "emailVerified": true,
         "profile": {
           "userId": 123,
@@ -378,7 +392,10 @@ GET /api/v1/chat/rooms/{roomId}/counterpart-profile
 ```text
 data.emailVerified
 data.profile.emailVerified
+data.studentNum
 ```
+
+`data.studentNum`은 두 자리 입학 연도이며 `admissionYear`는 반환하지 않는다.
 
 ### 6.3 채팅방 전체 참여자 프로필
 
@@ -391,6 +408,7 @@ GET /api/v1/chat/rooms/{roomId}/participants/profiles
 ```text
 data[].emailVerified
 data[].profile.emailVerified
+data[].studentNum
 ```
 
 1:1과 그룹 채팅방 모두 사용할 수 있다. 그룹 채팅방 참여자 목록에서 각 사용자 이름 옆에 마크를 표시할 때 이 값을 사용한다.
@@ -405,7 +423,10 @@ GET /api/v1/chat/rooms/{roomId}/participants/{targetUserId}/profile
 
 ```text
 data.emailVerified
+data.studentNum
 ```
+
+채팅 참여자 프로필에서도 `admissionYear`는 반환하지 않는다.
 
 ### 6.5 메시지 목록·전송·삭제
 
@@ -629,4 +650,4 @@ GET /api/v1/moderation/blocks/{targetUserId}
 4. `READ_RECEIPT` 같은 사용자 프로필이 없는 이벤트에는 마크를 표시하지 않는다.
 5. 인증 완료 후 현재 화면 API를 다시 호출한다.
 6. 서버가 `false`를 반환하면 기존에 표시 중이던 마크도 즉시 숨긴다.
-
+7. 추천·신청·그룹 멤버·채팅 참여자 프로필의 입학 연도는 `studentNum`만 읽고 `admissionYear`는 사용하지 않는다.

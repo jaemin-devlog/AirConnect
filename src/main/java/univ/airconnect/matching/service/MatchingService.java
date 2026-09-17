@@ -496,14 +496,13 @@ public class MatchingService {
         UserProfile profile = userProfileRepository.findByUserId(otherUserId).orElse(null);
         UserProfileResponse profileResponse = (profile != null) ? UserProfileResponse.from(profile, imageUrlBase) : null;
 
-        Integer admissionYear = AdmissionYear.from(otherUser.getStudentNum());
+        Integer studentNum = AdmissionYear.from(otherUser.getStudentNum());
         return MatchingRequestResponse.builder()
                 .connectionId(conn.getId())
                 .userId(otherUserId)
                 .nickname(otherUser.getNickname())
                 .deptName(otherUser.getDeptName())
-                .admissionYear(admissionYear)
-                .studentNum(admissionYear)
+                .studentNum(studentNum)
                 .onboardingStatus(otherUser.getOnboardingStatus())
                 .emailVerified(otherUser.hasVerifiedSchoolEmail())
                 .profileExists(profile != null)
@@ -688,15 +687,14 @@ public class MatchingService {
             profileResponse = UserProfileResponse.from(profile, imageUrlBase);
         }
 
-        Integer admissionYear = AdmissionYear.from(user.getStudentNum());
+        Integer studentNum = AdmissionYear.from(user.getStudentNum());
         return MatchingCandidateResponse.builder()
                 .userId(user.getId())
                 .nickname(user.getNickname())
                 .deptName(user.getDeptName())
                 .profileImage(profile != null ? toFullImageUrl(profile.getProfileImagePath()) : null)
                 .gender(profile != null ? profile.getGender() : null)
-                .admissionYear(admissionYear)
-                .studentNum(admissionYear)
+                .studentNum(studentNum)
                 .onboardingStatus(user.getOnboardingStatus())
                 .emailVerified(user.hasVerifiedSchoolEmail())
                 .profileExists(profile != null)

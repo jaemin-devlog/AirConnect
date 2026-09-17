@@ -14,8 +14,7 @@ public class ChatParticipantDetailResponse {
     private Long userId;
     private String nickname;
     private String deptName;
-    private Integer admissionYear;
-    /** 모바일 구버전 호환 필드. admissionYear와 동일한 두 자리 입학연도이다. */
+    /** 전체 학번이 아니라 두 자리 입학 연도이다. */
     private Integer studentNum;
     private Integer age;
     private Gender gender;

@@ -276,7 +276,7 @@ class ChatServiceTest {
         assertThat(response.getTargetProfile()).isNotNull();
         assertThat(response.getTargetProfile().isEmailVerified()).isTrue();
         assertThat(response.getTargetProfile().getUserId()).isEqualTo(userB);
-        assertThat(response.getTargetProfile().getAdmissionYear()).isEqualTo(23);
+        assertThat(response.getTargetProfile().getStudentNum()).isEqualTo(23);
         assertThat(response.getTargetProfile().getGender()).isEqualTo(Gender.FEMALE);
         assertThat(response.getTargetProfile().getProfile()).isNotNull();
         assertThat(response.getTargetProfile().getProfile().getMbti()).isEqualTo("ENFP");
@@ -301,7 +301,7 @@ class ChatServiceTest {
 
         assertThat(response.getUserId()).isEqualTo(targetUserId);
         assertThat(response.getNickname()).isEqualTo("target");
-        assertThat(response.getAdmissionYear()).isEqualTo(23);
+        assertThat(response.getStudentNum()).isEqualTo(23);
         assertThat(response.isProfileExists()).isTrue();
         assertThat(response.isEmailVerified()).isTrue();
         assertThat(response.getGender()).isEqualTo(Gender.FEMALE);
@@ -331,7 +331,7 @@ class ChatServiceTest {
 
         assertThat(response.getUserId()).isEqualTo(targetUserId);
         assertThat(response.getNickname()).isEqualTo("target");
-        assertThat(response.getAdmissionYear()).isEqualTo(23);
+        assertThat(response.getStudentNum()).isEqualTo(23);
         assertThat(response.getGender()).isEqualTo(Gender.FEMALE);
         assertThat(response.isEmailVerified()).isTrue();
         assertThat(response.getProfile()).isNotNull();
@@ -371,7 +371,7 @@ class ChatServiceTest {
                 .containsExactly(requestUserId, 2L);
         assertThat(response).extracting(ChatParticipantDetailResponse::getGender)
                 .containsExactly(Gender.MALE, Gender.FEMALE);
-        assertThat(response).extracting(ChatParticipantDetailResponse::getAdmissionYear)
+        assertThat(response).extracting(ChatParticipantDetailResponse::getStudentNum)
                 .containsExactly(23, 23);
         assertThat(response).extracting(ChatParticipantDetailResponse::getProfileImage)
                 .containsExactly("profiles/" + requestUserId + ".png", "profiles/2.png");
@@ -564,7 +564,7 @@ class ChatServiceTest {
         assertThat(response.get(0).getTargetProfile()).isNotNull();
         assertThat(response.get(0).getTargetProfile().isEmailVerified()).isTrue();
         assertThat(response.get(0).getTargetProfile().getUserId()).isEqualTo(other.getId());
-        assertThat(response.get(0).getTargetProfile().getAdmissionYear()).isEqualTo(23);
+        assertThat(response.get(0).getTargetProfile().getStudentNum()).isEqualTo(23);
         assertThat(response.get(0).getTargetProfile().getGender()).isEqualTo(Gender.FEMALE);
         assertThat(response.get(0).getTargetProfile().getProfileImage()).isEqualTo("profiles/" + other.getId() + ".png");
         assertThat(response.get(0).getTargetProfile().getProfile()).isNotNull();
