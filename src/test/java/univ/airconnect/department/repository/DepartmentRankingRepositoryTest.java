@@ -11,6 +11,7 @@ import univ.airconnect.matching.repository.MatchingConnectionRepository;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -38,13 +39,33 @@ class DepartmentRankingRepositoryTest {
         matchingConnectionRepository.save(MatchingConnection.createPending(designUser.getId(), aviationUser.getId()));
         matchingConnectionRepository.save(MatchingConnection.createPending(currentDesignUser.getId(), designUser.getId()));
 
-        Map<String, Long> counts = departmentRepository.findAllRankedByMatchingRequests().stream()
+        Map<String, Long> counts = departmentRepository
+                .findAllRankedByMatchingRequests(LocalDateTime.now().minusMinutes(1)).stream()
                 .collect(Collectors.toMap(DepartmentRankingProjection::getDeptName,
                         DepartmentRankingProjection::getRequestCount));
 
         assertThat(counts).containsEntry("디지털산업디자인학과", 3L)
                 .containsEntry("항공운항학과", 1L)
                 .containsEntry("항공컴퓨터학과", 0L);
+    }
+
+    @Test
+    void returnsEveryDepartmentAtZeroWhenBaselineIsAfterTestRequests() {
+        saveDepartment("D1", "디지털산업디자인학과", "디자인융합학부", 1);
+        saveDepartment("D2", "항공운항학과", "항공학부", 2);
+
+        User designUser = saveUser("u1", "디지털산업디자인학과");
+        User aviationUser = saveUser("u2", "항공운항학과");
+        matchingConnectionRepository.saveAndFlush(
+                MatchingConnection.createPending(designUser.getId(), aviationUser.getId()));
+
+        Map<String, Long> counts = departmentRepository
+                .findAllRankedByMatchingRequests(LocalDateTime.now().plusMinutes(1)).stream()
+                .collect(Collectors.toMap(DepartmentRankingProjection::getDeptName,
+                        DepartmentRankingProjection::getRequestCount));
+
+        assertThat(counts).containsEntry("디지털산업디자인학과", 0L)
+                .containsEntry("항공운항학과", 0L);
     }
 
     private Department saveDepartment(String code, String name, String college, int order) {

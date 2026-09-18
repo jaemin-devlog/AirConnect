@@ -5,9 +5,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.department.repository.DepartmentRankingProjection;
 import univ.airconnect.department.repository.DepartmentRepository;
+import univ.airconnect.statistics.repository.DepartmentRankingBaselineRepository;
 import univ.airconnect.statistics.dto.response.DepartmentRankingResponse;
 import univ.airconnect.statistics.dto.response.RealtimeMainStatisticsResponse;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,14 +18,19 @@ import java.util.List;
 public class DepartmentRankingSnapshotService {
 
     private final DepartmentRepository departmentRepository;
+    private final DepartmentRankingBaselineRepository baselineRepository;
 
     private volatile List<DepartmentRankingResponse> rankings = List.of();
     private volatile boolean initialized;
 
     @Transactional(readOnly = true)
     public synchronized List<DepartmentRankingResponse> refresh() {
+        LocalDateTime rankingStartAt = baselineRepository
+                .findById(DepartmentRankingBaselineInitializer.BASELINE_ID)
+                .map(baseline -> baseline.getStartedAt())
+                .orElseGet(LocalDateTime::now);
         List<DepartmentRankingProjection> projections =
-                departmentRepository.findAllRankedByMatchingRequests();
+                departmentRepository.findAllRankedByMatchingRequests(rankingStartAt);
         List<DepartmentRankingResponse> refreshed = new ArrayList<>(projections.size());
         int rank = 0;
         long previousCount = Long.MIN_VALUE;

@@ -2,8 +2,10 @@ package univ.airconnect.department.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import univ.airconnect.department.domain.entity.Department;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,6 +28,7 @@ public interface DepartmentRepository extends JpaRepository<Department, Long> {
                 FROM matching_connections mc
                 JOIN users requester ON requester.id = mc.requester_id
                 JOIN departments d_requester ON d_requester.name = requester.dept_name
+                WHERE mc.connected_at >= :rankingStartAt
                 UNION ALL
                 SELECT d_receiver.id AS department_id
                 FROM matching_connections mc
@@ -35,9 +38,12 @@ public interface DepartmentRepository extends JpaRepository<Department, Long> {
                         ELSE mc.user1_id
                      END
                 JOIN departments d_receiver ON d_receiver.name = receiver.dept_name
+                WHERE mc.connected_at >= :rankingStartAt
             ) requests ON requests.department_id = d.id
             GROUP BY d.id, d.name, d.college_name, d.status
             ORDER BY COUNT(requests.department_id) DESC, d.name ASC
             """, nativeQuery = true)
-    List<DepartmentRankingProjection> findAllRankedByMatchingRequests();
+    List<DepartmentRankingProjection> findAllRankedByMatchingRequests(
+            @Param("rankingStartAt") LocalDateTime rankingStartAt
+    );
 }
