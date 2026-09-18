@@ -10,6 +10,8 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
+import univ.airconnect.statistics.repository.DepartmentRankingBaselineRepository;
+import univ.airconnect.statistics.service.DepartmentRankingBaselineInitializer;
 
 /** Aggregate-only reads: never select message bodies, receipts, credentials or device identifiers. */
 @Service
@@ -18,6 +20,7 @@ public class AdminInsightsService {
     private final NamedParameterJdbcTemplate jdbc;
     private final List<Long> excluded;
     private final Clock clock;
+    private final DepartmentRankingBaselineRepository departmentRankingBaselineRepository;
     private static final String ELIGIBLE = "(u.role IS NULL OR u.role <> 'ADMIN') AND u.id NOT IN (:excluded)";
     private static final String CURRENT = "u.status <> 'DELETED' AND u.onboarding_status = 'FULL'";
     private static final String USERS = " FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE " + ELIGIBLE;
@@ -30,13 +33,20 @@ public class AdminInsightsService {
 
     @org.springframework.beans.factory.annotation.Autowired
     public AdminInsightsService(NamedParameterJdbcTemplate jdbc,
-            @Value("${admin.insights.excluded-user-ids:}") String excludedIds) {
-        this(jdbc, excludedIds, Clock.systemUTC());
+            @Value("${admin.insights.excluded-user-ids:}") String excludedIds,
+            DepartmentRankingBaselineRepository departmentRankingBaselineRepository) {
+        this(jdbc, excludedIds, Clock.systemUTC(), departmentRankingBaselineRepository);
     }
 
     AdminInsightsService(NamedParameterJdbcTemplate jdbc, String excludedIds, Clock clock) {
+        this(jdbc, excludedIds, clock, null);
+    }
+
+    AdminInsightsService(NamedParameterJdbcTemplate jdbc, String excludedIds, Clock clock,
+            DepartmentRankingBaselineRepository departmentRankingBaselineRepository) {
         this.jdbc = jdbc;
         this.clock = clock;
+        this.departmentRankingBaselineRepository = departmentRankingBaselineRepository;
         this.excluded = excludedIds.isBlank() ? List.of(-1L) : Arrays.stream(excludedIds.split(","))
                 .map(String::trim).map(Long::valueOf).toList();
     }
@@ -196,7 +206,9 @@ public class AdminInsightsService {
         return r;
     }
     private Map<String, Object> departmentMatching(MapSqlParameterSource p) {
-        String requestWindow = " AND m.connected_at>=:start AND m.connected_at<:end";
+        LocalDateTime baseline = departmentMatchingBaseline();
+        p.addValue("department_matching_start", baseline);
+        String requestWindow = " AND m.connected_at>=:start AND m.connected_at>=:department_matching_start AND m.connected_at<:end";
         String sentDepartment = "COALESCE(NULLIF(TRIM(requester.dept_name),''),'미입력')";
         String receivedDepartment = "COALESCE(NULLIF(TRIM(receiver.dept_name),''),'미입력')";
         String groupDepartment = "COALESCE(NULLIF(TRIM(u.dept_name),''),'미입력')";
@@ -212,9 +224,20 @@ public class AdminInsightsService {
         List<Map<String, Object>> groupParticipation = rows("SELECT " + groupDepartment + " AS department, "
                 + "COUNT(*) AS participations,COUNT(DISTINCT tm.user_id) AS members FROM matching_temporary_team_members tm "
                 + "JOIN users u ON u.id=tm.user_id WHERE " + ELIGIBLE
-                + " AND tm.joined_at>=:start AND tm.joined_at<:end GROUP BY " + groupDepartment
+                + " AND tm.joined_at>=:start AND tm.joined_at>=:department_matching_start AND tm.joined_at<:end GROUP BY " + groupDepartment
                 + " ORDER BY participations DESC,department", p);
-        return Map.of("sent", sent, "received", received, "group_participation", groupParticipation);
+        return Map.of("started_at", baseline, "sent", sent, "received", received,
+                "group_participation", groupParticipation);
+    }
+
+    private LocalDateTime departmentMatchingBaseline() {
+        if (departmentRankingBaselineRepository == null) {
+            return LocalDateTime.of(1970, 1, 1, 0, 0);
+        }
+        return departmentRankingBaselineRepository
+                .findById(DepartmentRankingBaselineInitializer.ADMIN_MATCHING_BASELINE_ID)
+                .map(baseline -> baseline.getStartedAt())
+                .orElseGet(() -> LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault()));
     }
     private Map<String, Object> commerce(MapSqlParameterSource p) {
         return Map.of("orders", rows("SELECT o.status,COUNT(*) AS orders,COUNT(DISTINCT o.user_id) AS members FROM iap_orders o WHERE "

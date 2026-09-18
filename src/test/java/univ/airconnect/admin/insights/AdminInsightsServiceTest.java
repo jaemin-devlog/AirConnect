@@ -7,7 +7,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import univ.airconnect.global.error.BusinessException;
+import univ.airconnect.statistics.domain.entity.DepartmentRankingBaseline;
+import univ.airconnect.statistics.repository.DepartmentRankingBaselineRepository;
+import univ.airconnect.statistics.service.DepartmentRankingBaselineInitializer;
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class AdminInsightsServiceTest {
     JdbcTemplate db;
@@ -111,6 +115,29 @@ class AdminInsightsServiceTest {
                 .containsExactly("공학:1","인문:1");
         assertThat(list(rankings.get("group_participation"))).extracting(r -> r.get("department")+":"+n(r.get("participations")))
                 .containsExactly("공학:2","인문:1");
+    }
+    @Test void departmentMatchingUsesPromotionBaselineWithoutDeletingHistoricRecords() {
+        DepartmentRankingBaselineRepository repository = mock(DepartmentRankingBaselineRepository.class);
+        when(repository.findById(DepartmentRankingBaselineInitializer.ADMIN_MATCHING_BASELINE_ID)).thenReturn(Optional.of(
+                DepartmentRankingBaseline.start(DepartmentRankingBaselineInitializer.ADMIN_MATCHING_BASELINE_ID,
+                        LocalDateTime.parse("2026-09-04T00:00:00"))));
+        service = new AdminInsightsService(new NamedParameterJdbcTemplate(db.getDataSource()), "99", CLOCK, repository);
+        db.update("INSERT INTO matching_connections VALUES(1,1,3,1,'PENDING',NULL,'2026-09-03 03:00:00',NULL)");
+        db.update("INSERT INTO matching_connections VALUES(2,2,3,2,'PENDING',NULL,'2026-09-05 03:00:00',NULL)");
+        db.update("INSERT INTO matching_temporary_team_members VALUES(1,10,1,true,'2026-09-03 03:00:00',NULL,NULL,'2026-09-03 03:00:00','2026-09-03 03:00:00')");
+        db.update("INSERT INTO matching_temporary_team_members VALUES(2,10,2,false,'2026-09-05 03:00:00',NULL,NULL,'2026-09-05 03:00:00','2026-09-05 03:00:00')");
+
+        var rankings=map(service.overview(null,null,true).get("department_matching"));
+
+        assertThat(rankings.get("started_at")).isEqualTo(LocalDateTime.parse("2026-09-04T00:00:00"));
+        assertThat(list(rankings.get("sent"))).extracting(r -> r.get("department")+":"+n(r.get("requests")))
+                .containsExactly("공학:1");
+        assertThat(list(rankings.get("received"))).extracting(r -> r.get("department")+":"+n(r.get("requests")))
+                .containsExactly("인문:1");
+        assertThat(list(rankings.get("group_participation"))).extracting(r -> r.get("department")+":"+n(r.get("participations")))
+                .containsExactly("공학:1");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM matching_connections", Long.class)).isEqualTo(2);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM matching_temporary_team_members", Long.class)).isEqualTo(2);
     }
     @Test void allTimeOverviewIncludesOldRecordsAndUsesMonthlyTrendWithoutComparison() {
         db.update("INSERT INTO matching_connections VALUES(1,1,3,1,'ACCEPTED',10,'2025-01-03 03:00:00','2025-01-04 03:00:00')");

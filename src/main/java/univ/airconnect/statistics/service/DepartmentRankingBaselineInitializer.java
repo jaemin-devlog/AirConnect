@@ -15,14 +15,21 @@ import java.time.LocalDateTime;
 public class DepartmentRankingBaselineInitializer implements ApplicationRunner {
 
     public static final long BASELINE_ID = 1L;
+    public static final long ADMIN_MATCHING_BASELINE_ID = 2L;
 
     private final DepartmentRankingBaselineRepository baselineRepository;
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!baselineRepository.existsById(BASELINE_ID)) {
-            baselineRepository.save(DepartmentRankingBaseline.start(BASELINE_ID, LocalDateTime.now()));
+        LocalDateTime startedAt = LocalDateTime.now();
+        initialize(BASELINE_ID, startedAt);
+        initialize(ADMIN_MATCHING_BASELINE_ID, startedAt);
+    }
+
+    private void initialize(long id, LocalDateTime startedAt) {
+        if (!baselineRepository.existsById(id)) {
+            baselineRepository.save(DepartmentRankingBaseline.start(id, startedAt));
         }
     }
 }

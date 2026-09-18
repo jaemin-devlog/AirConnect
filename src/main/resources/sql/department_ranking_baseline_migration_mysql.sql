@@ -1,5 +1,5 @@
--- 학과 랭킹은 이 테이블의 최초 시작 시각 이후 매칭 요청만 집계한다.
--- 기존 매칭/채팅 데이터는 삭제하지 않으며, 최초 애플리케이션 기동 시 단일 행이 생성된다.
+-- ID 1은 앱의 학과 랭킹, ID 2는 관리자 학과별 매칭 순위의 시작 시각이다.
+-- 기존 매칭/채팅 데이터는 삭제하지 않으며, 각 기능이 처음 배포된 시점에 행이 생성된다.
 CREATE TABLE IF NOT EXISTS department_ranking_baseline (
     id BIGINT NOT NULL,
     started_at DATETIME(6) NOT NULL,
