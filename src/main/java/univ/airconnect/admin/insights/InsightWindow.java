@@ -17,6 +17,14 @@ public record InsightWindow(LocalDate from, LocalDate to, Instant start, Instant
         return of(from, to, clock, false);
     }
 
+    public static InsightWindow allTime(Clock clock) {
+        Instant now = clock.instant();
+        LocalDate today = now.atZone(KOREA).toLocalDate();
+        LocalDate epoch = LocalDate.of(1970, 1, 1);
+        return new InsightWindow(epoch, today, epoch.atStartOfDay(KOREA).toInstant(),
+                today.plusDays(1).atStartOfDay(KOREA).toInstant(), now);
+    }
+
     private static InsightWindow of(LocalDate from, LocalDate to, Clock clock, boolean limitDays) {
         Instant now = clock.instant();
         LocalDate today = now.atZone(KOREA).toLocalDate();

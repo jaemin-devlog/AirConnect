@@ -22,9 +22,10 @@ public class AdminInsightsController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> overview(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "false") boolean allTime,
             HttpServletRequest request) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.ok(
-                service.overview(from, to), (String) request.getAttribute(TRACE_ID_ATTRIBUTE)));
+                service.overview(from, to, allTime), (String) request.getAttribute(TRACE_ID_ATTRIBUTE)));
     }
 
     @GetMapping("/members")
@@ -35,9 +36,10 @@ public class AdminInsightsController {
             @RequestParam(required = false) String department,
             @RequestParam(required = false) String gender,
             @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "false") boolean allTime,
             HttpServletRequest request) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.ok(
-                service.members(from, to, segment, department, gender, page),
+                service.members(from, to, segment, department, gender, page, allTime),
                 (String) request.getAttribute(TRACE_ID_ATTRIBUTE)));
     }
 

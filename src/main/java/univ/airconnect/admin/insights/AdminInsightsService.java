@@ -68,14 +68,24 @@ public class AdminInsightsService {
         return col + " IN (SELECT u.id FROM users u WHERE " + ELIGIBLE + ")";
     }
     private static String day(String col) { return "CAST(TIMESTAMPADD(SECOND,:offset," + col + ") AS DATE)"; }
+    private static String month(String col) {
+        String shifted = "TIMESTAMPADD(SECOND,:offset," + col + ")";
+        return "CONCAT(YEAR(" + shifted + "),'-',RIGHT(CONCAT('0',MONTH(" + shifted + ")),2),'-01')";
+    }
 
     public Map<String, Object> overview(LocalDate from, LocalDate to) {
-        InsightWindow w = InsightWindow.of(from, to, clock);
+        return overview(from, to, false);
+    }
+
+    public Map<String, Object> overview(LocalDate from, LocalDate to, boolean allTime) {
+        if (allTime && (from != null || to != null)) throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        InsightWindow w = allTime ? InsightWindow.allTime(clock) : InsightWindow.of(from, to, clock);
         MapSqlParameterSource p = params(w);
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("from", w.from()); result.put("to", w.to()); result.put("generated_at", w.asOf());
+        result.put("from", allTime ? null : w.from()); result.put("to", w.to()); result.put("generated_at", w.asOf());
+        result.put("all_time", allTime);
         result.put("timezone", "Asia/Seoul");
-        result.put("previous_from", w.previous().from()); result.put("previous_to", w.previous().to());
+        result.put("previous_from", allTime ? null : w.previous().from()); result.put("previous_to", allTime ? null : w.previous().to());
         result.put("partial_day", w.to().equals(w.asOf().atZone(InsightWindow.KOREA).toLocalDate()));
         result.put("snapshot", one("SELECT COUNT(*) AS accounts, "
                 + "COALESCE(SUM(CASE WHEN " + CURRENT + " THEN 1 ELSE 0 END),0) AS current_members, "
@@ -83,8 +93,9 @@ public class AdminInsightsService {
                 + "COALESCE(SUM(CASE WHEN u.status<>'DELETED' AND u.onboarding_status<>'FULL' THEN 1 ELSE 0 END),0) AS incomplete_members"
                 + USERS, p));
         result.put("period", period(p));
-        result.put("previous", period(params(w.previous())));
-        result.put("daily", daily(w, p));
+        result.put("previous", allTime ? emptyPeriod() : period(params(w.previous())));
+        result.put("daily", daily(w, p, allTime));
+        result.put("daily_granularity", allTime ? "MONTH" : "DAY");
         result.put("departments", rows("SELECT COALESCE(NULLIF(TRIM(u.dept_name),''),'미입력') AS department, "
                 + "COUNT(*) AS members, SUM(CASE WHEN p.gender='MALE' THEN 1 ELSE 0 END) AS male, "
                 + "SUM(CASE WHEN p.gender='FEMALE' THEN 1 ELSE 0 END) AS female, "
@@ -96,6 +107,7 @@ public class AdminInsightsService {
                 + USERS + " AND " + CURRENT + " GROUP BY p.gender", p));
         result.put("matching", matching(p));
         result.put("groups", groups(p));
+        result.put("department_matching", departmentMatching(p));
         result.put("commerce", commerce(p));
         result.put("activity", activity(p));
         result.put("notes", List.of(
@@ -120,27 +132,40 @@ public class AdminInsightsService {
         return r;
     }
 
-    private List<Map<String, Object>> daily(InsightWindow w, MapSqlParameterSource p) {
+    private List<Map<String, Object>> daily(InsightWindow w, MapSqlParameterSource p, boolean monthly) {
         Map<String, Map<String, Object>> days = new LinkedHashMap<>();
-        for (LocalDate d = w.from(); !d.isAfter(w.to()); d = d.plusDays(1)) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("day", d.toString());
-            for (String key : List.of("signups", "withdrawals", "active", "completed")) row.put(key, 0L);
-            days.put(d.toString(), row);
+        if (!monthly) {
+            for (LocalDate d = w.from(); !d.isAfter(w.to()); d = d.plusDays(1)) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("day", d.toString());
+                for (String key : List.of("signups", "withdrawals", "active", "completed")) row.put(key, 0L);
+                days.put(d.toString(), row);
+            }
         }
-        mergeDays(days, "signups", rows("SELECT " + day("u.created_at") + " AS day, COUNT(*) AS value FROM users u WHERE "
+        String createdBucket = monthly ? month("u.created_at") : day("u.created_at");
+        String deletedBucket = monthly ? month("u.deleted_at") : day("u.deleted_at");
+        String eventBucket = monthly ? month("e.occurred_at") : day("e.occurred_at");
+        mergeDays(days, "signups", rows("SELECT " + createdBucket + " AS day, COUNT(*) AS value FROM users u WHERE "
                 + ELIGIBLE + " AND u.created_at>=:start AND u.created_at<:end GROUP BY 1", p));
-        mergeDays(days, "withdrawals", rows("SELECT " + day("u.deleted_at") + " AS day, COUNT(*) AS value FROM users u WHERE "
+        mergeDays(days, "withdrawals", rows("SELECT " + deletedBucket + " AS day, COUNT(*) AS value FROM users u WHERE "
                 + ELIGIBLE + " AND u.status='DELETED' AND u.deleted_at>=:start AND u.deleted_at<:end GROUP BY 1", p));
         for (String type : List.of("active", "completed")) {
             String condition = type.equals("active") ? ACTIVITY : "e.type='SIGN_UP_COMPLETED'";
-            mergeDays(days, type, rows("SELECT " + day("e.occurred_at") + " AS day, COUNT(DISTINCT e.user_id) AS value FROM analytics_events e JOIN users u ON u.id=e.user_id WHERE "
+            mergeDays(days, type, rows("SELECT " + eventBucket + " AS day, COUNT(DISTINCT e.user_id) AS value FROM analytics_events e JOIN users u ON u.id=e.user_id WHERE "
                     + ELIGIBLE + " AND " + condition + " AND e.occurred_at>=:start AND e.occurred_at<:end GROUP BY 1", p));
         }
-        return new ArrayList<>(days.values());
+        return days.values().stream().sorted(Comparator.comparing(row -> row.get("day").toString())).toList();
     }
     private static void mergeDays(Map<String, Map<String, Object>> days, String key, List<Map<String, Object>> values) {
-        values.forEach(row -> { var target = days.get(row.get("day").toString()); if (target != null) target.put(key, row.get("value")); });
+        values.forEach(row -> {
+            var target = days.computeIfAbsent(row.get("day").toString(), date -> {
+                Map<String, Object> created = new LinkedHashMap<>();
+                created.put("day", date);
+                for (String metric : List.of("signups", "withdrawals", "active", "completed")) created.put(metric, 0L);
+                return created;
+            });
+            target.put(key, row.get("value"));
+        });
     }
     private String matchingEligible() { return eligibleId("m.user1_id") + " AND " + eligibleId("m.user2_id"); }
     private String messageExists(String sender) {
@@ -169,6 +194,27 @@ public class AdminInsightsService {
                 + eligibleId("t1.leader_id") + " AND " + eligibleId("t2.leader_id")
                 + " AND f.created_at>=:start AND f.created_at<:end GROUP BY f.team_size,f.status", p));
         return r;
+    }
+    private Map<String, Object> departmentMatching(MapSqlParameterSource p) {
+        String requestWindow = " AND m.connected_at>=:start AND m.connected_at<:end";
+        String sentDepartment = "COALESCE(NULLIF(TRIM(requester.dept_name),''),'미입력')";
+        String receivedDepartment = "COALESCE(NULLIF(TRIM(receiver.dept_name),''),'미입력')";
+        String groupDepartment = "COALESCE(NULLIF(TRIM(u.dept_name),''),'미입력')";
+        List<Map<String, Object>> sent = rows("SELECT " + sentDepartment + " AS department, "
+                + "COUNT(*) AS requests,COUNT(DISTINCT requester.id) AS members FROM matching_connections m "
+                + "JOIN users requester ON requester.id=m.requester_id WHERE " + matchingEligible() + requestWindow
+                + " GROUP BY " + sentDepartment + " ORDER BY requests DESC,department", p);
+        List<Map<String, Object>> received = rows("SELECT " + receivedDepartment + " AS department, "
+                + "COUNT(*) AS requests,COUNT(DISTINCT receiver.id) AS members FROM matching_connections m "
+                + "JOIN users receiver ON receiver.id=CASE WHEN m.requester_id=m.user1_id THEN m.user2_id ELSE m.user1_id END "
+                + "WHERE " + matchingEligible() + requestWindow + " GROUP BY " + receivedDepartment
+                + " ORDER BY requests DESC,department", p);
+        List<Map<String, Object>> groupParticipation = rows("SELECT " + groupDepartment + " AS department, "
+                + "COUNT(*) AS participations,COUNT(DISTINCT tm.user_id) AS members FROM matching_temporary_team_members tm "
+                + "JOIN users u ON u.id=tm.user_id WHERE " + ELIGIBLE
+                + " AND tm.joined_at>=:start AND tm.joined_at<:end GROUP BY " + groupDepartment
+                + " ORDER BY participations DESC,department", p);
+        return Map.of("sent", sent, "received", received, "group_participation", groupParticipation);
     }
     private Map<String, Object> commerce(MapSqlParameterSource p) {
         return Map.of("orders", rows("SELECT o.status,COUNT(*) AS orders,COUNT(DISTINCT o.user_id) AS members FROM iap_orders o WHERE "
@@ -221,6 +267,11 @@ public class AdminInsightsService {
         result.put("hasNext", (long) (page + 1) * 25 < total);
         return result;
     }
+
+    private Map<String, Object> emptyPeriod() {
+        return Map.of("signups", 0L, "withdrawals", 0L, "active_members", 0L,
+                "accepted", 0L, "chat_members", 0L);
+    }
     private Map<String, Object> activity(MapSqlParameterSource p) {
         String base = " FROM analytics_events e JOIN users u ON u.id=e.user_id WHERE " + ELIGIBLE + " AND " + ACTIVITY
                 + " AND e.occurred_at>=:start AND e.occurred_at<:end";
@@ -267,10 +318,16 @@ public class AdminInsightsService {
     }
 
     public Map<String, Object> members(LocalDate from, LocalDate to, String segment, String department, String gender, int page) {
+        return members(from, to, segment, department, gender, page, false);
+    }
+
+    public Map<String, Object> members(LocalDate from, LocalDate to, String segment, String department, String gender, int page, boolean allTime) {
         if (page < 0 || page > 10000 || (department != null && department.length()>100)
                 || (gender != null && !List.of("MALE","FEMALE","UNKNOWN").contains(gender)))
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
-        MapSqlParameterSource p = params(InsightWindow.of(from, to, clock)).addValue("offset_rows", page*25);
+        if (allTime && (from != null || to != null)) throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        InsightWindow window = allTime ? InsightWindow.allTime(clock) : InsightWindow.of(from, to, clock);
+        MapSqlParameterSource p = params(window).addValue("offset_rows", page*25);
         String condition = switch(segment) {
             case "current" -> CURRENT;
             case "incomplete" -> "u.status<>'DELETED' AND u.onboarding_status<>'FULL'";

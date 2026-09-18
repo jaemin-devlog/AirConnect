@@ -46,11 +46,19 @@ class AdminInsightsSecurityTest {
     }
     @Test void administratorGetsNoStoreEnvelope() throws Exception {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("fixture","unused",java.util.List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
-        when(service.overview(null,null)).thenReturn(Map.of("timezone","Asia/Seoul"));
+        when(service.overview(null,null,false)).thenReturn(Map.of("timezone","Asia/Seoul"));
         mvc.perform(get("/api/v1/admin/insights")).andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control","no-store")).andExpect(jsonPath("$.data.timezone").value("Asia/Seoul"));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("fixture","unused",java.util.List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         mvc.perform(get("/api/v1/admin/insights?from=not-a-date")).andExpect(status().isBadRequest());
+    }
+    @Test void administratorCanRequestAllTimeOverview() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("fixture","unused",java.util.List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+        when(service.overview(null,null,true)).thenReturn(Map.of("all_time",true));
+        mvc.perform(get("/api/v1/admin/insights?allTime=true")).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control","no-store"))
+                .andExpect(jsonPath("$.data.all_time").value(true));
+        verify(service).overview(null,null,true);
     }
     @Test void administratorCanRequestAllTimePurchases() throws Exception {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("fixture","unused",java.util.List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));

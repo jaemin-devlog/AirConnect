@@ -24,9 +24,10 @@ class AdminInsightsServiceTest {
         db.execute("CREATE TABLE users(id BIGINT PRIMARY KEY, role VARCHAR(20), status VARCHAR(20), onboarding_status VARCHAR(20), dept_name VARCHAR(100), nickname VARCHAR(100), name VARCHAR(100), verified_school_email VARCHAR(255),created_at TIMESTAMP,deleted_at TIMESTAMP,last_active_at TIMESTAMP)");
         db.execute("CREATE TABLE user_profiles(user_id BIGINT PRIMARY KEY,gender VARCHAR(20),profile_image_path VARCHAR(200))");
         db.execute("CREATE TABLE analytics_events(user_id BIGINT,type VARCHAR(40),source VARCHAR(20),occurred_at TIMESTAMP)");
-        db.execute("CREATE TABLE matching_connections(id BIGINT, user1_id BIGINT,user2_id BIGINT,status VARCHAR(30),chat_room_id BIGINT,connected_at TIMESTAMP,responded_at TIMESTAMP)");
+        db.execute("CREATE TABLE matching_connections(id BIGINT, user1_id BIGINT,user2_id BIGINT,requester_id BIGINT,status VARCHAR(30),chat_room_id BIGINT,connected_at TIMESTAMP,responded_at TIMESTAMP)");
         db.execute("CREATE TABLE chat_messages(id BIGINT,room_id BIGINT,sender_id BIGINT,type VARCHAR(20),is_deleted BOOLEAN,created_at TIMESTAMP,content VARCHAR(100))");
         db.execute("CREATE TABLE matching_temporary_team_rooms(id BIGINT,leader_id BIGINT,team_size VARCHAR(10),team_gender VARCHAR(10),status VARCHAR(20),queued_at TIMESTAMP)");
+        db.execute("CREATE TABLE matching_temporary_team_members(id BIGINT,team_room_id BIGINT,user_id BIGINT,is_leader BOOLEAN,joined_at TIMESTAMP,left_at TIMESTAMP,expelled_at TIMESTAMP,created_at TIMESTAMP,updated_at TIMESTAMP)");
         db.execute("CREATE TABLE matching_final_group_chat_rooms(id BIGINT,team1_room_id BIGINT,team2_room_id BIGINT,team_size VARCHAR(10),status VARCHAR(20),created_at TIMESTAMP)");
         db.execute("CREATE TABLE iap_orders(id BIGINT,user_id BIGINT,store VARCHAR(20),product_id VARCHAR(120),status VARCHAR(20),environment VARCHAR(20),granted_tickets INT,processed_at TIMESTAMP,created_at TIMESTAMP,purchase_token VARCHAR(100))");
         db.execute("CREATE TABLE ticket_ledger(user_id BIGINT,ref_type VARCHAR(30),change_amount INT,created_at TIMESTAMP)");
@@ -66,7 +67,7 @@ class AdminInsightsServiceTest {
         assertThatThrownBy(()->service.members(FROM,TO,"current",null,null,-1)).isInstanceOf(BusinessException.class);
     }
     @Test void conversationsRequireBothActualParticipantsAndExcludeDeletedOrSystemMessages() {
-        db.update("INSERT INTO matching_connections VALUES(1,1,2,'ACCEPTED',10,'2026-09-02 03:00:00','2026-09-03 03:00:00')");
+        db.update("INSERT INTO matching_connections VALUES(1,1,2,1,'ACCEPTED',10,'2026-09-02 03:00:00','2026-09-03 03:00:00')");
         db.update("INSERT INTO chat_messages VALUES(1,10,1,'TEXT',false,'2026-09-03 04:00:00','private text')");
         db.update("INSERT INTO chat_messages VALUES(2,10,2,'TEXT',true,'2026-09-03 04:00:00','deleted text')");
         db.update("INSERT INTO chat_messages VALUES(3,10,3,'TEXT',false,'2026-09-03 04:00:00','unrelated sender')");
@@ -94,6 +95,34 @@ class AdminInsightsServiceTest {
         assertThat(db.queryForObject("SELECT COUNT(*) FROM iap_orders",Long.class)).isEqualTo(2);
         assertThat(db.queryForObject("SELECT COUNT(*) FROM users",Long.class)).isEqualTo(8);
         assertThat(r.toString()).doesNotContain("never-return");
+    }
+    @Test void departmentMatchingSeparatesSenderReceiverAndCountsActualGroupParticipation() {
+        db.update("INSERT INTO matching_connections VALUES(1,1,3,1,'PENDING',NULL,'2026-09-03 03:00:00',NULL)");
+        db.update("INSERT INTO matching_connections VALUES(2,2,3,3,'REJECTED',NULL,'2026-09-04 03:00:00','2026-09-05 03:00:00')");
+        db.update("INSERT INTO matching_connections VALUES(3,1,2,1,'ACCEPTED',10,'2026-08-01 03:00:00','2026-08-02 03:00:00')");
+        db.update("INSERT INTO matching_temporary_team_members VALUES(1,10,1,true,'2026-09-03 03:00:00',NULL,NULL,'2026-09-03 03:00:00','2026-09-03 03:00:00')");
+        db.update("INSERT INTO matching_temporary_team_members VALUES(2,10,2,false,'2026-09-03 03:00:00',NULL,NULL,'2026-09-03 03:00:00','2026-09-03 03:00:00')");
+        db.update("INSERT INTO matching_temporary_team_members VALUES(3,11,3,true,'2026-09-04 03:00:00',NULL,NULL,'2026-09-04 03:00:00','2026-09-04 03:00:00')");
+        db.update("INSERT INTO matching_temporary_team_members VALUES(4,11,98,false,'2026-09-04 03:00:00',NULL,NULL,'2026-09-04 03:00:00','2026-09-04 03:00:00')");
+        var rankings=map(service.overview(FROM,TO).get("department_matching"));
+        assertThat(list(rankings.get("sent"))).extracting(r -> r.get("department")+":"+n(r.get("requests")))
+                .containsExactly("공학:1","인문:1");
+        assertThat(list(rankings.get("received"))).extracting(r -> r.get("department")+":"+n(r.get("requests")))
+                .containsExactly("공학:1","인문:1");
+        assertThat(list(rankings.get("group_participation"))).extracting(r -> r.get("department")+":"+n(r.get("participations")))
+                .containsExactly("공학:2","인문:1");
+    }
+    @Test void allTimeOverviewIncludesOldRecordsAndUsesMonthlyTrendWithoutComparison() {
+        db.update("INSERT INTO matching_connections VALUES(1,1,3,1,'ACCEPTED',10,'2025-01-03 03:00:00','2025-01-04 03:00:00')");
+        db.update("INSERT INTO analytics_events VALUES(1,'APP_SESSION_STARTED','CLIENT','2025-01-03 03:00:00')");
+        var result=service.overview(null,null,true);
+        assertThat(result.get("all_time")).isEqualTo(true);
+        assertThat(result.get("from")).isNull();
+        assertThat(result.get("previous_from")).isNull();
+        assertThat(result.get("daily_granularity")).isEqualTo("MONTH");
+        assertThat(list(result.get("daily"))).allSatisfy(row -> assertThat(row.get("day").toString()).endsWith("-01"));
+        assertThat(n(map(map(result.get("matching")).get("funnel")).get("requests"))).isEqualTo(1);
+        assertThatThrownBy(() -> service.overview(FROM,TO,true)).isInstanceOf(BusinessException.class);
     }
     @Test void purchaseListShowsBuyerTicketTotalsWithoutReceiptSecrets() {
         db.update("INSERT INTO iap_orders VALUES(1,1,'APPLE','tickets_10','GRANTED','PRODUCTION',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','secret-one')");
