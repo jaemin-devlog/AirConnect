@@ -573,6 +573,27 @@ class ChatServiceTest {
     }
 
     @Test
+    void findAllRooms_removesSequenceFromLegacyGroupMatchingRoomName() {
+        ChatService service = createService();
+        Long myUserId = 1L;
+        Long roomId = 301L;
+        User me = createUser(myUserId, "me");
+        ChatRoom room = ChatRoom.create("3:3그룹매칭방(7)", ChatRoomType.GROUP);
+        ReflectionTestUtils.setField(room, "id", roomId);
+        ChatRoomMember membership = ChatRoomMember.create(room, me);
+
+        when(chatRoomMemberRepository.findByUser_IdWithRoom(myUserId)).thenReturn(List.of(membership));
+        when(chatMessageRepository.findLatestMessagesByRoomIds(List.of(roomId))).thenReturn(List.of());
+        when(chatMessageRepository.countUnreadByUserId(myUserId)).thenReturn(List.of());
+        when(chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(roomId))).thenReturn(List.of(membership));
+
+        List<ChatRoomResponse> response = service.findAllRooms(myUserId);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).getName()).isEqualTo("3:3 그룹매칭방");
+    }
+
+    @Test
     void updateRoomName_updatesOnlyCurrentMembersCustomName() {
         ChatService service = createService();
         Long userId = 1L;

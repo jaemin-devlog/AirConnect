@@ -934,7 +934,15 @@ public class ChatService {
         if (room.getType() == ChatRoomType.PERSONAL && targetNickname != null && !targetNickname.isBlank()) {
             return targetNickname;
         }
-        return room.getName();
+        return normalizeLegacyGroupMatchRoomName(room);
+    }
+
+    private String normalizeLegacyGroupMatchRoomName(ChatRoom room) {
+        String roomName = room.getName();
+        if (room.getType() != ChatRoomType.GROUP || roomName == null) {
+            return roomName;
+        }
+        return roomName.replaceFirst("^(\\d+:\\d+)\\s*그룹매칭방\\(\\d+\\)$", "$1 그룹매칭방");
     }
 
     private ChatRoomResponse buildCreateRoomResponse(ChatRoom room, Long requesterUserId) {

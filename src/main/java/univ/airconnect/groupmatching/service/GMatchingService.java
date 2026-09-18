@@ -1320,8 +1320,7 @@ public class GMatchingService {
             throw new BusinessException(ErrorCode.TEAM_SIZE_REQUIRED);
         }
 
-        long sequence = finalGroupChatRoomRepository.countByTeamSize(teamSize) + 1;
-        String roomName = teamSize.getValue() + ":" + teamSize.getValue() + "그룹매칭방(" + sequence + ")";
+        String roomName = teamSize.getValue() + ":" + teamSize.getValue() + " 그룹매칭방";
         return truncate(roomName, 100);
     }
 
