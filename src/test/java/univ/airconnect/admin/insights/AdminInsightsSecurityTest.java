@@ -32,13 +32,13 @@ class AdminInsightsSecurityTest {
     }
     @AfterEach void cleanup(){SecurityContextHolder.clearContext();}
     @Test void anonymousCannotReadEitherEndpoint() throws Exception {
-        for(String path:new String[]{"/api/v1/admin/insights","/api/v1/admin/insights/members"})
+        for(String path:new String[]{"/api/v1/admin/insights","/api/v1/admin/insights/members","/api/v1/admin/insights/purchases"})
             mvc.perform(get(path)).andExpect(status().isUnauthorized());
         verifyNoInteractions(service);
     }
     @Test void ordinaryMemberCannotReadEitherEndpoint() throws Exception {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("fixture","unused",java.util.List.of(new SimpleGrantedAuthority("ROLE_USER"))));
-        for(String path:new String[]{"/api/v1/admin/insights","/api/v1/admin/insights/members"}) {
+        for(String path:new String[]{"/api/v1/admin/insights","/api/v1/admin/insights/members","/api/v1/admin/insights/purchases"}) {
             SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("fixture","unused",java.util.List.of(new SimpleGrantedAuthority("ROLE_USER"))));
             mvc.perform(get(path)).andExpect(status().isForbidden());
         }
@@ -51,5 +51,13 @@ class AdminInsightsSecurityTest {
                 .andExpect(header().string("Cache-Control","no-store")).andExpect(jsonPath("$.data.timezone").value("Asia/Seoul"));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("fixture","unused",java.util.List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         mvc.perform(get("/api/v1/admin/insights?from=not-a-date")).andExpect(status().isBadRequest());
+    }
+    @Test void administratorCanRequestAllTimePurchases() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("fixture","unused",java.util.List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+        when(service.purchases(null,null,2,true)).thenReturn(Map.of("all_time",true,"page",2));
+        mvc.perform(get("/api/v1/admin/insights/purchases?allTime=true&page=2"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
+                .andExpect(jsonPath("$.data.all_time").value(true)).andExpect(jsonPath("$.data.page").value(2));
+        verify(service).purchases(null,null,2,true);
     }
 }

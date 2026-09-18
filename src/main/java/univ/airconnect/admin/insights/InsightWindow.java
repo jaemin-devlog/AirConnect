@@ -10,12 +10,21 @@ public record InsightWindow(LocalDate from, LocalDate to, Instant start, Instant
     public static final ZoneId KOREA = ZoneId.of("Asia/Seoul");
 
     public static InsightWindow of(LocalDate from, LocalDate to, Clock clock) {
+        return of(from, to, clock, true);
+    }
+
+    public static InsightWindow purchases(LocalDate from, LocalDate to, Clock clock) {
+        return of(from, to, clock, false);
+    }
+
+    private static InsightWindow of(LocalDate from, LocalDate to, Clock clock, boolean limitDays) {
         Instant now = clock.instant();
         LocalDate today = now.atZone(KOREA).toLocalDate();
         if (to == null) to = today;
         if (from == null) from = to.minusDays(29);
-        if (from.isAfter(to) || to.isAfter(today) || ChronoUnit.DAYS.between(from, to) >= 90)
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "오늘까지 최대 90일 범위를 선택하세요.");
+        if (from.isBefore(LocalDate.of(1000, 1, 1)) || from.isAfter(to) || to.isAfter(today)
+                || (limitDays && ChronoUnit.DAYS.between(from, to) >= 90))
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, limitDays ? "오늘까지 최대 90일 범위를 선택하세요." : "오늘까지의 올바른 날짜 범위를 선택하세요.");
         return new InsightWindow(from, to, from.atStartOfDay(KOREA).toInstant(),
                 to.plusDays(1).atStartOfDay(KOREA).toInstant(), now);
     }

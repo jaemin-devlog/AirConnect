@@ -40,4 +40,16 @@ public class AdminInsightsController {
                 service.members(from, to, segment, department, gender, page),
                 (String) request.getAttribute(TRACE_ID_ATTRIBUTE)));
     }
+
+    @GetMapping("/purchases")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> purchases(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "false") boolean allTime,
+            HttpServletRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.ok(
+                service.purchases(from, to, page, allTime),
+                (String) request.getAttribute(TRACE_ID_ATTRIBUTE)));
+    }
 }

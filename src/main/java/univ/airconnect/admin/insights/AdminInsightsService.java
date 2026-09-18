@@ -178,6 +178,49 @@ public class AdminInsightsService {
                 + "FROM ticket_ledger l WHERE " + eligibleId("l.user_id") + " AND l.created_at>=:start AND l.created_at<:end GROUP BY l.ref_type", p),
                 "revenue_status", "NOT_COLLECTED");
     }
+
+    public Map<String, Object> purchases(LocalDate from, LocalDate to, int page) {
+        return purchases(from, to, page, false);
+    }
+
+    public Map<String, Object> purchases(LocalDate from, LocalDate to, int page, boolean allTime) {
+        if (page < 0 || page > 10000) throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        if (allTime && (from != null || to != null)) throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        InsightWindow w = InsightWindow.purchases(from, to, clock);
+        MapSqlParameterSource p = params(w).addValue("offset_rows", page * 25);
+        String base = " FROM iap_orders o JOIN users u ON u.id=o.user_id WHERE " + ELIGIBLE
+                + " AND o.environment='PRODUCTION'"
+                + (allTime ? "" : " AND o.created_at>=:start") + " AND o.created_at<:end";
+        Map<String, Object> summary = one("SELECT COUNT(*) AS orders, "
+                + "COUNT(DISTINCT CASE WHEN o.status='GRANTED' THEN o.user_id END) AS buyers, "
+                + "COALESCE(SUM(CASE WHEN o.status='GRANTED' AND o.granted_tickets IS NULL THEN 1 ELSE 0 END),0) AS unknown_ticket_orders, "
+                + "COALESCE(SUM(CASE WHEN o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS granted_tickets, "
+                + "COALESCE(SUM(CASE WHEN o.status IN ('REFUNDED','REVOKED') THEN 1 ELSE 0 END),0) AS refunded_orders"
+                + base, p);
+        long total = ((Number) one("SELECT COUNT(DISTINCT o.user_id) AS total" + base, p).get("total")).longValue();
+        List<Map<String, Object>> items = rows("SELECT u.id AS user_id,u.nickname,u.name,u.dept_name AS department,"
+                + "COUNT(*) AS order_count,"
+                + "COALESCE(SUM(CASE WHEN o.status='GRANTED' THEN 1 ELSE 0 END),0) AS successful_orders,"
+                + "COALESCE(SUM(CASE WHEN o.status='GRANTED' AND o.granted_tickets IS NULL THEN 1 ELSE 0 END),0) AS unknown_ticket_orders,"
+                + "COALESCE(SUM(CASE WHEN o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS granted_tickets,"
+                + "COALESCE(SUM(CASE WHEN o.status IN ('REFUNDED','REVOKED') THEN 1 ELSE 0 END),0) AS refunded_orders,"
+                + "MAX(o.created_at) AS last_order_at" + base
+                + " GROUP BY u.id,u.nickname,u.name,u.dept_name"
+                + " ORDER BY granted_tickets DESC,last_order_at DESC,u.id DESC LIMIT 25 OFFSET :offset_rows", p);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("from", allTime ? null : w.from());
+        result.put("all_time", allTime);
+        result.put("to", w.to());
+        result.put("generated_at", w.asOf());
+        result.put("summary", summary);
+        result.put("items", items);
+        result.put("page", page);
+        result.put("size", 25);
+        result.put("totalElements", total);
+        result.put("totalPages", (total + 24) / 25);
+        result.put("hasNext", (long) (page + 1) * 25 < total);
+        return result;
+    }
     private Map<String, Object> activity(MapSqlParameterSource p) {
         String base = " FROM analytics_events e JOIN users u ON u.id=e.user_id WHERE " + ELIGIBLE + " AND " + ACTIVITY
                 + " AND e.occurred_at>=:start AND e.occurred_at<:end";
