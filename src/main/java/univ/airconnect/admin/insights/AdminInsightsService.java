@@ -155,6 +155,9 @@ public class AdminInsightsService {
         String createdBucket = monthly ? month("u.created_at") : day("u.created_at");
         String deletedBucket = monthly ? month("u.deleted_at") : day("u.deleted_at");
         String eventBucket = monthly ? month("e.occurred_at") : day("e.occurred_at");
+        long totalMembers = ((Number) one("SELECT COUNT(*) AS members FROM users u WHERE " + ELIGIBLE
+                + " AND u.onboarding_status='FULL' AND u.created_at<:start"
+                + " AND (u.status<>'DELETED' OR u.deleted_at>=:start)", p).get("members")).longValue();
         mergeDays(days, "signups", rows("SELECT " + createdBucket + " AS day, COUNT(*) AS value FROM users u WHERE "
                 + ELIGIBLE + " AND u.created_at>=:start AND u.created_at<:end GROUP BY 1", p));
         mergeDays(days, "withdrawals", rows("SELECT " + deletedBucket + " AS day, COUNT(*) AS value FROM users u WHERE "
@@ -164,7 +167,21 @@ public class AdminInsightsService {
             mergeDays(days, type, rows("SELECT " + eventBucket + " AS day, COUNT(DISTINCT e.user_id) AS value FROM analytics_events e JOIN users u ON u.id=e.user_id WHERE "
                     + ELIGIBLE + " AND " + condition + " AND e.occurred_at>=:start AND e.occurred_at<:end GROUP BY 1", p));
         }
-        return days.values().stream().sorted(Comparator.comparing(row -> row.get("day").toString())).toList();
+        mergeDays(days, "member_additions", rows("SELECT " + createdBucket + " AS day, COUNT(*) AS value FROM users u WHERE "
+                + ELIGIBLE + " AND u.onboarding_status='FULL' AND u.created_at>=:start AND u.created_at<:end GROUP BY 1", p));
+        mergeDays(days, "member_withdrawals", rows("SELECT " + deletedBucket + " AS day, COUNT(*) AS value FROM users u WHERE "
+                + ELIGIBLE + " AND u.onboarding_status='FULL' AND u.status='DELETED'"
+                + " AND u.deleted_at>=:start AND u.deleted_at<:end GROUP BY 1", p));
+        List<Map<String, Object>> timeline = days.values().stream()
+                .sorted(Comparator.comparing(row -> row.get("day").toString())).toList();
+        for (Map<String, Object> row : timeline) {
+            totalMembers += ((Number) row.getOrDefault("member_additions", 0L)).longValue();
+            totalMembers -= ((Number) row.getOrDefault("member_withdrawals", 0L)).longValue();
+            row.remove("member_additions");
+            row.remove("member_withdrawals");
+            row.put("total_members", totalMembers);
+        }
+        return timeline;
     }
     private static void mergeDays(Map<String, Map<String, Object>> days, String key, List<Map<String, Object>> values) {
         values.forEach(row -> {

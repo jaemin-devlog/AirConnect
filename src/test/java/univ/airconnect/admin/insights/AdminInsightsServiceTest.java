@@ -59,6 +59,9 @@ class AdminInsightsServiceTest {
         assertThat(n(map(result.get("snapshot")).get("current_members"))).isEqualTo(4);
         assertThat(list(result.get("readiness"))).hasSize(4).allSatisfy(r->assertThat(n(r.get("members"))).isEqualTo(1));
         assertThat(list(result.get("daily"))).hasSize(10);
+        assertThat(n(list(result.get("daily")).get(0).get("total_members"))).isEqualTo(5);
+        assertThat(n(list(result.get("daily")).get(2).get("total_members"))).isEqualTo(4);
+        assertThat(n(list(result.get("daily")).get(9).get("total_members"))).isEqualTo(4);
         assertThat(n(map(result.get("period")).get("signups"))).isEqualTo(6);
         assertThat(map(result.get("activity")).get("engagement_status")).isEqualTo("NOT_COLLECTED");
         assertThat(result.toString()).doesNotContain("school@example", "purchase_token", "content=");
