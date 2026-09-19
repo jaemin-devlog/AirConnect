@@ -14,7 +14,7 @@ require_command() {
     fi
 }
 
-for command_name in docker git curl gzip flock; do
+for command_name in docker git curl gzip flock python3; do
     require_command "$command_name"
 done
 
@@ -29,6 +29,25 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 docker compose --profile green config --quiet
+
+if ! docker compose --profile green config --format json | python3 -c '
+import json
+import sys
+
+compose = json.load(sys.stdin)
+services = compose.get("services", {})
+invalid = []
+for name in ("airconnect-app", "airconnect-app-green"):
+    value = services.get(name, {}).get("environment", {}).get("JPA_DDL_AUTO")
+    if value != "validate":
+        invalid.append(f"{name}={value!r}")
+
+if invalid:
+    print("운영 JPA_DDL_AUTO는 validate여야 합니다: " + ", ".join(invalid), file=sys.stderr)
+    raise SystemExit(1)
+'; then
+    exit 1
+fi
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
     printf 'Git 작업 트리에 추적 중인 변경사항이 있습니다. 배포 전에 정리해주세요.\n' >&2
