@@ -65,7 +65,7 @@ public class UserService {
     private final ChatMessageRepository chatMessageRepository;
 
     private static final String USER_ACTIVITY_TOUCH_KEY_PREFIX = "analytics:user:last-active:";
-    private static final int NICKNAME_MAX_LENGTH = 6;
+    private static final int NICKNAME_MAX_LENGTH = 8;
     private static final long NICKNAME_CHANGE_COOLDOWN_DAYS = 14L;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")

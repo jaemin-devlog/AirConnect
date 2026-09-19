@@ -126,12 +126,12 @@ class UserServiceTest {
     }
 
     @Test
-    void signUp_trimsNicknameAndRejectsMoreThanSixCharacters() {
+    void signUp_trimsNicknameAndRejectsMoreThanEightCharacters() {
         UserService service = createService();
         Long userId = 3L;
         User user = User.create(SocialProvider.KAKAO, "signup-nickname");
         SignUpRequest request = signUpRequest("디지털산업디자인학과");
-        ReflectionTestUtils.setField(request, "nickname", "  일 이 삼 사 오 육  ");
+        ReflectionTestUtils.setField(request, "nickname", "  일 이 삼 사 오 육 칠 팔  ");
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(departmentRepository.existsByName("디지털산업디자인학과")).thenReturn(true);
@@ -139,9 +139,9 @@ class UserServiceTest {
 
         service.signUp(userId, request);
 
-        assertThat(user.getNickname()).isEqualTo("일이삼사오육");
+        assertThat(user.getNickname()).isEqualTo("일이삼사오육칠팔");
 
-        ReflectionTestUtils.setField(request, "nickname", "일이삼사오육칠");
+        ReflectionTestUtils.setField(request, "nickname", "일이삼사오육칠팔구");
         assertThatThrownBy(() -> service.signUp(userId, request))
                 .isInstanceOfSatisfying(UserException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(UserErrorCode.INVALID_INPUT));
@@ -358,7 +358,7 @@ class UserServiceTest {
     }
 
     @Test
-    void updateNickname_rejectsMoreThanSixCharactersAfterTrimming() {
+    void updateNickname_rejectsMoreThanEightCharactersAfterTrimming() {
         UserService service = createService();
         Long userId = 9L;
         User user = User.createEmailUser("long-nickname@airconnect.test", "encoded-password");
@@ -367,7 +367,7 @@ class UserServiceTest {
         when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
 
         UpdateNicknameRequest request = new UpdateNicknameRequest();
-        ReflectionTestUtils.setField(request, "nickname", "  일 이 삼 사 오 육 칠  ");
+        ReflectionTestUtils.setField(request, "nickname", "  일 이 삼 사 오 육 칠 팔 구  ");
 
         assertThatThrownBy(() -> service.updateNickname(userId, request))
                 .isInstanceOfSatisfying(UserException.class, ex ->
