@@ -22,6 +22,7 @@ public class AdminInsightsService {
     private final Clock clock;
     private final DepartmentRankingBaselineRepository departmentRankingBaselineRepository;
     private static final String ELIGIBLE = "(u.role IS NULL OR u.role <> 'ADMIN') AND u.id NOT IN (:excluded)";
+    private static final String PURCHASE_ELIGIBLE = "(u.role IS NULL OR u.role <> 'ADMIN')";
     private static final String CURRENT = "u.status <> 'DELETED' AND u.onboarding_status = 'FULL'";
     private static final String USERS = " FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE " + ELIGIBLE;
     private static final String PHOTO = "p.profile_image_path IS NOT NULL AND TRIM(p.profile_image_path) <> ''";
@@ -97,11 +98,12 @@ public class AdminInsightsService {
         result.put("timezone", "Asia/Seoul");
         result.put("previous_from", allTime ? null : w.previous().from()); result.put("previous_to", allTime ? null : w.previous().to());
         result.put("partial_day", w.to().equals(w.asOf().atZone(InsightWindow.KOREA).toLocalDate()));
-        result.put("snapshot", one("SELECT COUNT(*) AS accounts, "
-                + "COALESCE(SUM(CASE WHEN " + CURRENT + " THEN 1 ELSE 0 END),0) AS current_members, "
-                + "COALESCE(SUM(CASE WHEN u.status='DELETED' THEN 1 ELSE 0 END),0) AS deleted_members, "
-                + "COALESCE(SUM(CASE WHEN u.status<>'DELETED' AND u.onboarding_status<>'FULL' THEN 1 ELSE 0 END),0) AS incomplete_members"
-                + USERS, p));
+        MembershipSnapshot membership = membershipSnapshot();
+        result.put("snapshot", Map.of(
+                "accounts", membership.accounts(),
+                "current_members", membership.currentMembers(),
+                "deleted_members", membership.deletedMembers(),
+                "incomplete_members", membership.incompleteMembers()));
         result.put("period", period(p));
         result.put("previous", allTime ? emptyPeriod() : period(params(w.previous())));
         result.put("daily", daily(w, p, allTime));
@@ -121,7 +123,7 @@ public class AdminInsightsService {
         result.put("commerce", commerce(p));
         result.put("activity", activity(p));
         result.put("notes", List.of(
-                "관리자와 설정으로 명시한 테스트 회원 제외. 결제는 PRODUCTION 주문만 집계합니다.",
+                "회원 통계는 관리자와 설정으로 명시한 테스트 회원을 제외합니다. 결제 감사 목록은 관리자가 아닌 모든 회원의 운영·샌드박스 주문을 구분해 표시합니다.",
                 "가입·탈퇴는 현재 남아 있는 기록 기준입니다. 영구 삭제·복구 전의 과거 이력을 재구성하지 않습니다.",
                 "현재 회원 구성은 조회 시점 기준입니다. 기간 필터로 과거 회원 구성을 재현하지 않습니다.",
                 "활동·가입 완료 이벤트는 수집된 표본입니다. 앱 전송 누락 여부는 확인되지 않았습니다.",
@@ -156,7 +158,7 @@ public class AdminInsightsService {
         String deletedBucket = monthly ? month("u.deleted_at") : day("u.deleted_at");
         String eventBucket = monthly ? month("e.occurred_at") : day("e.occurred_at");
         long totalMembers = ((Number) one("SELECT COUNT(*) AS members FROM users u WHERE " + ELIGIBLE
-                + " AND u.onboarding_status='FULL' AND u.created_at<:start"
+                + " AND u.onboarding_status='FULL' AND (u.created_at IS NULL OR u.created_at<:start)"
                 + " AND (u.status<>'DELETED' OR u.deleted_at>=:start)", p).get("members")).longValue();
         mergeDays(days, "signups", rows("SELECT " + createdBucket + " AS day, COUNT(*) AS value FROM users u WHERE "
                 + ELIGIBLE + " AND u.created_at>=:start AND u.created_at<:end GROUP BY 1", p));
@@ -257,8 +259,9 @@ public class AdminInsightsService {
                 .orElseGet(() -> LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault()));
     }
     private Map<String, Object> commerce(MapSqlParameterSource p) {
-        return Map.of("orders", rows("SELECT o.status,COUNT(*) AS orders,COUNT(DISTINCT o.user_id) AS members FROM iap_orders o WHERE "
-                + eligibleId("o.user_id") + " AND o.environment='PRODUCTION' AND o.created_at>=:start AND o.created_at<:end GROUP BY o.status", p),
+        return Map.of("orders", rows("SELECT o.environment,o.status,COUNT(*) AS orders,COUNT(DISTINCT o.user_id) AS members FROM iap_orders o "
+                + "JOIN users u ON u.id=o.user_id WHERE " + PURCHASE_ELIGIBLE
+                + " AND o.created_at>=:start AND o.created_at<:end GROUP BY o.environment,o.status ORDER BY o.environment,o.status", p),
                 "tickets", rows("SELECT l.ref_type, SUM(CASE WHEN l.change_amount>0 THEN l.change_amount ELSE 0 END) AS granted, "
                 + "SUM(CASE WHEN l.change_amount<0 THEN -l.change_amount ELSE 0 END) AS spent, COUNT(*) AS changes "
                 + "FROM ticket_ledger l WHERE " + eligibleId("l.user_id") + " AND l.created_at>=:start AND l.created_at<:end GROUP BY l.ref_type", p),
@@ -274,25 +277,33 @@ public class AdminInsightsService {
         if (allTime && (from != null || to != null)) throw new BusinessException(ErrorCode.INVALID_REQUEST);
         InsightWindow w = InsightWindow.purchases(from, to, clock);
         MapSqlParameterSource p = params(w).addValue("offset_rows", page * 25);
-        String base = " FROM iap_orders o JOIN users u ON u.id=o.user_id WHERE " + ELIGIBLE
-                + " AND o.environment='PRODUCTION'"
+        String base = " FROM iap_orders o JOIN users u ON u.id=o.user_id WHERE " + PURCHASE_ELIGIBLE
                 + (allTime ? "" : " AND o.created_at>=:start") + " AND o.created_at<:end";
         Map<String, Object> summary = one("SELECT COUNT(*) AS orders, "
-                + "COUNT(DISTINCT CASE WHEN o.status='GRANTED' THEN o.user_id END) AS buyers, "
-                + "COALESCE(SUM(CASE WHEN o.status='GRANTED' AND o.granted_tickets IS NULL THEN 1 ELSE 0 END),0) AS unknown_ticket_orders, "
-                + "COALESCE(SUM(CASE WHEN o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS granted_tickets, "
-                + "COALESCE(SUM(CASE WHEN o.status IN ('REFUNDED','REVOKED') THEN 1 ELSE 0 END),0) AS refunded_orders"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' THEN 1 ELSE 0 END),0) AS production_orders, "
+                + "COALESCE(SUM(CASE WHEN o.environment='SANDBOX' THEN 1 ELSE 0 END),0) AS sandbox_orders, "
+                + "COUNT(DISTINCT CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN o.user_id END) AS buyers, "
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' AND o.granted_tickets IS NULL THEN 1 ELSE 0 END),0) AS unknown_ticket_orders, "
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS granted_tickets, "
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status IN ('REFUNDED','REVOKED') THEN 1 ELSE 0 END),0) AS refunded_orders"
                 + base, p);
+        String eventWindow = (allTime ? "" : " AND e.created_at>=:start") + " AND e.created_at<:end";
+        summary.putAll(one("SELECT COUNT(DISTINCT CONCAT(e.store,':',COALESCE(e.transaction_id,e.purchase_token))) AS unmatched_store_events FROM iap_events e WHERE ("
+                + "(e.store='APPLE' AND e.transaction_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM iap_orders o WHERE o.store='APPLE' AND o.transaction_id=e.transaction_id))"
+                + " OR (e.store='GOOGLE' AND e.purchase_token IS NOT NULL AND NOT EXISTS (SELECT 1 FROM iap_orders o WHERE o.store='GOOGLE' AND o.purchase_token=e.purchase_token)))"
+                + eventWindow, p));
         long total = ((Number) one("SELECT COUNT(DISTINCT o.user_id) AS total" + base, p).get("total")).longValue();
         List<Map<String, Object>> items = rows("SELECT u.id AS user_id,u.nickname,u.name,u.dept_name AS department,"
                 + "COUNT(*) AS order_count,"
-                + "COALESCE(SUM(CASE WHEN o.status='GRANTED' THEN 1 ELSE 0 END),0) AS successful_orders,"
-                + "COALESCE(SUM(CASE WHEN o.status='GRANTED' AND o.granted_tickets IS NULL THEN 1 ELSE 0 END),0) AS unknown_ticket_orders,"
-                + "COALESCE(SUM(CASE WHEN o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS granted_tickets,"
-                + "COALESCE(SUM(CASE WHEN o.status IN ('REFUNDED','REVOKED') THEN 1 ELSE 0 END),0) AS refunded_orders,"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' THEN 1 ELSE 0 END),0) AS production_orders,"
+                + "COALESCE(SUM(CASE WHEN o.environment='SANDBOX' THEN 1 ELSE 0 END),0) AS sandbox_orders,"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN 1 ELSE 0 END),0) AS successful_orders,"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' AND o.granted_tickets IS NULL THEN 1 ELSE 0 END),0) AS unknown_ticket_orders,"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS granted_tickets,"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status IN ('REFUNDED','REVOKED') THEN 1 ELSE 0 END),0) AS refunded_orders,"
                 + "MAX(o.created_at) AS last_order_at" + base
                 + " GROUP BY u.id,u.nickname,u.name,u.dept_name"
-                + " ORDER BY granted_tickets DESC,last_order_at DESC,u.id DESC LIMIT 25 OFFSET :offset_rows", p);
+                + " ORDER BY last_order_at DESC,u.id DESC LIMIT 25 OFFSET :offset_rows", p);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("from", allTime ? null : w.from());
         result.put("all_time", allTime);
@@ -306,6 +317,21 @@ public class AdminInsightsService {
         result.put("totalPages", (total + 24) / 25);
         result.put("hasNext", (long) (page + 1) * 25 < total);
         return result;
+    }
+
+    public record MembershipSnapshot(long accounts, long currentMembers, long deletedMembers, long incompleteMembers) {}
+
+    public MembershipSnapshot membershipSnapshot() {
+        Map<String, Object> row = one("SELECT COUNT(*) AS accounts, "
+                + "COALESCE(SUM(CASE WHEN " + CURRENT + " THEN 1 ELSE 0 END),0) AS current_members, "
+                + "COALESCE(SUM(CASE WHEN u.status='DELETED' THEN 1 ELSE 0 END),0) AS deleted_members, "
+                + "COALESCE(SUM(CASE WHEN u.status<>'DELETED' AND u.onboarding_status<>'FULL' THEN 1 ELSE 0 END),0) AS incomplete_members"
+                + USERS, new MapSqlParameterSource("excluded", excluded));
+        return new MembershipSnapshot(
+                ((Number) row.get("accounts")).longValue(),
+                ((Number) row.get("current_members")).longValue(),
+                ((Number) row.get("deleted_members")).longValue(),
+                ((Number) row.get("incomplete_members")).longValue());
     }
 
     private Map<String, Object> emptyPeriod() {

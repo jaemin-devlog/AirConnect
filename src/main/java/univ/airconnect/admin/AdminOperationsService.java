@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.repository.ApiRequestLogRepository;
 import univ.airconnect.analytics.repository.AnalyticsEventRepository;
+import univ.airconnect.admin.insights.AdminInsightsService;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
@@ -23,7 +24,6 @@ import univ.airconnect.notification.domain.entity.NotificationOutbox;
 import univ.airconnect.notification.repository.NotificationRepository;
 import univ.airconnect.notification.repository.NotificationOutboxRepository;
 import univ.airconnect.notification.repository.PushDeviceRepository;
-import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserRole;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.repository.UserRepository;
@@ -64,6 +64,7 @@ public class AdminOperationsService {
     private final AdminAuditLogRepository adminAuditLogRepository;
     private final AdminAuditLogService adminAuditLogService;
     private final AdminIntegrityQueryRepository adminIntegrityQueryRepository;
+    private final AdminInsightsService adminInsightsService;
 
     public AdminDtos.OperationsSummary getOperationsSummary(Long adminUserId) {
         LocalDateTime now = LocalDateTime.now();
@@ -74,12 +75,13 @@ public class AdminOperationsService {
         long pendingOutbox = notificationOutboxRepository.countByStatus(NotificationDeliveryStatus.PENDING);
         long processingOutbox = notificationOutboxRepository.countByStatus(NotificationDeliveryStatus.PROCESSING);
         long unresolvedReports = userReportRepository.countByStatusIn(List.of(ReportStatus.OPEN, ReportStatus.IN_REVIEW));
+        AdminInsightsService.MembershipSnapshot membership = adminInsightsService.membershipSnapshot();
 
         AdminDtos.OperationsSummary response = new AdminDtos.OperationsSummary(
                 operationStartedAt,
                 operationStartedAt == null ? 0 : Math.max(1, Duration.between(operationStartedAt, now).toDays() + 1),
-                userRepository.count(),
-                userRepository.countByOnboardingStatus(OnboardingStatus.FULL),
+                membership.accounts(),
+                membership.currentMembers(),
                 userRepository.countByLastActiveAtGreaterThanEqual(now.minusDays(1)),
                 userRepository.countByLastActiveAtGreaterThanEqual(now.minusDays(7)),
                 userRepository.countByLastActiveAtGreaterThanEqual(now.minusDays(30)),

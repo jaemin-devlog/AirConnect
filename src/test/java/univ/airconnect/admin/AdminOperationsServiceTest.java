@@ -9,6 +9,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import univ.airconnect.analytics.repository.ApiRequestLogRepository;
 import univ.airconnect.analytics.domain.AnalyticsEventType;
 import univ.airconnect.analytics.repository.AnalyticsEventRepository;
+import univ.airconnect.admin.insights.AdminInsightsService;
 import univ.airconnect.chat.repository.ChatMessageRepository;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
 import univ.airconnect.chat.repository.ChatRoomRepository;
@@ -89,6 +90,8 @@ class AdminOperationsServiceTest {
     private AdminAuditLogService adminAuditLogService;
     @Mock
     private AdminIntegrityQueryRepository adminIntegrityQueryRepository;
+    @Mock
+    private AdminInsightsService adminInsightsService;
 
     private AdminOperationsService adminOperationsService;
 
@@ -114,7 +117,8 @@ class AdminOperationsServiceTest {
                 adminNoticeRepository,
                 adminAuditLogRepository,
                 adminAuditLogService,
-                adminIntegrityQueryRepository
+                adminIntegrityQueryRepository,
+                adminInsightsService
         );
     }
 
@@ -230,8 +234,8 @@ class AdminOperationsServiceTest {
         when(notificationOutboxRepository.countByStatus(NotificationDeliveryStatus.PENDING)).thenReturn(3L);
         when(notificationOutboxRepository.countByStatus(NotificationDeliveryStatus.PROCESSING)).thenReturn(2L);
         when(userReportRepository.countByStatusIn(List.of(ReportStatus.OPEN, ReportStatus.IN_REVIEW))).thenReturn(4L);
-        when(userRepository.count()).thenReturn(20L);
-        when(userRepository.countByOnboardingStatus(OnboardingStatus.FULL)).thenReturn(15L);
+        when(adminInsightsService.membershipSnapshot()).thenReturn(
+                new AdminInsightsService.MembershipSnapshot(20L, 15L, 2L, 3L));
         when(userRepository.countByLastActiveAtGreaterThanEqual(any(LocalDateTime.class))).thenReturn(9L, 12L, 14L);
         when(matchingConnectionRepository.countByStatus(ConnectionStatus.ACCEPTED)).thenReturn(7L);
         when(chatMessageRepository.countByDeletedFalse()).thenReturn(50L);

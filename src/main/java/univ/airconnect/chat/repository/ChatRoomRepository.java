@@ -48,7 +48,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
 		       OR LOWER(COALESCE(r.name, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
 		       OR CAST(r.id AS string) = :keyword
 		       OR CAST(r.connectionId AS string) = :keyword)
-		ORDER BY r.updatedAt DESC, r.id DESC
+		ORDER BY COALESCE(r.lastMessageAt, r.updatedAt, r.createdAt) DESC, r.id DESC
 	""")
 	Page<ChatRoom> searchForAdmin(@Param("type") ChatRoomType type,
 	                              @Param("userId") Long userId,

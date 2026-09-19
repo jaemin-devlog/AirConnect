@@ -33,7 +33,8 @@ class AdminInsightsServiceTest {
         db.execute("CREATE TABLE matching_temporary_team_rooms(id BIGINT,leader_id BIGINT,team_size VARCHAR(10),team_gender VARCHAR(10),status VARCHAR(20),queued_at TIMESTAMP)");
         db.execute("CREATE TABLE matching_temporary_team_members(id BIGINT,team_room_id BIGINT,user_id BIGINT,is_leader BOOLEAN,joined_at TIMESTAMP,left_at TIMESTAMP,expelled_at TIMESTAMP,created_at TIMESTAMP,updated_at TIMESTAMP)");
         db.execute("CREATE TABLE matching_final_group_chat_rooms(id BIGINT,team1_room_id BIGINT,team2_room_id BIGINT,team_size VARCHAR(10),status VARCHAR(20),created_at TIMESTAMP)");
-        db.execute("CREATE TABLE iap_orders(id BIGINT,user_id BIGINT,store VARCHAR(20),product_id VARCHAR(120),status VARCHAR(20),environment VARCHAR(20),granted_tickets INT,processed_at TIMESTAMP,created_at TIMESTAMP,purchase_token VARCHAR(100))");
+        db.execute("CREATE TABLE iap_orders(id BIGINT,user_id BIGINT,store VARCHAR(20),product_id VARCHAR(120),status VARCHAR(20),environment VARCHAR(20),granted_tickets INT,processed_at TIMESTAMP,created_at TIMESTAMP,purchase_token VARCHAR(100),transaction_id VARCHAR(120))");
+        db.execute("CREATE TABLE iap_events(id BIGINT,store VARCHAR(20),event_type VARCHAR(60),transaction_id VARCHAR(120),purchase_token VARCHAR(100),created_at TIMESTAMP)");
         db.execute("CREATE TABLE ticket_ledger(user_id BIGINT,ref_type VARCHAR(30),change_amount INT,created_at TIMESTAMP)");
         user(1,"USER","ACTIVE","FULL","공학","school@example.invalid","photo");
         user(2,"USER","ACTIVE","FULL","공학",null,"photo");
@@ -93,12 +94,14 @@ class AdminInsightsServiceTest {
         assertThat(n(list(r.get("daily")).get(1).get("active"))).isEqualTo(1);
         assertThat(n(list(map(r.get("activity")).get("retention")).get(0).get("returned"))).isEqualTo(1);
     }
-    @Test void commerceExcludesSandboxAndNoQueriesMutateRecords() {
-        db.update("INSERT INTO iap_orders VALUES(1,1,'APPLE','tickets_10','GRANTED','SANDBOX',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','never-return')");
-        db.update("INSERT INTO iap_orders VALUES(2,2,'APPLE','tickets_10','GRANTED','PRODUCTION',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','never-return')");
+    @Test void commerceSeparatesSandboxAndProductionAndNoQueriesMutateRecords() {
+        db.update("INSERT INTO iap_orders VALUES(1,1,'APPLE','tickets_10','GRANTED','SANDBOX',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','never-return',NULL)");
+        db.update("INSERT INTO iap_orders VALUES(2,2,'APPLE','tickets_10','GRANTED','PRODUCTION',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','never-return',NULL)");
         db.update("INSERT INTO ticket_ledger VALUES(2,'IAP_ORDER',10,'2026-09-03 03:00:00')");
         var r=service.overview(FROM,TO);
-        assertThat(n(list(map(r.get("commerce")).get("orders")).get(0).get("orders"))).isEqualTo(1);
+        assertThat(list(map(r.get("commerce")).get("orders")))
+                .extracting(row -> row.get("environment") + ":" + n(row.get("orders")))
+                .containsExactly("PRODUCTION:1", "SANDBOX:1");
         assertThat(db.queryForObject("SELECT COUNT(*) FROM iap_orders",Long.class)).isEqualTo(2);
         assertThat(db.queryForObject("SELECT COUNT(*) FROM users",Long.class)).isEqualTo(8);
         assertThat(r.toString()).doesNotContain("never-return");
@@ -155,19 +158,25 @@ class AdminInsightsServiceTest {
         assertThatThrownBy(() -> service.overview(FROM,TO,true)).isInstanceOf(BusinessException.class);
     }
     @Test void purchaseListShowsBuyerTicketTotalsWithoutReceiptSecrets() {
-        db.update("INSERT INTO iap_orders VALUES(1,1,'APPLE','tickets_10','GRANTED','PRODUCTION',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','secret-one')");
-        db.update("INSERT INTO iap_orders VALUES(2,1,'APPLE','tickets_10','REFUNDED','PRODUCTION',10,'2026-09-04 03:00:00','2026-09-04 03:00:00','secret-two')");
-        db.update("INSERT INTO iap_orders VALUES(3,2,'GOOGLE','tickets_30','GRANTED','PRODUCTION',30,'2026-09-05 03:00:00','2026-09-05 03:00:00','secret-three')");
-        db.update("INSERT INTO iap_orders VALUES(4,3,'APPLE','tickets_10','GRANTED','SANDBOX',10,'2026-09-05 03:00:00','2026-09-05 03:00:00','secret-four')");
+        db.update("INSERT INTO iap_orders VALUES(1,1,'APPLE','tickets_10','GRANTED','PRODUCTION',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','secret-one',NULL)");
+        db.update("INSERT INTO iap_orders VALUES(2,1,'APPLE','tickets_10','REFUNDED','PRODUCTION',10,'2026-09-04 03:00:00','2026-09-04 03:00:00','secret-two',NULL)");
+        db.update("INSERT INTO iap_orders VALUES(3,2,'GOOGLE','tickets_30','GRANTED','PRODUCTION',30,'2026-09-05 03:00:00','2026-09-05 03:00:00','secret-three',NULL)");
+        db.update("INSERT INTO iap_orders VALUES(4,3,'APPLE','tickets_10','GRANTED','SANDBOX',10,'2026-09-05 03:00:00','2026-09-05 03:00:00','secret-four',NULL)");
+        db.update("INSERT INTO iap_events VALUES(1,'APPLE','DID_PURCHASE','unlinked-transaction',NULL,'2026-09-06 03:00:00')");
         var result = service.purchases(FROM, TO, 0);
         var summary = map(result.get("summary"));
-        assertThat(n(summary.get("orders"))).isEqualTo(3);
+        assertThat(n(summary.get("orders"))).isEqualTo(4);
+        assertThat(n(summary.get("production_orders"))).isEqualTo(3);
+        assertThat(n(summary.get("sandbox_orders"))).isEqualTo(1);
         assertThat(n(summary.get("buyers"))).isEqualTo(2);
         assertThat(n(summary.get("granted_tickets"))).isEqualTo(40);
         assertThat(n(summary.get("refunded_orders"))).isEqualTo(1);
-        assertThat(n(result.get("totalElements"))).isEqualTo(2);
-        assertThat(list(result.get("items"))).extracting(row -> n(row.get("granted_tickets")))
-                .containsExactly(30L, 10L);
+        assertThat(n(summary.get("unmatched_store_events"))).isEqualTo(1);
+        assertThat(n(result.get("totalElements"))).isEqualTo(3);
+        assertThat(list(result.get("items"))).extracting(row -> n(row.get("user_id")))
+                .containsExactly(3L, 2L, 1L);
+        assertThat(list(result.get("items"))).extracting(row -> n(row.get("sandbox_orders")))
+                .containsExactly(1L, 0L, 0L);
         assertThat(result.toString()).doesNotContain("secret-one", "secret-two", "purchase_token", "transaction_id");
     }
     @Test void rangeRejectsFutureReversedAndOver90Days() {
@@ -179,7 +188,7 @@ class AdminInsightsServiceTest {
         assertThat(w.previous().end()).isEqualTo(w.start());
         assertThat(w.previous().days()).isEqualTo(w.days());
     }
-    @Test void allTimePurchasesIncludeOldAndWithdrawnBuyersButNotFutureSandboxOrExcludedAccounts() {
+    @Test void allTimePurchasesIncludeOldWithdrawnSandboxAndAnalyticsExcludedBuyersButNotAdminsOrFutureOrders() {
         for (long id : List.of(1L,5L,98L,99L)) {
             db.update("INSERT INTO iap_orders(id,user_id,status,environment,granted_tickets,created_at) VALUES(?,?,'GRANTED','PRODUCTION',10,'2025-01-01 00:00:00')", id, id);
         }
@@ -188,11 +197,12 @@ class AdminInsightsServiceTest {
         var result = service.purchases(null, null, 0, true);
         assertThat(result.get("all_time")).isEqualTo(true);
         assertThat(result.get("from")).isNull();
-        assertThat(n(map(result.get("summary")).get("granted_tickets"))).isEqualTo(20);
-        assertThat(n(result.get("totalElements"))).isEqualTo(2);
-        assertThat(list(result.get("items"))).extracting(r -> n(r.get("user_id"))).containsExactly(5L,1L);
+        assertThat(n(map(result.get("summary")).get("granted_tickets"))).isEqualTo(30);
+        assertThat(n(map(result.get("summary")).get("sandbox_orders"))).isEqualTo(1);
+        assertThat(n(result.get("totalElements"))).isEqualTo(4);
+        assertThat(list(result.get("items"))).extracting(r -> n(r.get("user_id"))).containsExactly(99L,5L,2L,1L);
         assertThat(n(service.purchases(FROM,TO,0).get("totalElements"))).isZero();
-        assertThat(n(service.purchases(LocalDate.parse("2024-01-01"),TO,0).get("totalElements"))).isEqualTo(2);
+        assertThat(n(service.purchases(LocalDate.parse("2024-01-01"),TO,0).get("totalElements"))).isEqualTo(4);
         assertThatThrownBy(() -> service.purchases(FROM,TO,0,true)).isInstanceOf(BusinessException.class);
         assertThatThrownBy(() -> service.purchases(null,null,-1,true)).isInstanceOf(BusinessException.class);
         assertThatThrownBy(() -> service.purchases(TO,FROM,0,false)).isInstanceOf(BusinessException.class);
@@ -215,6 +225,13 @@ class AdminInsightsServiceTest {
         var result = service.purchases(null,null,0,true);
         assertThat(n(map(result.get("summary")).get("unknown_ticket_orders"))).isEqualTo(1);
         assertThat(n(list(result.get("items")).get(0).get("unknown_ticket_orders"))).isEqualTo(1);
+    }
+    @Test void memberTrendKeepsLegacyRowsWithoutCreatedTimestampInTheBaseline() {
+        db.update("INSERT INTO users VALUES(100,'USER','ACTIVE','FULL','공학','가상회원100','테스트',NULL,NULL,NULL,'2026-09-04 03:00:00')");
+        db.update("INSERT INTO user_profiles VALUES(100,'MALE',NULL)");
+        var result = service.overview(FROM, TO);
+        assertThat(n(map(result.get("snapshot")).get("current_members"))).isEqualTo(5);
+        assertThat(n(list(result.get("daily")).get(9).get("total_members"))).isEqualTo(5);
     }
     @Test void paginationAndGroupUnitsAreStable() {
         for(int i=10;i<40;i++) user(i,"USER","ACTIVE","FULL","공학",null,null);
