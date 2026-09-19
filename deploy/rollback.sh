@@ -45,11 +45,18 @@ while (( SECONDS < deadline )); do
         "http://127.0.0.1:${previous_port}/actuator/health/readiness" | grep -q '"status":"UP"'; then
         break
     fi
+    # 최초 Blue/Green 적용 전 이미지에는 Actuator가 없으므로 기존 공개 조회 API로 보조 확인한다.
+    if curl --fail --silent --show-error --output /dev/null \
+        "http://127.0.0.1:${previous_port}/api/v1/statistics/departments/rankings"; then
+        break
+    fi
     sleep 5
 done
 
-if ! curl --fail --silent --show-error \
-    "http://127.0.0.1:${previous_port}/actuator/health/readiness" | grep -q '"status":"UP"'; then
+if ! (curl --fail --silent --show-error \
+        "http://127.0.0.1:${previous_port}/actuator/health/readiness" | grep -q '"status":"UP"' \
+    || curl --fail --silent --show-error --output /dev/null \
+        "http://127.0.0.1:${previous_port}/api/v1/statistics/departments/rankings"); then
     printf '이전 슬롯이 healthy 상태가 아니어서 트래픽을 전환하지 않았습니다.\n' >&2
     exit 1
 fi

@@ -40,6 +40,20 @@ write_upstream_config() {
     mv "$temporary_file" "$destination"
 }
 
+write_legacy_upstream_config() {
+    local destination="$1"
+    local service_name="$2"
+    local temporary_file="${destination}.tmp"
+
+    # Blue/Green 적용 전 컨테이너에는 Actuator readiness가 없으므로
+    # 첫 전환과 최초 롤백 동안에는 능동 헬스체크를 강제하지 않는다.
+    printf '%s\n' \
+        "reverse_proxy ${service_name}:8080 {" \
+        "    stream_close_delay ${STREAM_CLOSE_DELAY}" \
+        "}" >"$temporary_file"
+    mv "$temporary_file" "$destination"
+}
+
 detect_active_slot() {
     if [[ -f "$STATE_FILE" ]]; then
         local stored_slot
@@ -185,7 +199,7 @@ curl --fail --silent --show-error --output /dev/null \
     "http://127.0.0.1:${target_port}/api/v1/statistics/departments/rankings"
 
 if [[ ! -f "$ACTIVE_CONFIG" ]]; then
-    write_upstream_config "$ACTIVE_CONFIG" "$active_service"
+    write_legacy_upstream_config "$ACTIVE_CONFIG" "$active_service"
 fi
 cp "$ACTIVE_CONFIG" "$PREVIOUS_CONFIG"
 
