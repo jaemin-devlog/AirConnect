@@ -110,7 +110,7 @@ class ChatDeliveryReliabilityIntegrationTest {
         assertThat(messages.count()).isZero();
         assertThat(events.count()).isZero();
         assertThat(notifications.count()).isZero();
-        verifyNoInteractions(redis);
+        verify(redis, never()).convertAndSend(anyString(), any());
     }
 
     @Test void slowProviderDoesNotHoldChatLocksAndLateInvalidTokenCannotRevokeRefreshedDevice() throws Exception {

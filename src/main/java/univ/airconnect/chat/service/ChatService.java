@@ -1254,6 +1254,41 @@ public class ChatService {
         redisTemplate.opsForSet().add(ROOM_SESSION_SET_KEY + roomId, sessionId);
     }
 
+    /**
+     * 같은 사용자가 현재 같은 채팅방을 실시간 구독 중이면 별도 채팅 알림을 만들지 않는다.
+     * Redis 상태를 확인할 수 없는 경우에는 알림 누락을 피하기 위해 발송 대상으로 처리한다.
+     */
+    private boolean isUserActivelySubscribedToRoom(Long userId, Long roomId) {
+        if (userId == null || roomId == null) {
+            return false;
+        }
+
+        try {
+            Set<Object> sessionIds = redisTemplate.opsForSet().members(ROOM_SESSION_SET_KEY + roomId);
+            if (sessionIds == null || sessionIds.isEmpty()) {
+                return false;
+            }
+
+            String expectedUserId = String.valueOf(userId);
+            for (Object sessionIdValue : sessionIds) {
+                if (sessionIdValue == null) {
+                    continue;
+                }
+
+                String sessionId = String.valueOf(sessionIdValue);
+                Object sessionUserId = redisTemplate.opsForValue().get(CHAT_SESSION_KEY + sessionId);
+                if (sessionUserId != null && expectedUserId.equals(String.valueOf(sessionUserId))) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException ex) {
+            log.warn("Active chat subscription lookup failed; push will not be suppressed. userId={}, roomId={}, reason={}",
+                    userId, roomId, ex.getMessage());
+        }
+
+        return false;
+    }
+
     private void publishChatMessageNotifications(Long roomId, User sender, ChatMessage chatMessage) {
         if (!isPushEligibleMessage(chatMessage.getType())) {
             return;
@@ -1275,26 +1310,32 @@ public class ChatService {
             if (Objects.equals(recipientUserId, sender.getId())) {
                 continue;
             }
-                var payload = objectMapper.createObjectNode();
-                payload.put("chatRoomId", roomId);
-                payload.put("messageId", chatMessage.getId());
-                payload.put("senderUserId", sender.getId());
-                payload.put("senderNickname", senderNickname);
-                payload.put("messagePreview", preview);
-                payload.put("messageType", chatMessage.getType().name());
+            if (isUserActivelySubscribedToRoom(recipientUserId, roomId)) {
+                log.debug("Chat notification suppressed for active room subscriber. userId={}, roomId={}",
+                        recipientUserId, roomId);
+                continue;
+            }
 
-                chatDeliveryService.enqueue(univ.airconnect.chat.domain.entity.ChatDeliveryEvent.Kind.NOTIFICATION,
-                        roomId, chatMessage.getId(), recipientUserId, new NotificationService.CreateCommand(
-                        recipientUserId,
-                        NotificationType.CHAT_MESSAGE_RECEIVED,
-                        senderNickname,
-                        preview,
-                        deeplink,
-                        sender.getId(),
-                        extractProfileImage(sender),
-                        payload.toString(),
-                        "chat-message:" + chatMessage.getId() + ":received"
-                ));
+            var payload = objectMapper.createObjectNode();
+            payload.put("chatRoomId", roomId);
+            payload.put("messageId", chatMessage.getId());
+            payload.put("senderUserId", sender.getId());
+            payload.put("senderNickname", senderNickname);
+            payload.put("messagePreview", preview);
+            payload.put("messageType", chatMessage.getType().name());
+
+            chatDeliveryService.enqueue(univ.airconnect.chat.domain.entity.ChatDeliveryEvent.Kind.NOTIFICATION,
+                    roomId, chatMessage.getId(), recipientUserId, new NotificationService.CreateCommand(
+                    recipientUserId,
+                    NotificationType.CHAT_MESSAGE_RECEIVED,
+                    senderNickname,
+                    preview,
+                    deeplink,
+                    sender.getId(),
+                    extractProfileImage(sender),
+                    payload.toString(),
+                    "chat-message:" + chatMessage.getId() + ":received"
+            ));
         }
     }
 
