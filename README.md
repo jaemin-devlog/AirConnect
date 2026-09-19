@@ -590,6 +590,30 @@ gitGraph
 
 <br>
 
+# 🚀 Blue/Green 운영 배포
+
+운영 배포는 현재 트래픽을 처리하는 슬롯을 유지한 채 반대 슬롯을 빌드하고 검증한 후 Caddy를 전환합니다. 애플리케이션은 `JPA_DDL_AUTO=validate`로 시작하므로 DB 변경이 필요한 버전은 호환 가능한 SQL 마이그레이션을 먼저 적용해야 합니다.
+
+```bash
+cd ~/AirConnect
+chmod +x deploy/*.sh
+
+# 서버 자원, Compose 설정, MySQL/Redis 상태 확인
+./deploy/preflight.sh
+
+# DB 백업 → 반대 슬롯 빌드/기동 → readiness/통계 확인 → Caddy 전환
+./deploy/deploy.sh
+
+# 전환 후 문제가 발견됐을 때 직전 슬롯으로 복구
+./deploy/rollback.sh
+```
+
+배포 중 생성되는 `deploy/runtime` 상태 파일과 `backups`의 DB 백업은 Git에 포함되지 않습니다. 기본값은 애플리케이션 슬롯당 메모리 1GB, 최소 여유 메모리 1.5GB, 최소 여유 디스크 4GB, 기존 WebSocket 연결 정리 시간 5분입니다. 서버 사양에 맞게 `.env`의 `AIRCONNECT_APP_MEMORY_LIMIT` 또는 실행 시 환경 변수로 조정할 수 있습니다.
+
+처음 Blue/Green 구조를 적용할 때는 Caddy 볼륨 구성이 바뀌어 프록시 컨테이너가 한 번 재생성되므로 짧은 점검 시간을 잡아야 합니다. 이후 배포는 새 슬롯의 readiness와 핵심 조회 API가 모두 통과한 뒤에만 트래픽을 전환하며, 실패하거나 배포가 중단되면 기존 슬롯으로 자동 복구합니다. WebSocket은 전환 뒤 최대 5분 동안 기존 연결을 유지하고, 이후 앱의 재연결 동작으로 새 슬롯에 연결됩니다.
+
+<br>
+
 > ### AirConnect의 기록
 > #### [친구찾기 명세](docs/%EC%86%8C%EA%B0%9C%ED%8C%85%20%EC%B5%9C%EC%A2%85.md) | [그룹매칭 명세](docs/%EA%B3%BC%ED%8C%85%20%EC%B5%9C%EC%A2%85.md) | [채팅 명세](docs/채팅%20최종.md) | [알림 API](docs/notification-api.md) | [통계 API](docs/statistics-api.md) <br>
 > #### [Android 알림 계약](docs/android-notification-contract.md) | [Android 백엔드 연동](docs/Android%20백엔드%20연동.md) | [개별 보고서](docs/2026-04-21%20AirConnect%20개별보고서.md) | [주간 작업 보고서](docs/2026-04-28%20AirConnect%20주간%20작업%20보고서.md)

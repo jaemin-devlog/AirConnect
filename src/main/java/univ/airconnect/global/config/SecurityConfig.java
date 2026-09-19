@@ -89,7 +89,7 @@ public class SecurityConfig {
 
                         // Swagger
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").hasRole("ADMIN")
-                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
 
                         // Preflight
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

@@ -28,7 +28,9 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # 운영 배포에서는 JPA_DDL_AUTO=validate로 실행해 새 애플리케이션이
+      # 기동 중 공유 DB 스키마를 임의로 변경하지 않도록 한다.
+      ddl-auto: ${JPA_DDL_AUTO:update}
     open-in-view: false
     show-sql: false
     properties:
@@ -75,6 +77,19 @@ logging:
     univ.airconnect.iap.controller: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,redis
 
 kakao:
   base-url: https://kapi.kakao.com

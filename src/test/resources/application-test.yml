@@ -56,3 +56,10 @@ iap:
     service-account-json-path: /tmp/not-used.json
     verify-enabled: false
 
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db
+

@@ -123,4 +123,9 @@ secrets/
 /outputs/character-assets/
 /outputs/ui/
 
+# Blue/Green deployment runtime state and database backups
+/deploy/runtime/*
+!/deploy/runtime/.gitkeep
+/backups/
+
 .md

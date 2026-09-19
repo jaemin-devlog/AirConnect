@@ -25,6 +25,19 @@ spring:
       ssl:
         enabled: ${REDIS_SSL_ENABLED:false}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,redis
+
 app:
   links:
     android-package-name: ${APP_LINK_ANDROID_PACKAGE_NAME:org.airconnect.hsu}

@@ -2,12 +2,16 @@ mysql-data/
 redis-data/
 logs/
 profile-images/
+backups/
+deploy/runtime/
 .git/
 .gradle/
 build/
 out/
 *.log
 .env
+.env.*
+!.env.example
 src/main/resources/application-local.yml
 src/main/resources/key/
 src/main/resources/*.p8
