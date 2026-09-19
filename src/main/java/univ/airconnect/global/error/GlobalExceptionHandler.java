@@ -160,6 +160,15 @@ public class GlobalExceptionHandler {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         UserErrorCode uec = e.getErrorCode();
 
+        log.warn(
+                "UserException [{}] - method={}, path={}, code={}, status={}",
+                traceId,
+                request.getMethod(),
+                request.getRequestURI(),
+                uec.getCode(),
+                uec.getHttpStatus().value()
+        );
+
         ErrorBody body = new ErrorBody(
                 uec.getCode(),
                 e.getMessage(),

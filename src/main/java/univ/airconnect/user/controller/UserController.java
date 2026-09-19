@@ -52,10 +52,16 @@ public class UserController {
             @RequestBody SignUpRequest request,
             HttpServletRequest httpRequest
     ) {
-        log.info("User sign-up requested: userId={}", userId);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
+        log.info("User sign-up requested: userId={}, traceId={}", userId, traceId);
         SignUpResponse response = userService.signUp(userId, request);
-        log.info("User sign-up completed: userId={}", userId);
+        log.info(
+                "User sign-up result: userId={}, onboardingStatus={}, profileExists={}, traceId={}",
+                userId,
+                response.getOnboardingStatus(),
+                response.isProfileExists(),
+                traceId
+        );
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
@@ -65,7 +71,16 @@ public class UserController {
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        log.info("User state requested: userId={}, traceId={}", userId, traceId);
         UserMeResponse response = userService.getMe(userId);
+        log.info(
+                "User state result: userId={}, status={}, onboardingStatus={}, profileExists={}, traceId={}",
+                userId,
+                response.getStatus(),
+                response.getOnboardingStatus(),
+                response.isProfileExists(),
+                traceId
+        );
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
