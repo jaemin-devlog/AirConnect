@@ -72,16 +72,6 @@ public class MatchingConnection {
         this.respondedAt = LocalDateTime.now(java.time.Clock.systemUTC());
     }
 
-    public void cancel() {
-        this.status = ConnectionStatus.CANCELLED;
-        this.respondedAt = LocalDateTime.now(java.time.Clock.systemUTC());
-    }
-
-    public void expire() {
-        this.status = ConnectionStatus.EXPIRED;
-        this.respondedAt = LocalDateTime.now(java.time.Clock.systemUTC());
-    }
-
     public boolean isParticipant(Long userId) {
         return Objects.equals(this.user1Id, userId) || Objects.equals(this.user2Id, userId);
     }

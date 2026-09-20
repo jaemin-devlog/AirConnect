@@ -6,7 +6,6 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.ReflectionTestUtils;
-import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnectRequest;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
 import univ.airconnect.matching.domain.entity.MatchingRecommendationRequest;
@@ -38,25 +37,20 @@ class MatchingRequestExpirationWorkerTest {
     private MatchingRecommendationRequestRepository matchingRecommendationRequestRepository;
 
     @Test
-    void expiresOnlyPendingRequestsOlderThanSevenDays() {
+    void keepsPendingRequestsRegardlessOfAge() {
         MatchingConnection overdue = MatchingConnection.createPending(1L, 2L);
-        MatchingConnection recent = MatchingConnection.createPending(3L, 4L);
         ReflectionTestUtils.setField(
                 overdue,
                 "connectedAt",
                 LocalDateTime.now(Clock.systemUTC()).minusDays(8)
         );
         matchingConnectionRepository.save(overdue);
-        matchingConnectionRepository.save(recent);
         matchingConnectionRepository.flush();
-        ReflectionTestUtils.setField(worker, "expirationDays", 7L);
 
-        worker.expireOverdueRequests();
+        worker.cleanupIdempotencyRecords();
 
         assertThat(matchingConnectionRepository.findById(overdue.getId()).orElseThrow().getStatus())
-                .isEqualTo(ConnectionStatus.EXPIRED);
-        assertThat(matchingConnectionRepository.findById(recent.getId()).orElseThrow().getStatus())
-                .isEqualTo(ConnectionStatus.PENDING);
+                .isEqualTo(univ.airconnect.matching.domain.ConnectionStatus.PENDING);
     }
 
     @Test
@@ -83,7 +77,7 @@ class MatchingRequestExpirationWorkerTest {
         matchingRecommendationRequestRepository.flush();
         ReflectionTestUtils.setField(worker, "idempotencyRetentionDays", 30L);
 
-        worker.expireOverdueRequests();
+        worker.cleanupIdempotencyRecords();
 
         assertThat(matchingConnectRequestRepository.findByUserIdAndRequestKey(1L, "old-connect")).isEmpty();
         assertThat(matchingConnectRequestRepository.findByUserIdAndRequestKey(1L, "recent-connect")).isPresent();

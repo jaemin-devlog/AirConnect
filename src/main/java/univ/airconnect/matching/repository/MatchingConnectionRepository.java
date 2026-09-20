@@ -42,17 +42,6 @@ public interface MatchingConnectionRepository extends JpaRepository<MatchingConn
     int cancelPendingForUser(@Param("userId") Long userId,
                              @Param("endedAt") java.time.LocalDateTime endedAt);
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("""
-        UPDATE MatchingConnection mc
-        SET mc.status = univ.airconnect.matching.domain.ConnectionStatus.EXPIRED,
-            mc.respondedAt = :expiredAt
-        WHERE mc.status = univ.airconnect.matching.domain.ConnectionStatus.PENDING
-          AND mc.connectedAt < :cutoff
-    """)
-    int expirePendingBefore(@Param("cutoff") java.time.LocalDateTime cutoff,
-                            @Param("expiredAt") java.time.LocalDateTime expiredAt);
-
     // 요청 보낸 목록
     List<MatchingConnection> findByRequesterId(Long requesterId);
 

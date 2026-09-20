@@ -15,8 +15,6 @@ import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.user.domain.AdmissionYear;
 import univ.airconnect.matching.domain.entity.MatchingNotificationEvent;
 import univ.airconnect.matching.repository.MatchingNotificationEventRepository;
-import java.time.Clock;
-import java.time.LocalDateTime;
 import univ.airconnect.matching.domain.ConnectionStatus;
 import univ.airconnect.matching.domain.entity.MatchingConnection;
 import univ.airconnect.matching.domain.entity.MatchingConnectRequest;
@@ -70,9 +68,6 @@ public class MatchingService {
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
-
-    @Value("${matching.one-to-one.request-expiration-days:7}")
-    private long requestExpirationDays = 7;
 
     @Transactional
     public MatchingRecommendationResponse recommend(Long userId, String recommendationRequestId) {
@@ -349,7 +344,6 @@ public class MatchingService {
         List<MatchingConnection> existingConnections =
                 matchingConnectionRepository.findByUser1IdAndUser2IdOrderByConnectedAtDescIdDesc(user1, user2);
         for (MatchingConnection connection : existingConnections) {
-            expireIfOverdue(connection);
             if (connection.getStatus() == ConnectionStatus.PENDING) {
                 log.warn("⚠️ 이미 요청 중인 연결: userId={}, targetUserId={}, connectionId={}",
                         userId, targetUserId, connection.getId());
@@ -440,9 +434,6 @@ public class MatchingService {
                 .findByRequesterIdAndStatus(userId, ConnectionStatus.PENDING);
         List<MatchingConnection> receivedConnections = matchingConnectionRepository
                 .findReceivedRequestsByStatus(userId, ConnectionStatus.PENDING);
-        // Read-only filtering: mutation here without a row lock could overwrite concurrent acceptance.
-        sentConnections = sentConnections.stream().filter(connection -> !isOverdue(connection)).toList();
-        receivedConnections = receivedConnections.stream().filter(connection -> !isOverdue(connection)).toList();
         sentConnections = excludeBlockedConnections(userId, sentConnections);
         receivedConnections = excludeBlockedConnections(userId, receivedConnections);
 
@@ -537,7 +528,7 @@ public class MatchingService {
             validateNotBlockedForMatching(userId, connection.getOtherUserId(userId));
             return toMatchingResponse(connection, connection.getOtherUserId(userId));
         }
-        if (expireIfOverdue(connection) || connection.getStatus() == ConnectionStatus.EXPIRED) {
+        if (connection.getStatus() == ConnectionStatus.EXPIRED) {
             return toMatchingResponse(connection, connection.getOtherUserId(userId));
         }
         if (connection.getStatus() != ConnectionStatus.PENDING) {
@@ -601,7 +592,7 @@ public class MatchingService {
         if (connection.getStatus() == ConnectionStatus.REJECTED) {
             return toMatchingResponse(connection, connection.getOtherUserId(userId));
         }
-        if (expireIfOverdue(connection) || connection.getStatus() == ConnectionStatus.EXPIRED) {
+        if (connection.getStatus() == ConnectionStatus.EXPIRED) {
             return toMatchingResponse(connection, connection.getOtherUserId(userId));
         }
         if (connection.getStatus() != ConnectionStatus.PENDING) {
@@ -627,7 +618,7 @@ public class MatchingService {
     }
 
     @Transactional
-    public MatchingResponseResponse cancelRequest(Long userId, Long connectionId) {
+    public MatchingResponseResponse keepPendingRequest(Long userId, Long connectionId) {
         MatchingConnection snapshot = matchingConnectionRepository.findById(connectionId)
                 .orElseThrow(() -> new MatchingException(MatchingErrorCode.CONNECTION_NOT_FOUND));
 
@@ -645,29 +636,16 @@ public class MatchingService {
         if (connection.getStatus() == ConnectionStatus.CANCELLED) {
             return toMatchingResponse(connection, connection.getOtherUserId(userId));
         }
-        if (expireIfOverdue(connection) || connection.getStatus() == ConnectionStatus.EXPIRED) {
+        if (connection.getStatus() == ConnectionStatus.EXPIRED) {
             return toMatchingResponse(connection, connection.getOtherUserId(userId));
         }
         if (connection.getStatus() != ConnectionStatus.PENDING) {
             throw new MatchingException(MatchingErrorCode.INVALID_REQUEST);
         }
 
-        connection.cancel();
+        // 이미 출시된 앱이 철회 API를 호출하더라도 요청을 삭제하거나 종료하지 않는다.
+        // PENDING 상태를 그대로 반환해 기존 API 계약을 유지한다.
         return toMatchingResponse(connection, connection.getOtherUserId(userId));
-    }
-
-    private boolean isOverdue(MatchingConnection connection) {
-        return connection.getStatus() == ConnectionStatus.PENDING
-                && !connection.getConnectedAt().plusDays(requestExpirationDays)
-                    .isAfter(LocalDateTime.now(Clock.systemUTC()));
-    }
-
-    private boolean expireIfOverdue(MatchingConnection connection) {
-        if (isOverdue(connection)) {
-            connection.expire();
-            return true;
-        }
-        return false;
     }
 
     private MatchingResponseResponse toMatchingResponse(MatchingConnection connection, Long targetUserId) {

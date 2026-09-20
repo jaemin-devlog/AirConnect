@@ -338,21 +338,53 @@ class MatchingServiceTest {
     }
 
     @Test
-    @DisplayName("only the requester can cancel a pending request")
-    void cancelRequest_requesterCancelsPendingRequest() {
+    @DisplayName("legacy cancellation keeps the request pending")
+    void cancellationCompatibilityEndpointKeepsPendingRequest() {
         User requester = saveUserWithProfile("u1", Gender.MALE, 100);
         User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
         MatchingConnection conn = matchingConnectionRepository.save(
                 MatchingConnection.createPending(requester.getId(), receiver.getId())
         );
 
-        MatchingResponseResponse response = matchingService.cancelRequest(requester.getId(), conn.getId());
+        MatchingResponseResponse response = matchingService.keepPendingRequest(requester.getId(), conn.getId());
 
-        assertThat(response.getStatus()).isEqualTo(ConnectionStatus.CANCELLED);
-        assertThatThrownBy(() -> matchingService.cancelRequest(receiver.getId(), conn.getId()))
+        assertThat(response.getStatus()).isEqualTo(ConnectionStatus.PENDING);
+        assertThat(matchingConnectionRepository.findById(conn.getId()).orElseThrow().getStatus())
+                .isEqualTo(ConnectionStatus.PENDING);
+        assertThatThrownBy(() -> matchingService.keepPendingRequest(receiver.getId(), conn.getId()))
                 .isInstanceOf(MatchingException.class)
                 .extracting("errorCode")
                 .isEqualTo(MatchingErrorCode.INVALID_REQUEST);
+    }
+
+    @Test
+    @DisplayName("old pending requests stay visible and block duplicate requests")
+    void oldPendingRequestRemainsVisibleAndBlocksDuplicate() {
+        User requester = saveUserWithProfile("u1", Gender.MALE, 100);
+        User receiver = saveUserWithProfile("u2", Gender.FEMALE, 100);
+        MatchingConnection connection = MatchingConnection.createPending(requester.getId(), receiver.getId());
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                connection,
+                "connectedAt",
+                LocalDateTime.now(java.time.Clock.systemUTC()).minusDays(30)
+        );
+        matchingConnectionRepository.saveAndFlush(connection);
+        matchingExposureRepository.save(MatchingExposure.create(requester.getId(), receiver.getId()));
+
+        MatchingRequestsResponse sent = matchingService.getRequests(requester.getId());
+        MatchingRequestsResponse received = matchingService.getRequests(receiver.getId());
+
+        assertThat(sent.getSent()).extracting(MatchingRequestResponse::getConnectionId)
+                .containsExactly(connection.getId());
+        assertThat(received.getReceived()).extracting(MatchingRequestResponse::getConnectionId)
+                .containsExactly(connection.getId());
+        assertThatThrownBy(() -> matchingService.connect(
+                requester.getId(), receiver.getId(), UUID.randomUUID().toString()))
+                .isInstanceOf(MatchingException.class)
+                .extracting("errorCode")
+                .isEqualTo(MatchingErrorCode.ALREADY_CONNECTED);
+        assertThat(matchingConnectionRepository.findById(connection.getId()).orElseThrow().getStatus())
+                .isEqualTo(ConnectionStatus.PENDING);
     }
 
     @Test
@@ -689,20 +721,21 @@ class MatchingServiceTest {
     }
 
     @Test
-    void expiredRequestCannotCreateChatEvenBeforeWorkerRuns() {
+    void oldPendingRequestCanStillBeAccepted() {
         User sender = saveUserWithProfile("s", Gender.MALE, 10);
         User receiver = saveUserWithProfile("r", Gender.FEMALE, 10);
         MatchingConnection connection = MatchingConnection.createPending(sender.getId(), receiver.getId());
         org.springframework.test.util.ReflectionTestUtils.setField(connection, "connectedAt",
                 LocalDateTime.now(java.time.Clock.systemUTC()).minusDays(7).minusSeconds(1));
         matchingConnectionRepository.saveAndFlush(connection);
+        Mockito.when(chatService.createOrGetPersonalRoomForConnection(any(), any(), any(), any()))
+                .thenReturn(ChatRoomResponse.builder().id(92L).build());
         var response = matchingService.acceptRequest(receiver.getId(), connection.getId());
-        assertThat(response.getStatus()).isEqualTo(ConnectionStatus.EXPIRED);
+        assertThat(response.getStatus()).isEqualTo(ConnectionStatus.ACCEPTED);
         assertThat(matchingConnectionRepository.findById(connection.getId()).orElseThrow().getStatus())
-                .isEqualTo(ConnectionStatus.EXPIRED);
-        assertThat(response.getChatRoomId()).isNull();
-        Mockito.verifyNoInteractions(chatService);
-        assertThat(notificationEvents.count()).isZero();
+                .isEqualTo(ConnectionStatus.ACCEPTED);
+        assertThat(response.getChatRoomId()).isNotNull();
+        assertThat(notificationEvents.count()).isEqualTo(1);
     }
 
     @Test

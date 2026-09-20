@@ -105,7 +105,7 @@ public class MatchingController {
             HttpServletRequest request
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
-        MatchingResponseResponse response = matchingService.cancelRequest(userId, connectionId);
+        MatchingResponseResponse response = matchingService.keepPendingRequest(userId, connectionId);
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
