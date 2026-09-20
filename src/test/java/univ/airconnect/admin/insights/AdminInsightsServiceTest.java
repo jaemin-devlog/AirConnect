@@ -180,6 +180,26 @@ class AdminInsightsServiceTest {
                 .containsExactly(1L, 0L, 0L);
         assertThat(result.toString()).doesNotContain("secret-one", "secret-two", "purchase_token", "transaction_id");
     }
+    @Test void purchaseListIncludesLedgerOnlyBuyersAndUsesActualGrantedTicketHistory() {
+        db.update("INSERT INTO ticket_ledger VALUES(4,'IAP_ORDER',19,'2026-09-07 03:00:00')");
+
+        var result = service.purchases(FROM, TO, 0);
+        var summary = map(result.get("summary"));
+
+        assertThat(n(summary.get("orders"))).isZero();
+        assertThat(n(summary.get("recorded_buyers"))).isEqualTo(1);
+        assertThat(n(summary.get("ledger_only_buyers"))).isEqualTo(1);
+        assertThat(n(summary.get("ledger_purchase_entries"))).isEqualTo(1);
+        assertThat(n(summary.get("granted_tickets"))).isEqualTo(19);
+        assertThat(n(result.get("totalElements"))).isEqualTo(1);
+        assertThat(list(result.get("items"))).singleElement().satisfies(row -> {
+            assertThat(n(row.get("user_id"))).isEqualTo(4);
+            assertThat(n(row.get("order_count"))).isZero();
+            assertThat(n(row.get("ledger_purchase_entries"))).isEqualTo(1);
+            assertThat(n(row.get("granted_tickets"))).isEqualTo(19);
+            assertThat(n(row.get("ledger_only"))).isEqualTo(1);
+        });
+    }
     @Test void rangeRejectsFutureReversedAndOver90Days() {
         assertThatThrownBy(()->InsightWindow.of(TO,FROM,CLOCK)).isInstanceOf(BusinessException.class);
         assertThatThrownBy(()->InsightWindow.of(FROM,LocalDate.parse("2026-09-13"),CLOCK)).isInstanceOf(BusinessException.class);

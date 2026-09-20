@@ -277,8 +277,10 @@ public class AdminInsightsService {
         if (allTime && (from != null || to != null)) throw new BusinessException(ErrorCode.INVALID_REQUEST);
         InsightWindow w = InsightWindow.purchases(from, to, clock);
         MapSqlParameterSource p = params(w).addValue("offset_rows", page * 25);
+        String orderWindow = (allTime ? "" : " AND o.created_at>=:start") + " AND o.created_at<:end";
+        String ledgerWindow = (allTime ? "" : " AND l.created_at>=:start") + " AND l.created_at<:end";
         String base = " FROM iap_orders o JOIN users u ON u.id=o.user_id WHERE " + PURCHASE_ELIGIBLE
-                + (allTime ? "" : " AND o.created_at>=:start") + " AND o.created_at<:end";
+                + orderWindow;
         Map<String, Object> summary = one("SELECT COUNT(*) AS orders, "
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' THEN 1 ELSE 0 END),0) AS production_orders, "
                 + "COALESCE(SUM(CASE WHEN o.environment='SANDBOX' THEN 1 ELSE 0 END),0) AS sandbox_orders, "
@@ -287,23 +289,55 @@ public class AdminInsightsService {
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS granted_tickets, "
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status IN ('REFUNDED','REVOKED') THEN 1 ELSE 0 END),0) AS refunded_orders"
                 + base, p);
+        summary.put("order_granted_tickets", summary.get("granted_tickets"));
+        summary.putAll(one("SELECT COUNT(*) AS ledger_purchase_entries,"
+                + "COUNT(DISTINCT l.user_id) AS ledger_buyers,"
+                + "COALESCE(SUM(l.change_amount),0) AS ledger_granted_tickets"
+                + " FROM ticket_ledger l JOIN users u ON u.id=l.user_id WHERE " + PURCHASE_ELIGIBLE
+                + " AND l.ref_type='IAP_ORDER' AND l.change_amount>0" + ledgerWindow, p));
         String eventWindow = (allTime ? "" : " AND e.created_at>=:start") + " AND e.created_at<:end";
         summary.putAll(one("SELECT COUNT(DISTINCT CONCAT(e.store,':',COALESCE(e.transaction_id,e.purchase_token))) AS unmatched_store_events FROM iap_events e WHERE ("
                 + "(e.store='APPLE' AND e.transaction_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM iap_orders o WHERE o.store='APPLE' AND o.transaction_id=e.transaction_id))"
                 + " OR (e.store='GOOGLE' AND e.purchase_token IS NOT NULL AND NOT EXISTS (SELECT 1 FROM iap_orders o WHERE o.store='GOOGLE' AND o.purchase_token=e.purchase_token)))"
                 + eventWindow, p));
-        long total = ((Number) one("SELECT COUNT(DISTINCT o.user_id) AS total" + base, p).get("total")).longValue();
-        List<Map<String, Object>> items = rows("SELECT u.id AS user_id,u.nickname,u.name,u.dept_name AS department,"
-                + "COUNT(*) AS order_count,"
+        String purchaseUsers = "(SELECT o.user_id FROM iap_orders o WHERE 1=1" + orderWindow
+                + " UNION SELECT l.user_id FROM ticket_ledger l WHERE l.ref_type='IAP_ORDER'"
+                + " AND l.change_amount>0" + ledgerWindow + ") purchase_users";
+        String orderAggregates = "(SELECT o.user_id,COUNT(*) AS order_count,"
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' THEN 1 ELSE 0 END),0) AS production_orders,"
                 + "COALESCE(SUM(CASE WHEN o.environment='SANDBOX' THEN 1 ELSE 0 END),0) AS sandbox_orders,"
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN 1 ELSE 0 END),0) AS successful_orders,"
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' AND o.granted_tickets IS NULL THEN 1 ELSE 0 END),0) AS unknown_ticket_orders,"
-                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS granted_tickets,"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS order_granted_tickets,"
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status IN ('REFUNDED','REVOKED') THEN 1 ELSE 0 END),0) AS refunded_orders,"
-                + "MAX(o.created_at) AS last_order_at" + base
-                + " GROUP BY u.id,u.nickname,u.name,u.dept_name"
-                + " ORDER BY last_order_at DESC,u.id DESC LIMIT 25 OFFSET :offset_rows", p);
+                + "MAX(o.created_at) AS last_order_at FROM iap_orders o WHERE 1=1" + orderWindow
+                + " GROUP BY o.user_id) oa";
+        String ledgerAggregates = "(SELECT l.user_id,COUNT(*) AS ledger_purchase_entries,"
+                + "COALESCE(SUM(l.change_amount),0) AS ledger_granted_tickets,MAX(l.created_at) AS last_ledger_at"
+                + " FROM ticket_ledger l WHERE l.ref_type='IAP_ORDER' AND l.change_amount>0" + ledgerWindow
+                + " GROUP BY l.user_id) la";
+        String buyerBase = " FROM users u JOIN " + purchaseUsers + " ON purchase_users.user_id=u.id"
+                + " LEFT JOIN " + orderAggregates + " ON oa.user_id=u.id"
+                + " LEFT JOIN " + ledgerAggregates + " ON la.user_id=u.id WHERE " + PURCHASE_ELIGIBLE;
+        long total = ((Number) one("SELECT COUNT(*) AS total" + buyerBase, p).get("total")).longValue();
+        Map<String, Object> reconciled = one("SELECT "
+                + "COALESCE(SUM(CASE WHEN COALESCE(la.ledger_purchase_entries,0)>0 THEN la.ledger_granted_tickets ELSE COALESCE(oa.order_granted_tickets,0) END),0) AS granted_tickets,"
+                + "COALESCE(SUM(CASE WHEN oa.user_id IS NULL AND la.user_id IS NOT NULL THEN 1 ELSE 0 END),0) AS ledger_only_buyers"
+                + buyerBase, p);
+        summary.putAll(reconciled);
+        summary.put("recorded_buyers", total);
+        List<Map<String, Object>> items = rows("SELECT u.id AS user_id,u.nickname,u.name,u.dept_name AS department,"
+                + "COALESCE(oa.order_count,0) AS order_count,COALESCE(oa.production_orders,0) AS production_orders,"
+                + "COALESCE(oa.sandbox_orders,0) AS sandbox_orders,COALESCE(oa.successful_orders,0) AS successful_orders,"
+                + "COALESCE(oa.unknown_ticket_orders,0) AS unknown_ticket_orders,"
+                + "COALESCE(la.ledger_purchase_entries,0) AS ledger_purchase_entries,"
+                + "COALESCE(oa.order_granted_tickets,0) AS order_granted_tickets,"
+                + "CASE WHEN COALESCE(la.ledger_purchase_entries,0)>0 THEN la.ledger_granted_tickets ELSE COALESCE(oa.order_granted_tickets,0) END AS granted_tickets,"
+                + "COALESCE(oa.refunded_orders,0) AS refunded_orders,"
+                + "CASE WHEN oa.user_id IS NULL AND la.user_id IS NOT NULL THEN 1 ELSE 0 END AS ledger_only,"
+                + "CASE WHEN oa.last_order_at IS NULL THEN la.last_ledger_at WHEN la.last_ledger_at IS NULL THEN oa.last_order_at"
+                + " WHEN oa.last_order_at>=la.last_ledger_at THEN oa.last_order_at ELSE la.last_ledger_at END AS last_order_at"
+                + buyerBase + " ORDER BY last_order_at DESC,u.id DESC LIMIT 25 OFFSET :offset_rows", p);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("from", allTime ? null : w.from());
         result.put("all_time", allTime);
