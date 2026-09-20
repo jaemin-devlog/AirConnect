@@ -54,4 +54,13 @@ public class AdminInsightsController {
                 service.purchases(from, to, page, allTime),
                 (String) request.getAttribute(TRACE_ID_ATTRIBUTE)));
     }
+
+    @GetMapping("/referrals")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> referrals(
+            @RequestParam(defaultValue = "0") int page,
+            HttpServletRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.ok(
+                service.referrals(page),
+                (String) request.getAttribute(TRACE_ID_ATTRIBUTE)));
+    }
 }

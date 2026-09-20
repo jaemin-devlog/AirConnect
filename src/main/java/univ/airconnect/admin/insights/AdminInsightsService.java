@@ -319,6 +319,44 @@ public class AdminInsightsService {
         return result;
     }
 
+    public Map<String, Object> referrals(int page) {
+        if (page < 0 || page > 10000) throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        MapSqlParameterSource p = new MapSqlParameterSource("offset_rows", page * 25);
+        String eligible = " FROM referral_redemptions r"
+                + " JOIN users u ON u.id=r.referrer_user_id"
+                + " JOIN users referred ON referred.id=r.referred_user_id"
+                + " WHERE (u.role IS NULL OR u.role <> 'ADMIN')";
+        Map<String, Object> summary = one("SELECT COUNT(*) AS successful_referrals,"
+                + "COUNT(DISTINCT r.referrer_user_id) AS inviters,"
+                + "COALESCE(SUM(CASE WHEN referred.status<>'DELETED' AND referred.onboarding_status='FULL' THEN 1 ELSE 0 END),0) AS current_referred_members"
+                + eligible, p);
+        summary.putAll(one("SELECT COALESCE(MAX(invited_friend_count),0) AS top_invited_friend_count FROM ("
+                + "SELECT COUNT(*) AS invited_friend_count FROM referral_redemptions r"
+                + " JOIN users u ON u.id=r.referrer_user_id"
+                + " WHERE (u.role IS NULL OR u.role <> 'ADMIN') GROUP BY r.referrer_user_id) ranked_referrers", p));
+        long total = ((Number) summary.get("inviters")).longValue();
+        List<Map<String, Object>> items = rows("SELECT"
+                + " DENSE_RANK() OVER (ORDER BY COUNT(*) DESC) AS ranking,"
+                + "u.id AS user_id,u.nickname,u.name,u.dept_name AS department,u.status,u.onboarding_status,"
+                + "COUNT(*) AS invited_friend_count,"
+                + "COALESCE(SUM(CASE WHEN referred.status<>'DELETED' AND referred.onboarding_status='FULL' THEN 1 ELSE 0 END),0) AS current_friend_count,"
+                + "MIN(r.created_at) AS first_invited_at,MAX(r.created_at) AS latest_invited_at"
+                + eligible
+                + " GROUP BY u.id,u.nickname,u.name,u.dept_name,u.status,u.onboarding_status"
+                + " ORDER BY invited_friend_count DESC,latest_invited_at DESC,u.id DESC"
+                + " LIMIT 25 OFFSET :offset_rows", p);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("generated_at", LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault()));
+        result.put("summary", summary);
+        result.put("items", items);
+        result.put("page", page);
+        result.put("size", 25);
+        result.put("totalElements", total);
+        result.put("totalPages", (total + 24) / 25);
+        result.put("hasNext", (long) (page + 1) * 25 < total);
+        return result;
+    }
+
     public record MembershipSnapshot(long accounts, long currentMembers, long deletedMembers, long incompleteMembers) {}
 
     public MembershipSnapshot membershipSnapshot() {

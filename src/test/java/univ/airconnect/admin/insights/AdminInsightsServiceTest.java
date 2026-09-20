@@ -36,6 +36,7 @@ class AdminInsightsServiceTest {
         db.execute("CREATE TABLE iap_orders(id BIGINT,user_id BIGINT,store VARCHAR(20),product_id VARCHAR(120),status VARCHAR(20),environment VARCHAR(20),granted_tickets INT,processed_at TIMESTAMP,created_at TIMESTAMP,purchase_token VARCHAR(100),transaction_id VARCHAR(120))");
         db.execute("CREATE TABLE iap_events(id BIGINT,store VARCHAR(20),event_type VARCHAR(60),transaction_id VARCHAR(120),purchase_token VARCHAR(100),created_at TIMESTAMP)");
         db.execute("CREATE TABLE ticket_ledger(user_id BIGINT,ref_type VARCHAR(30),change_amount INT,created_at TIMESTAMP)");
+        db.execute("CREATE TABLE referral_redemptions(id BIGINT,referrer_user_id BIGINT,referred_user_id BIGINT,reward_tickets INT,created_at TIMESTAMP)");
         user(1,"USER","ACTIVE","FULL","공학","school@example.invalid","photo");
         user(2,"USER","ACTIVE","FULL","공학",null,"photo");
         user(3,"USER","ACTIVE","FULL","인문","school@example.invalid",null);
@@ -225,6 +226,29 @@ class AdminInsightsServiceTest {
         var result = service.purchases(null,null,0,true);
         assertThat(n(map(result.get("summary")).get("unknown_ticket_orders"))).isEqualTo(1);
         assertThat(n(list(result.get("items")).get(0).get("unknown_ticket_orders"))).isEqualTo(1);
+    }
+    @Test void referralRankingCountsSuccessfulRedemptionsAndKeepsDenseTies() {
+        db.update("INSERT INTO referral_redemptions VALUES(1,1,3,3,'2026-09-03 03:00:00')");
+        db.update("INSERT INTO referral_redemptions VALUES(2,1,4,3,'2026-09-04 03:00:00')");
+        db.update("INSERT INTO referral_redemptions VALUES(3,1,5,3,'2026-09-05 03:00:00')");
+        db.update("INSERT INTO referral_redemptions VALUES(4,5,2,3,'2026-09-06 03:00:00')");
+        db.update("INSERT INTO referral_redemptions VALUES(5,99,1,3,'2026-09-07 03:00:00')");
+        db.update("INSERT INTO referral_redemptions VALUES(6,2,6,3,'2026-09-08 03:00:00')");
+        db.update("INSERT INTO referral_redemptions VALUES(7,98,4,3,'2026-09-09 03:00:00')");
+
+        var result = service.referrals(0);
+        var summary = map(result.get("summary"));
+        assertThat(n(summary.get("successful_referrals"))).isEqualTo(6);
+        assertThat(n(summary.get("inviters"))).isEqualTo(4);
+        assertThat(n(summary.get("current_referred_members"))).isEqualTo(4);
+        assertThat(n(summary.get("top_invited_friend_count"))).isEqualTo(3);
+        assertThat(n(result.get("totalElements"))).isEqualTo(4);
+        assertThat(list(result.get("items"))).extracting(row -> n(row.get("user_id")))
+                .containsExactly(1L,2L,99L,5L);
+        assertThat(list(result.get("items"))).extracting(row -> n(row.get("ranking")))
+                .containsExactly(1L,2L,2L,2L);
+        assertThat(n(list(result.get("items")).get(0).get("current_friend_count"))).isEqualTo(2);
+        assertThatThrownBy(() -> service.referrals(-1)).isInstanceOf(BusinessException.class);
     }
     @Test void memberTrendKeepsLegacyRowsWithoutCreatedTimestampInTheBaseline() {
         db.update("INSERT INTO users VALUES(100,'USER','ACTIVE','FULL','공학','가상회원100','테스트',NULL,NULL,NULL,'2026-09-04 03:00:00')");
