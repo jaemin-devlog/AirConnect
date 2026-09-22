@@ -40,20 +40,18 @@ public class AppleAccountRevocationService {
         try {
             String clientSecret = appleClientSecretService.createClientSecret();
             appleTokenRevocationClient.revoke(targetToken.value(), targetToken.typeHint(), clientSecret);
-            log.info("Apple revoke succeeded. traceId={}, userId={}, tokenSource={}, tokenMasked={}",
+            log.info("Apple revoke succeeded. traceId={}, userId={}, tokenSource={}",
                     traceIdOrDash(traceId),
                     user.getId(),
-                    targetToken.source(),
-                    mask(targetToken.value()));
+                    targetToken.source());
             return AppleRevocationResult.success(targetToken.source());
         } catch (Exception e) {
-            log.warn("Apple revoke failed. traceId={}, userId={}, tokenSource={}, tokenMasked={}, reason={}",
+            log.warn("Apple revoke failed. traceId={}, userId={}, tokenSource={}, type={}",
                     traceIdOrDash(traceId),
                     user.getId(),
                     targetToken.source(),
-                    mask(targetToken.value()),
-                    e.getMessage());
-            return AppleRevocationResult.failed(targetToken.source(), e.getMessage());
+                    e.getClass().getSimpleName());
+            return AppleRevocationResult.failed(targetToken.source(), "APPLE_REVOKE_FAILED");
         }
     }
 
@@ -82,17 +80,6 @@ public class AppleAccountRevocationService {
 
     private String traceIdOrDash(String traceId) {
         return (traceId == null || traceId.isBlank()) ? "-" : traceId;
-    }
-
-    private String mask(String token) {
-        if (token == null || token.isBlank()) {
-            return "***";
-        }
-        int length = token.length();
-        if (length <= 8) {
-            return "***";
-        }
-        return token.substring(0, 4) + "..." + token.substring(length - 4);
     }
 
     private record AppleRevokeToken(String value, String typeHint, String source) {

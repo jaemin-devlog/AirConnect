@@ -21,6 +21,8 @@ import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.repository.SocialLoginDeviceBindingRepository;
 import univ.airconnect.auth.security.TokenHashService;
+import univ.airconnect.auth.security.RefreshTokenRotationService;
+import univ.airconnect.auth.security.AccessTokenRevocationService;
 import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
@@ -37,6 +39,7 @@ import univ.airconnect.user.service.UserService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -48,6 +51,7 @@ public class AuthService {
     private static final int ADMIN_LOGIN_MAX_ATTEMPTS = 5;
     private static final long ADMIN_LOGIN_COUNTER_TTL_SECONDS = 5 * 60L;
     private static final long ADMIN_LOGIN_LOCK_TTL_SECONDS = 15 * 60L;
+    private static final String ADMIN_ACCOUNT_ATTEMPT_SCOPE = "admin_login_account";
 
     private final SocialAuthResolver socialAuthResolver;
     private final AppleAuthClient appleAuthClient;
@@ -57,6 +61,8 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final SocialLoginDeviceBindingRepository socialLoginDeviceBindingRepository;
     private final TokenHashService tokenHashService;
+    private final RefreshTokenRotationService refreshTokenRotationService;
+    private final AccessTokenRevocationService accessTokenRevocationService;
     private final UserService userService;
     private final AnalyticsService analyticsService;
     private final AttemptThrottleService attemptThrottleService;
@@ -111,6 +117,7 @@ public class AuthService {
                 adminAccountService.loginAttemptIdentifier(),
                 clientIp
         );
+        attemptThrottleService.clear(ADMIN_ACCOUNT_ATTEMPT_SCOPE, adminAccountService.loginAttemptIdentifier(), "account");
 
         validateUserStatus(user);
         user.markActive();
@@ -145,7 +152,6 @@ public class AuthService {
         boolean hashMatched = tokenHashService.matches(request.getRefreshToken(), savedToken.getToken());
         boolean legacyPlainMatched = request.getRefreshToken().equals(savedToken.getToken());
         if (!hashMatched && !legacyPlainMatched) {
-            refreshTokenRepository.deleteById(refreshTokenKey);
             log.warn("Refresh token reuse detected: userId={}, deviceIdMasked={}",
                     userId, maskDeviceId(request.getDeviceId()));
             throw new AuthException(AuthErrorCode.REFRESH_TOKEN_REUSE_DETECTED);
@@ -163,26 +169,34 @@ public class AuthService {
         validateUserStatus(user);
         user.markActive();
 
-        String newAccessToken = jwtProvider.createAccessToken(user.getId());
+        String sessionId = savedToken.getSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            sessionId = UUID.randomUUID().toString();
+        }
+        String newAccessToken = jwtProvider.createAccessToken(user.getId(), request.getDeviceId(), sessionId);
         String newRefreshToken = jwtProvider.createRefreshToken(user.getId(), request.getDeviceId());
         String newRefreshTokenHash = tokenHashService.hash(newRefreshToken);
 
-        refreshTokenRepository.save(
-                RefreshToken.create(user.getId(), request.getDeviceId(), newRefreshTokenHash)
-        );
+        // Another refresh, login or logout may have changed the token since it was read.
+        // A losing request must neither recreate a deleted session nor revoke the winner.
+        if (!refreshTokenRotationService.rotate(refreshTokenKey, savedToken.getToken(), newRefreshTokenHash, sessionId)) {
+            throw new AuthException(AuthErrorCode.REFRESH_TOKEN_REUSE_DETECTED);
+        }
 
         log.debug("Token refresh completed: userId={}", userId);
         return new TokenPairResponse(newAccessToken, newRefreshToken);
     }
 
     @Transactional
-    public void logout(Long userId, String deviceId) {
+    public void logout(Long userId, String deviceId, String accessToken) {
         log.debug("Logout requested: userId={}, deviceIdMasked={}", userId, maskDeviceId(deviceId));
 
         if (userId == null || deviceId == null || deviceId.isBlank()) {
             throw new AuthException(AuthErrorCode.INVALID_LOGOUT_REQUEST);
         }
 
+        // Use the authenticated bearer supplied to this request; no new client field is needed.
+        accessTokenRevocationService.revoke(accessToken, jwtProvider.getAccessTokenExpiresAt(accessToken));
         refreshTokenRepository.deleteById(buildRefreshTokenKey(userId, deviceId));
         pushDeviceService.deactivateIfPresent(userId, deviceId);
         chatService.invalidateSessionsByUserId(userId);
@@ -258,9 +272,10 @@ public class AuthService {
         if (request.getSocialToken() == null || request.getSocialToken().isBlank()) {
             throw new AuthException(AuthErrorCode.SOCIAL_TOKEN_REQUIRED);
         }
-        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
-            throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
+        if (request.getSocialToken().length() > 16_384) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
         }
+        validateDeviceId(request.getDeviceId());
     }
 
     private void validateAdminLoginRequest(EmailLoginRequest request) {
@@ -273,9 +288,10 @@ public class AuthService {
         if (request.getPassword() == null || request.getPassword().isBlank()) {
             throw new AuthException(AuthErrorCode.EMAIL_PASSWORD_REQUIRED);
         }
-        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
-            throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
+        if (request.getPassword().length() > 1024) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
         }
+        validateDeviceId(request.getDeviceId());
     }
 
     private void validateRefreshRequest(TokenRefreshRequest request) {
@@ -285,8 +301,18 @@ public class AuthService {
         if (request.getRefreshToken() == null || request.getRefreshToken().isBlank()) {
             throw new AuthException(AuthErrorCode.REFRESH_TOKEN_REQUIRED);
         }
-        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
+        if (request.getRefreshToken().length() > 16_384) {
+            throw new AuthException(AuthErrorCode.INVALID_REFRESH_REQUEST);
+        }
+        validateDeviceId(request.getDeviceId());
+    }
+
+    private void validateDeviceId(String deviceId) {
+        if (deviceId == null || deviceId.isBlank()) {
             throw new AuthException(AuthErrorCode.DEVICE_ID_REQUIRED);
+        }
+        if (deviceId.length() > 120 || deviceId.chars().anyMatch(Character::isISOControl)) {
+            throw new AuthException(AuthErrorCode.INVALID_LOGIN_REQUEST);
         }
     }
 
@@ -317,7 +343,8 @@ public class AuthService {
                 ADMIN_LOGIN_ATTEMPT_SCOPE,
                 adminAccountService.loginAttemptIdentifier(),
                 clientIp
-        )) {
+        ) || attemptThrottleService.isLocked(
+                ADMIN_ACCOUNT_ATTEMPT_SCOPE, adminAccountService.loginAttemptIdentifier(), "account")) {
             throw new AuthException(AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED);
         }
     }
@@ -331,14 +358,18 @@ public class AuthService {
                 ADMIN_LOGIN_COUNTER_TTL_SECONDS,
                 ADMIN_LOGIN_LOCK_TTL_SECONDS
         );
+        boolean accountLocked = attemptThrottleService.recordFailure(
+                ADMIN_ACCOUNT_ATTEMPT_SCOPE, adminAccountService.loginAttemptIdentifier(), "account",
+                20, ADMIN_LOGIN_COUNTER_TTL_SECONDS, ADMIN_LOGIN_LOCK_TTL_SECONDS);
 
-        return new AuthException(locked
+        return new AuthException(locked || accountLocked
                 ? AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED
                 : AuthErrorCode.EMAIL_LOGIN_FAILED);
     }
 
     private LoginResponse issueLoginResponse(User user, String deviceId, String providerName, boolean issueRefreshToken) {
-        String accessToken = jwtProvider.createAccessToken(user.getId());
+        String sessionId = UUID.randomUUID().toString();
+        String accessToken = jwtProvider.createAccessToken(user.getId(), deviceId, sessionId);
         String refreshToken = null;
 
         if (issueRefreshToken) {
@@ -346,7 +377,7 @@ public class AuthService {
             String refreshTokenHash = tokenHashService.hash(refreshToken);
 
             refreshTokenRepository.save(
-                    RefreshToken.create(user.getId(), deviceId, refreshTokenHash)
+                    RefreshToken.create(user.getId(), deviceId, refreshTokenHash, sessionId)
             );
         }
 

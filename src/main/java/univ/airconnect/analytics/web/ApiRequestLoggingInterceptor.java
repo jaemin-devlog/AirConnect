@@ -53,7 +53,7 @@ public class ApiRequestLoggingInterceptor implements HandlerInterceptor {
             );
         } catch (Exception loggingException) {
             log.warn("API request logging failed. method={}, uri={}, reason={}",
-                    request.getMethod(), request.getRequestURI(), loggingException.getMessage());
+                    request.getMethod(), apiPath(request), loggingException.getClass().getSimpleName());
         }
     }
 
@@ -69,7 +69,7 @@ public class ApiRequestLoggingInterceptor implements HandlerInterceptor {
         if (pattern instanceof String value && !value.isBlank()) {
             return value;
         }
-        return request.getRequestURI();
+        return "/api/v1/<unmapped>";
     }
 
     private long durationMs(HttpServletRequest request) {

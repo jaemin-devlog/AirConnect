@@ -1,6 +1,7 @@
 package univ.airconnect.ticket.service;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +13,10 @@ import univ.airconnect.ticket.repository.AdTicketLedgerRepository;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 
 @Service
 @Slf4j
@@ -19,6 +24,12 @@ public class AdTicketGrantService {
 
     private final UserRepository userRepository;
     private final AdTicketLedgerRepository adTicketLedgerRepository;
+
+    @Value("${ads.reward.daily-limit:10}")
+    private int dailyLimit = 10;
+
+    @Value("${ads.reward.daily-limit-zone:Asia/Seoul}")
+    private String dailyLimitZone = "Asia/Seoul";
 
     public AdTicketGrantService(UserRepository userRepository,
                                 AdTicketLedgerRepository adTicketLedgerRepository) {
@@ -43,6 +54,23 @@ public class AdTicketGrantService {
             log.warn("Ad reward ticket grant blocked for deleted user. userId={}, status={}, sessionId={}",
                     userId, user.getStatus(), sessionId);
             throw new AdsException(AdsErrorCode.AD_REWARD_INVALID_SESSION);
+        }
+
+        ZoneId zone = ZoneId.of(dailyLimitZone);
+        LocalDate today = LocalDate.now(zone);
+        LocalDateTime start = today.atStartOfDay(zone).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+        LocalDateTime end = today.plusDays(1).atStartOfDay(zone).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+        // Sessions may be created in advance. Enforce the real limit when money-equivalent tickets change,
+        // while the user row serializes all concurrent rewards for this account.
+        var dailyRewards = adTicketLedgerRepository.findDailyRewardsForUpdate(userId, start, end);
+        TicketLedger concurrentReward = dailyRewards.stream().filter(row -> refId.equals(row.getRefId()))
+                .findFirst().orElse(null);
+        if (concurrentReward != null) {
+            return GrantResult.alreadyGranted(concurrentReward.getBeforeAmount(), concurrentReward.getAfterAmount(),
+                    concurrentReward.ledgerExternalId());
+        }
+        if (dailyRewards.size() >= dailyLimit) {
+            throw new AdsException(AdsErrorCode.AD_REWARD_DAILY_LIMIT_EXCEEDED);
         }
 
         int before = user.getTickets();

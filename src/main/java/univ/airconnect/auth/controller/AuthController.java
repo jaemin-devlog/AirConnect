@@ -56,10 +56,11 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
             @CurrentUserId Long userId,
-            @RequestBody LogoutRequest request
+            @RequestBody LogoutRequest request,
+            HttpServletRequest httpRequest
     ) {
         log.info("Logout request: userId={}", userId);
-        authService.logout(userId, request.getDeviceId());
+        authService.logout(userId, request.getDeviceId(), httpRequest.getHeader("Authorization").substring(7));
         log.info("Logout succeeded");
         return ResponseEntity.noContent().build();
     }

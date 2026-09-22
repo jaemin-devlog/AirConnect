@@ -26,6 +26,8 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
 import univ.airconnect.auth.domain.entity.SocialProvider;
+import univ.airconnect.ads.exception.AdsErrorCode;
+import univ.airconnect.ads.exception.AdsException;
 import univ.airconnect.iap.domain.IapEnvironment;
 import univ.airconnect.iap.domain.IapOrderStatus;
 import univ.airconnect.iap.domain.IapStore;
@@ -292,6 +294,60 @@ class TicketMutationServiceConsistencyTest {
                 LedgerRefType.AD_REWARD_SESSION, String.valueOf(SESSION_ID)).orElseThrow();
         assertThat(change.ledgerExternalId()).isEqualTo(first.ledgerExternalId());
         assertThat(adHistory.count()).isEqualTo(1);
+    }
+
+    @Test
+    void precreatedAdSessionsCannotExceedTheDailyLimitAtGrantTime() {
+        for (long session = 1; session <= 10; session++) {
+            assertThat(adGrants.grantFromAdReward(userId, 1, SESSION_ID + session).granted()).isTrue();
+        }
+        assertThatThrownBy(() -> adGrants.grantFromAdReward(userId, 1, SESSION_ID + 11))
+                .isInstanceOf(AdsException.class)
+                .extracting("errorCode").isEqualTo(AdsErrorCode.AD_REWARD_DAILY_LIMIT_EXCEEDED);
+        assertThat(committedUser().getTickets()).isEqualTo(INITIAL_BALANCE + 10);
+        assertThat(adHistory.count()).isEqualTo(10);
+        assertThat(adGrants.grantFromAdReward(userId, 1, SESSION_ID + 1).granted()).isFalse();
+    }
+
+    @Test
+    void concurrentAdCallbacksShareTheLastDailyRewardSlot() throws Exception {
+        for (long session = 1; session <= 9; session++) {
+            adGrants.grantFromAdReward(userId, 1, SESSION_ID + session);
+        }
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            java.util.concurrent.Callable<Boolean> first = () -> {
+                ready.countDown();
+                awaitLatch(start, "start concurrent callback");
+                return tryAdGrant(SESSION_ID + 10);
+            };
+            java.util.concurrent.Callable<Boolean> second = () -> {
+                ready.countDown();
+                awaitLatch(start, "start concurrent callback");
+                return tryAdGrant(SESSION_ID + 11);
+            };
+            Future<Boolean> a = executor.submit(first);
+            Future<Boolean> b = executor.submit(second);
+            awaitLatch(ready, "both callbacks ready");
+            start.countDown();
+            assertThat(List.of(awaitFuture(a), awaitFuture(b))).containsExactlyInAnyOrder(true, false);
+            assertThat(committedUser().getTickets()).isEqualTo(INITIAL_BALANCE + 10);
+            assertThat(adHistory.count()).isEqualTo(10);
+        } finally {
+            start.countDown();
+            stopExecutor(executor);
+        }
+    }
+
+    private boolean tryAdGrant(long sessionId) {
+        try {
+            return adGrants.grantFromAdReward(userId, 1, sessionId).granted();
+        } catch (AdsException exception) {
+            assertThat(exception.getErrorCode()).isEqualTo(AdsErrorCode.AD_REWARD_DAILY_LIMIT_EXCEEDED);
+            return false;
+        }
     }
 
     private Amounts mutate(Mutation mutation, IapOrder order) {

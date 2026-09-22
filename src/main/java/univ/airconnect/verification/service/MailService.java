@@ -60,7 +60,8 @@ public class MailService {
             mailSender.send(message);
             log.debug("Verification email sent successfully. to={}", maskEmail(to));
         } catch (Exception e) {
-            log.error("Failed to send verification email. to={}, error={}", maskEmail(to), e.getMessage(), e);
+            log.error("Failed to send verification email. to={}, type={}",
+                    maskEmail(to), e.getClass().getSimpleName());
             throw new VerificationException(VerificationErrorCode.MAIL_SEND_FAILED);
         }
     }

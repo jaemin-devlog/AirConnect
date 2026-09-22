@@ -24,7 +24,7 @@ public class IapQueryService {
 
     @Transactional(readOnly = true)
     public IapOrderResponse getAppleTransaction(Long userId, String transactionId) {
-        log.info("IAP query Apple started. userId={}, transactionId={}", userId, transactionId);
+        log.info("IAP query Apple started. userId={}", userId);
         IapOrder order = iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, transactionId)
                 .orElseThrow(() -> new IapException(IapErrorCode.IAP_ORDER_NOT_FOUND));
         if (!order.getUserId().equals(userId)) {

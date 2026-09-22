@@ -9,8 +9,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 import univ.airconnect.iap.exception.IapErrorCode;
 import univ.airconnect.iap.exception.IapException;
 import univ.airconnect.iap.infrastructure.IapProperties;
@@ -26,11 +28,15 @@ public class GooglePlayApiClient {
 
     private final IapProperties iapProperties;
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
 
     public GooglePlayApiClient(IapProperties iapProperties, ObjectMapper objectMapper) {
         this.iapProperties = iapProperties;
         this.objectMapper = objectMapper;
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(5_000);
+        requestFactory.setReadTimeout(10_000);
+        this.restTemplate = new RestTemplate(requestFactory);
     }
 
     public JsonNode verifyProductPurchase(String packageName, String productId, String purchaseToken) {
@@ -38,8 +44,10 @@ public class GooglePlayApiClient {
             log.info("GooglePlay API verify call started. packageName={}, productId={}, purchaseTokenExists={}",
                     packageName, productId, purchaseToken != null);
             String accessToken = accessToken();
-            String url = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/"
-                    + packageName + "/purchases/productsv2/tokens/" + purchaseToken;
+            var url = UriComponentsBuilder.fromUriString("https://androidpublisher.googleapis.com")
+                    .pathSegment("androidpublisher", "v3", "applications", packageName,
+                            "purchases", "productsv2", "tokens", purchaseToken)
+                    .build().encode().toUri();
 
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(accessToken);
@@ -54,8 +62,8 @@ public class GooglePlayApiClient {
                     packageName, productId, e.getErrorCode().getCode(), e.getMessage());
             throw e;
         } catch (Exception e) {
-            log.warn("GooglePlay API verify unexpected failure. packageName={}, productId={}, reason={}",
-                    packageName, productId, e.getMessage());
+            log.warn("GooglePlay API verify unexpected failure. packageName={}, productId={}, type={}",
+                    packageName, productId, e.getClass().getSimpleName());
             throw new IapException(IapErrorCode.IAP_GOOGLE_VERIFY_FAILED, "Google Play 검증 호출 실패");
         }
     }
@@ -69,7 +77,7 @@ public class GooglePlayApiClient {
             log.info("GooglePlay API access token issuance completed.");
             return credentials.getAccessToken().getTokenValue();
         } catch (Exception e) {
-            log.warn("GooglePlay API access token issuance failed. reason={}", e.getMessage());
+            log.warn("GooglePlay API access token issuance failed. type={}", e.getClass().getSimpleName());
             throw new IapException(IapErrorCode.IAP_GOOGLE_VERIFY_FAILED, "Google 서비스 계정 설정 오류");
         }
     }

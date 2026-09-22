@@ -19,6 +19,7 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.access.AccessDeniedException;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
+import univ.airconnect.auth.security.AccessTokenRevocationService;
 import univ.airconnect.chat.service.ChatService;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
@@ -29,6 +30,7 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.util.List;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -54,7 +56,8 @@ class StompBrokerSecurityIntegrationTest {
     @Mock UserRepository userRepository;
     @Mock ChatRoomMemberRepository chatRoomMemberRepository;
 
-    private final StompSessionRegistry sessionRegistry = new StompSessionRegistry();
+    private final AccessTokenRevocationService revocations = mock(AccessTokenRevocationService.class);
+    private final StompSessionRegistry sessionRegistry = new StompSessionRegistry(revocations);
     private ExecutorSubscribableChannel clientInboundChannel;
     private ExecutorSubscribableChannel clientOutboundChannel;
     private ExecutorSubscribableChannel brokerChannel;
@@ -150,7 +153,7 @@ class StompBrokerSecurityIntegrationTest {
     }
 
     @Test
-    void logoutRevokesSessionWhileOldBrokerSubscriptionDeliversZeroMessages() {
+    void logoutRevokesSessionAndReplacesProtectedBrokerMessageWithSafeError() {
         allowActiveSession("logout-session", 1L);
         when(chatService.isMember(77L, 1L)).thenReturn(true);
         subscribe("logout-session", 1L, "/sub/chat/room/77");
@@ -158,6 +161,10 @@ class StompBrokerSecurityIntegrationTest {
         assertThat(sessionRegistry.revokeUser(1L)).isEqualTo(1);
         publish("/sub/chat/room/77");
 
+        Message<?> error = delivered.poll();
+        assertThat(error).isNotNull();
+        assertThat(StompHeaderAccessor.wrap(error).getCommand()).isEqualTo(StompCommand.ERROR);
+        assertThat((byte[]) error.getPayload()).isEmpty();
         assertThat(delivered).isEmpty();
     }
 
@@ -190,7 +197,7 @@ class StompBrokerSecurityIntegrationTest {
         User user = mock(User.class);
         when(user.getStatus()).thenReturn(UserStatus.ACTIVE);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        sessionRegistry.register(sessionId, userId);
+        sessionRegistry.register(sessionId, userId, Instant.now().plusSeconds(3600), sessionId);
 
         StompHeaderAccessor connect = StompHeaderAccessor.create(StompCommand.CONNECT);
         connect.setSessionId(sessionId);

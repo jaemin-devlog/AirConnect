@@ -56,11 +56,10 @@ public class IapController {
     ) {
         IosTransactionVerifyRequest normalizedRequest = normalizeIosVerifyRequest(request, idempotencyKey);
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
-        log.info("IAP iOS verify request received. traceId={}, userId={}, transactionId={}, appAccountToken={}",
-                traceId, userId, normalizedRequest.getTransactionId(), payloadSecurityUtil.mask(normalizedRequest.getAppAccountToken()));
+        log.info("IAP iOS verify request received. traceId={}, userId={}", traceId, userId);
         IapVerifyResponse response = iapProcessingService.verifyIos(userId, normalizedRequest);
-        log.info("IAP iOS verify completed. traceId={}, userId={}, transactionId={}, grantStatus={}",
-                traceId, userId, response.getTransactionId(), response.getGrantStatus());
+        log.info("IAP iOS verify completed. traceId={}, userId={}, grantStatus={}",
+                traceId, userId, response.getGrantStatus());
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
@@ -86,8 +85,7 @@ public class IapController {
             HttpServletRequest httpRequest
     ) {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
-        log.info("IAP iOS query request received. traceId={}, userId={}, transactionId={}",
-                traceId, userId, transactionId);
+        log.info("IAP iOS query request received. traceId={}, userId={}", traceId, userId);
         IapOrderResponse response = iapQueryService.getAppleTransaction(userId, transactionId);
         log.info("IAP iOS query completed. traceId={}, userId={}, orderId={}, status={}",
                 traceId, userId, response.getId(), response.getStatus());
@@ -101,11 +99,10 @@ public class IapController {
             HttpServletRequest httpRequest
     ) {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
-        log.info("IAP Android verify request received. traceId={}, userId={}, purchaseToken={}, orderId={}",
-                traceId, userId, payloadSecurityUtil.mask(request.getPurchaseToken()), request.getOrderId());
+        log.info("IAP Android verify request received. traceId={}, userId={}", traceId, userId);
         IapVerifyResponse response = iapProcessingService.verifyAndroid(userId, request);
-        log.info("IAP Android verify completed. traceId={}, userId={}, purchaseToken={}, grantStatus={}",
-                traceId, userId, payloadSecurityUtil.mask(response.getPurchaseToken()), response.getGrantStatus());
+        log.info("IAP Android verify completed. traceId={}, userId={}, grantStatus={}",
+                traceId, userId, response.getGrantStatus());
         return ResponseEntity.ok(ApiResponse.ok(response, traceId));
     }
 
@@ -131,8 +128,7 @@ public class IapController {
             HttpServletRequest httpRequest
     ) {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
-        log.info("IAP Android query request received. traceId={}, userId={}, purchaseToken={}",
-                traceId, userId, payloadSecurityUtil.mask(purchaseToken));
+        log.info("IAP Android query request received. traceId={}, userId={}", traceId, userId);
         IapOrderResponse response = iapQueryService.getGooglePurchase(userId, purchaseToken);
         log.info("IAP Android query completed. traceId={}, userId={}, orderId={}, status={}",
                 traceId, userId, response.getId(), response.getStatus());
@@ -142,6 +138,9 @@ public class IapController {
     private IosTransactionVerifyRequest normalizeIosVerifyRequest(IosTransactionVerifyRequest request, String idempotencyKey) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return request;
+        }
+        if (idempotencyKey.length() > 80) {
+            throw new IapException(IapErrorCode.IAP_INVALID_TRANSACTION);
         }
         if (request.getTransactionId() != null
                 && !request.getTransactionId().isBlank()

@@ -39,6 +39,8 @@ import univ.airconnect.auth.domain.entity.SocialProvider;
 import univ.airconnect.auth.infrastructure.AdminAccountProperties;
 import univ.airconnect.auth.repository.*;
 import univ.airconnect.auth.security.TokenHashService;
+import univ.airconnect.auth.security.AccessTokenRevocationService;
+import univ.airconnect.auth.security.RefreshTokenRotationService;
 import univ.airconnect.auth.service.*;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
@@ -266,6 +268,13 @@ public final class IsolatedReportMySqlServer implements AutoCloseable {
         @Bean AdminAccountProperties adminAccountProperties() { return new AdminAccountProperties(true, EMAIL, PASSWORD, "검증", "검증", "가상", 99999999); }
         @Bean JwtProperties jwtProperties() { return new JwtProperties(UUID.randomUUID() + "-" + UUID.randomUUID(), 3600, 3600); }
         @Bean TokenHashService tokenHashService() { return new TokenHashService("isolated-fixture"); }
+        @Bean AccessTokenRevocationService accessTokenRevocationService() {
+            var mock = mock(AccessTokenRevocationService.class);
+            when(mock.isSessionActive(anyLong(), anyString(), anyString())).thenReturn(true);
+            return mock;
+        }
+        @Bean RefreshTokenRotationService refreshTokenRotationService() { return mock(RefreshTokenRotationService.class); }
+        @Bean ChatService chatService() { return mock(ChatService.class); }
         @Bean RefreshTokenRepository refreshTokenRepository() {
             var mock = mock(RefreshTokenRepository.class); when(mock.findByUserId(anyLong())).thenReturn(List.of()); return mock;
         }

@@ -1,6 +1,8 @@
 package univ.airconnect.global.security.jwt;
 
 import jakarta.servlet.ServletException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
@@ -25,13 +27,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JwtAuthenticationFilterTest {
 
     private final JwtProvider jwtProvider = mock(JwtProvider.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final JwtAuthenticationFilter jwtAuthenticationFilter =
-            new JwtAuthenticationFilter(jwtProvider, userRepository);
+            new JwtAuthenticationFilter(jwtProvider, userRepository, new ObjectMapper());
 
     @AfterEach
     void tearDown() {
@@ -83,6 +87,38 @@ class JwtAuthenticationFilterTest {
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         assertThat(request.getAttribute(JwtAuthenticationFilter.AUTH_EXCEPTION_ATTRIBUTE)).isSameAs(authException);
+    }
+
+    @Test
+    void redisFailureReturnsSanitized503AndStopsFilterChain() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer secret-access-token");
+        request.setAttribute(univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE, "safe-trace");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        jakarta.servlet.FilterChain chain = mock(jakarta.servlet.FilterChain.class);
+        doThrow(new RedisConnectionFailureException("secret-access-token internal.redis:6379"))
+                .when(jwtProvider).validateAccessToken("secret-access-token");
+
+        jwtAuthenticationFilter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(503);
+        var body = new ObjectMapper().readTree(response.getContentAsString());
+        assertThat(body.path("success").asBoolean()).isFalse();
+        assertThat(body.path("error").path("httpStatus").asInt()).isEqualTo(503);
+        assertThat(body.path("traceId").asText()).isEqualTo("safe-trace");
+        assertThat(response.getContentAsString()).doesNotContain("secret-access-token", "internal.redis", "Exception");
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        verifyNoInteractions(chain, userRepository);
+    }
+
+    @Test
+    void unrelatedProgrammingFailureIsNotHiddenAsDependencyOutage() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer token");
+        doThrow(new IllegalStateException("programming failure")).when(jwtProvider).validateAccessToken("token");
+        assertThatThrownBy(() -> jwtAuthenticationFilter.doFilter(
+                request, new MockHttpServletResponse(), new MockFilterChain()))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     private User user(Long id, UserRole role, UserStatus status) {

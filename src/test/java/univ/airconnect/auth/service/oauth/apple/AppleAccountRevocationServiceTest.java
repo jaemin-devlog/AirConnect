@@ -82,7 +82,8 @@ class AppleAccountRevocationServiceTest {
 
         assertThat(result.attempted()).isTrue();
         assertThat(result.success()).isFalse();
-        assertThat(result.reason()).contains("network-timeout");
+        assertThat(result.reason()).isEqualTo("APPLE_REVOKE_FAILED");
+        assertThat(result.reason()).doesNotContain("network-timeout");
     }
 
     private AppleAccountRevocationService createService() {

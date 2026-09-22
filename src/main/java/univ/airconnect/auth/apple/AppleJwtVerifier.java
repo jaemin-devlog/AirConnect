@@ -37,10 +37,10 @@ public class AppleJwtVerifier {
         } catch (AuthException e) {
             throw e;
         } catch (IllegalStateException e) {
-            log.warn("Apple login verify config/state error. reason={}", e.getMessage());
+            log.warn("Apple login verify config/state error. type={}", e.getClass().getSimpleName());
             throw new AuthException(AuthErrorCode.INVALID_APPLE_TOKEN);
         } catch (Exception e) {
-            log.warn("Apple login verify failed. reason={}", e.getMessage());
+            log.warn("Apple login verify failed. type={}", e.getClass().getSimpleName());
             throw new AuthException(AuthErrorCode.INVALID_APPLE_TOKEN);
         }
     }

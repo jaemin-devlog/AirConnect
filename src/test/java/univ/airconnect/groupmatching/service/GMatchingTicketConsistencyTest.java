@@ -128,6 +128,8 @@ class GMatchingTicketConsistencyTest {
     @MockitoBean SimpMessageSendingOperations messaging;
     @MockitoBean NotificationService notifications;
     @MockitoBean UserBlockPolicyService blockPolicy;
+    @MockitoBean univ.airconnect.chat.service.ChatMessageThrottleService chatMessageThrottleService;
+    @MockitoBean univ.airconnect.auth.security.AccessTokenRevocationService accessTokenRevocationService;
     @MockitoBean GMatchingEventPublisher matchingEvents;
     @MockitoBean GMatchingPushService matchingPush;
     @MockitoBean AnalyticsService analytics;
@@ -180,6 +182,29 @@ class GMatchingTicketConsistencyTest {
         verify(matchingEvents, times(2)).publishMatched(any());
         verify(notifications, times(size.getValue() * 2)).createAndEnqueue(any());
         verify(matchingPush, never()).notifyMatched(any(), any(), any());
+    }
+
+    @Test
+    void blockAddedAfterPairingCancelsWithoutCreatingRoomOrSpendingTickets() {
+        Fixture fixture = committedFixture(GTeamSize.TWO, false);
+        when(blockPolicy.findAnyBlockedCounterpart(any(), any()))
+                .thenReturn(java.util.Optional.of(fixture.userIds().get(0)));
+
+        assertThat(matching.finalizePendingMatches()).isZero();
+
+        transaction.executeWithoutResult(status -> {
+            entityManager.clear();
+            assertThat(finalRooms.count()).isZero();
+            assertThat(ticketHistory.count()).isZero();
+            assertThat(teamRooms.findById(fixture.firstTeamId()).orElseThrow().getStatus())
+                    .isEqualTo(GTemporaryTeamRoomStatus.OPEN);
+            assertThat(teamRooms.findById(fixture.secondTeamId()).orElseThrow().getStatus())
+                    .isEqualTo(GTemporaryTeamRoomStatus.OPEN);
+            assertThat(matchResults.findById(fixture.resultId()).orElseThrow().getStatus())
+                    .isEqualTo(GMatchResultStatus.CANCELLED);
+            fixture.beforeTickets().forEach((id, amount) ->
+                    assertThat(users.findById(id).orElseThrow().getTickets()).isEqualTo(amount));
+        });
     }
 
     @ParameterizedTest
@@ -370,7 +395,7 @@ class GMatchingTicketConsistencyTest {
             GTemporaryTeamRoom second = matchedTeam(size, GTeamGender.F,
                     ids.subList(size.getValue(), ids.size()));
             GMatchResult result = GMatchResult.create(first.getId(), second.getId());
-            // Set the synthetic time BEFORE the initial INSERT: matchedAt is updatable=false.
+            // Make the committed fixture due before the finalization worker runs.
             ReflectionTestUtils.setField(result, "matchedAt", LocalDateTime.now().minusSeconds(30));
             matchResults.save(result);
             entityManager.flush();

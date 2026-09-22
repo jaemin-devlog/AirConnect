@@ -34,6 +34,9 @@ public class RefreshToken {
     /** RefreshToken 해시값(평문 저장 금지) */
     private String token;
 
+    /** Stable login session shared by this device's access tokens across refresh rotations. */
+    private String sessionId;
+
     /**
      * Redis TTL (초 단위).
      * 만료 시 Redis에서 자동 삭제된다.
@@ -45,11 +48,16 @@ public class RefreshToken {
      * RefreshToken 생성 팩토리 메서드
      */
     public static RefreshToken create(Long userId, String deviceId, String tokenHash) {
+        return create(userId, deviceId, tokenHash, null);
+    }
+
+    public static RefreshToken create(Long userId, String deviceId, String tokenHash, String sessionId) {
         return RefreshToken.builder()
                 .id(generateId(userId, deviceId))
                 .userId(userId)
                 .deviceId(deviceId)
                 .token(tokenHash)
+                .sessionId(sessionId)
                 .ttlSeconds(TTL_SECONDS)
                 .build();
     }

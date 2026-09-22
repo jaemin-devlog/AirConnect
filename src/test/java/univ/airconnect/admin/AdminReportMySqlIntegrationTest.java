@@ -45,7 +45,7 @@ class AdminReportMySqlIntegrationTest {
         var before = conversationState();
         String path = "/api/v1/admin/chat-rooms/" + server.roomId + "/message-history";
         assertThat(call("POST", path, null, Map.of()).statusCode()).isEqualTo(401);
-        String ordinary = server.context.getBean(JwtProvider.class).createAccessToken(IsolatedReportMySqlServer.REPORTER);
+        String ordinary = server.context.getBean(JwtProvider.class).createAccessToken(IsolatedReportMySqlServer.REPORTER, "fixture-device", "fixture-session");
         assertThat(call("POST", path, ordinary, Map.of()).statusCode()).isEqualTo(403);
         var first = call("POST", path, token, Map.of("size", 2));
         assertThat(first.statusCode()).isEqualTo(200);
@@ -91,7 +91,7 @@ class AdminReportMySqlIntegrationTest {
     @Test void realJwtAdminBoundary() throws Exception {
         assertThat(call("GET", PREFIX + server.reportId, null, null).statusCode()).isEqualTo(401);
         assertThat(call("GET", PREFIX + server.reportId, "invalid-fixture", null).statusCode()).isEqualTo(401);
-        String ordinary = server.context.getBean(JwtProvider.class).createAccessToken(IsolatedReportMySqlServer.REPORTER);
+        String ordinary = server.context.getBean(JwtProvider.class).createAccessToken(IsolatedReportMySqlServer.REPORTER, "fixture-device", "fixture-session");
         assertThat(call("GET", PREFIX + server.reportId, ordinary, null).statusCode()).isEqualTo(403);
         assertThat(call("GET", PREFIX + server.reportId, token, null).statusCode()).isEqualTo(200);
         assertThat(call("POST", "/api/v1/auth/admin/login", null, Map.of("email", IsolatedReportMySqlServer.EMAIL,
@@ -260,7 +260,7 @@ class AdminReportMySqlIntegrationTest {
         assertThat(server.jdbc.queryForObject("SELECT COUNT(*) FROM ticket_ledger WHERE ref_id=?", Integer.class, "admin-adjustment:" + id)).isEqualTo(1);
         assertThat(call("POST", path, token, Map.of("operationId", id, "userId", 3, "amount", 4, "reason", "different")).statusCode()).isEqualTo(409);
         assertThat(call("GET", path + "/" + id, null, null).statusCode()).isEqualTo(401);
-        String ordinary = server.context.getBean(JwtProvider.class).createAccessToken(IsolatedReportMySqlServer.REPORTER);
+        String ordinary = server.context.getBean(JwtProvider.class).createAccessToken(IsolatedReportMySqlServer.REPORTER, "fixture-device", "fixture-session");
         assertThat(call("GET", path + "/" + id, ordinary, null).statusCode()).isEqualTo(403);
     }
 

@@ -49,7 +49,7 @@ public class UserController {
     @PostMapping("/sign-up")
     public ResponseEntity<ApiResponse<SignUpResponse>> signUp(
             @CurrentUserId Long userId,
-            @RequestBody SignUpRequest request,
+            @Valid @RequestBody SignUpRequest request,
             HttpServletRequest httpRequest
     ) {
         String traceId = (String) httpRequest.getAttribute(TRACE_ID_ATTRIBUTE);
@@ -111,7 +111,7 @@ public class UserController {
     @PatchMapping("/profile")
     public ResponseEntity<ApiResponse<UserProfileResponse>> updateProfile(
             @CurrentUserId Long userId,
-            @RequestBody UpdateProfileRequest request,
+            @Valid @RequestBody UpdateProfileRequest request,
             HttpServletRequest httpRequest
     ) {
         log.info("User profile update requested: userId={}", userId);

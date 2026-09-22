@@ -106,6 +106,8 @@ class ChatServiceTest {
     @Mock
     private StompSessionRegistry stompSessionRegistry;
     @Mock
+    private ChatMessageThrottleService chatMessageThrottleService;
+    @Mock
     private ValueOperations<String, Object> valueOperations;
     @Mock
     private SetOperations<String, Object> setOperations;
@@ -967,10 +969,74 @@ class ChatServiceTest {
                 objectMapper,
                 ChatDeliveryTestSupport.immediate(notificationService, redisTemplate, messagingTemplate, objectMapper),
                 userBlockPolicyService,
-                stompSessionRegistry
+                stompSessionRegistry,
+                chatMessageThrottleService
         );
         ReflectionTestUtils.setField(service, "imageUrlBase", "http://localhost:8080/api/v1/users/profile-images");
         return service;
+    }
+
+    @Test
+    void blockedCounterpartCannotBeReadThroughAnyChatProfileEndpoint() {
+        ChatService service = createService();
+        User target = createUser(2L, "blocked-target");
+        ChatRoom room = ChatRoom.create("room", ChatRoomType.GROUP);
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserIdAndHiddenAtIsNull(99L, 1L)).thenReturn(true);
+        when(chatRoomMemberRepository.existsByChatRoomIdAndUserId(99L, 2L)).thenReturn(true);
+        when(chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(99L)))
+                .thenReturn(List.of(ChatRoomMember.create(room, target)));
+        when(userBlockPolicyService.hasBlockRelation(1L, 2L)).thenReturn(true);
+        when(userBlockPolicyService.resolveBlockedCounterpartIds(1L, List.of(2L))).thenReturn(Set.of(2L));
+
+        assertThatThrownBy(() -> service.getParticipantProfile(99L, 1L, 2L))
+                .isInstanceOf(univ.airconnect.global.error.BusinessException.class)
+                .extracting("errorCode").isEqualTo(univ.airconnect.global.error.ErrorCode.USER_BLOCKED_INTERACTION);
+        assertThatThrownBy(() -> service.getCounterpartProfile(99L, 1L))
+                .isInstanceOf(univ.airconnect.global.error.BusinessException.class)
+                .extracting("errorCode").isEqualTo(univ.airconnect.global.error.ErrorCode.USER_BLOCKED_INTERACTION);
+        assertThat(service.getParticipantProfiles(99L, 1L)).isEmpty();
+        verify(userRepository, never()).findAllByIdWithProfile(any());
+    }
+
+    @Test
+    void blockedCounterpartProfileIsRemovedFromExistingPersonalRoomList() {
+        ChatService service = createService();
+        User me = createUser(1L, "me");
+        User target = createUser(2L, "blocked-target");
+        ChatRoom room = ChatRoom.createPersonal("personal", 1L, 2L, 88L);
+        ReflectionTestUtils.setField(room, "id", 99L);
+        ChatRoomMember myMembership = ChatRoomMember.create(room, me);
+        when(chatRoomMemberRepository.findByUser_IdWithRoom(1L)).thenReturn(List.of(myMembership));
+        when(chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(99L)))
+                .thenReturn(List.of(myMembership, ChatRoomMember.create(room, target)));
+        when(userBlockPolicyService.resolveBlockedCounterpartIds(1L, List.of(2L))).thenReturn(Set.of(2L));
+
+        var response = service.findAllRooms(1L);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).getTargetProfile()).isNull();
+        assertThat(response.get(0).getTargetNickname()).isNull();
+        assertThat(response.get(0).getTargetProfileImage()).isNull();
+    }
+
+    @Test
+    void restAndStompShareUserSendQuotaBeforeAnyMessageIsPersisted() {
+        ChatService service = createService();
+        org.mockito.Mockito.doThrow(new univ.airconnect.global.error.BusinessException(
+                univ.airconnect.global.error.ErrorCode.CHAT_RATE_LIMITED))
+                .when(chatMessageThrottleService).checkSend(1L);
+        ChatMessageRequest stomp = new ChatMessageRequest();
+        ReflectionTestUtils.setField(stomp, "roomId", 99L);
+        ReflectionTestUtils.setField(stomp, "message", "dummy message");
+        var rest = new univ.airconnect.chat.dto.request.SendMessageRequest();
+        ReflectionTestUtils.setField(rest, "content", "dummy message");
+
+        assertThatThrownBy(() -> service.sendMessage(1L, stomp))
+                .extracting("errorCode").isEqualTo(univ.airconnect.global.error.ErrorCode.CHAT_RATE_LIMITED);
+        assertThatThrownBy(() -> service.sendMessage(1L, 99L, rest))
+                .extracting("errorCode").isEqualTo(univ.airconnect.global.error.ErrorCode.CHAT_RATE_LIMITED);
+        verify(chatMessageRepository, never()).save(any());
+        verify(userRepository, never()).findByIdForUpdate(any());
     }
 
     private User createUser(Long userId, String nickname) {

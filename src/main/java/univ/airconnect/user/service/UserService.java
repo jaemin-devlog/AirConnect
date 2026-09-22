@@ -167,9 +167,7 @@ public class UserService {
         log.debug("🔗 현재 imageUrlBase: {}", imageUrlBase);
         UserProfileResponse profile = userProfileRepository.findByUserId(userId)
                 .map(userProfile -> {
-                    log.debug("📸 저장된 profileImagePath (파일명): {}", userProfile.getProfileImagePath());
                     UserProfileResponse resp = UserProfileResponse.from(userProfile, imageUrlBase);
-                    log.debug("📸 변환된 profileImagePath (URL): {}", resp.getProfileImagePath());
                     return resp;
                 })
                 .orElse(null);
@@ -319,9 +317,7 @@ public class UserService {
 
         ensureUserActive(userProfile.getUser());
 
-        log.debug("📸 저장된 profileImagePath (파일명): {}", userProfile.getProfileImagePath());
         UserProfileResponse response = UserProfileResponse.from(userProfile, imageUrlBase);
-        log.debug("📸 변환된 profileImagePath (URL): {}", response.getProfileImagePath());
 
         return response;
     }

@@ -14,6 +14,9 @@ import univ.airconnect.compatibility.domain.CompatibilityResult;
 import univ.airconnect.compatibility.dto.response.CompatibilityResponse;
 import univ.airconnect.compatibility.exception.CompatibilityErrorCode;
 import univ.airconnect.compatibility.exception.CompatibilityException;
+import univ.airconnect.global.error.BusinessException;
+import univ.airconnect.global.error.ErrorCode;
+import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.user.domain.UserStatus;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
@@ -26,10 +29,14 @@ public class CompatibilityService {
     private final UserRepository userRepository;
     private final CompatibilityScoreCalculator compatibilityScoreCalculator;
     private final CompatibilitySummaryService compatibilitySummaryService;
+    private final UserBlockPolicyService userBlockPolicyService;
 
     public CompatibilityResponse getCompatibility(Long myUserId, Long targetUserId) {
         if (myUserId == null || targetUserId == null || myUserId.equals(targetUserId)) {
             throw new CompatibilityException(CompatibilityErrorCode.INVALID_TARGET);
+        }
+        if (userBlockPolicyService.hasBlockRelation(myUserId, targetUserId)) {
+            throw new BusinessException(ErrorCode.USER_BLOCKED_INTERACTION);
         }
 
         Map<Long, User> users = fetchUsersWithProfile(List.of(myUserId, targetUserId));

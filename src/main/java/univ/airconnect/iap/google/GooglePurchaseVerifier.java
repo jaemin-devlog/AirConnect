@@ -37,8 +37,7 @@ public class GooglePurchaseVerifier implements StorePurchaseVerifier {
     @Override
     public StoreVerificationResult verify(Long userId, Object request) {
         AndroidPurchaseVerifyRequest req = (AndroidPurchaseVerifyRequest) request;
-        log.info("Google verifier started. userId={}, orderId={}, packageName={}",
-                userId, req.getOrderId(), req.getPackageName());
+        log.info("Google verifier started. userId={}, packageName={}", userId, req.getPackageName());
         if (!iapProperties.getGoogle().isVerifyEnabled()) {
             log.warn("Google verifier blocked. verifyEnabled=false, userId={}", userId);
             throw new IapException(IapErrorCode.IAP_GOOGLE_VERIFY_FAILED, "Google verify 비활성화 상태입니다.");
@@ -77,8 +76,7 @@ public class GooglePurchaseVerifier implements StorePurchaseVerifier {
                 .rawPayloadMasked(payloadSecurityUtil.mask(payloadRaw))
                 .valid(true)
                 .build();
-        log.info("Google verifier completed. userId={}, orderId={}, productId={}, hash={}",
-                userId, orderId, productId, result.getVerificationHash());
+        log.info("Google verifier completed. userId={}, productId={}", userId, productId);
         return result;
     }
 }

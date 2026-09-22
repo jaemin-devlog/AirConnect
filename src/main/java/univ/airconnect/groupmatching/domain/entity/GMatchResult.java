@@ -56,7 +56,7 @@ public class GMatchResult {
     @Column(name = "final_group_chat_room_id", unique = true)
     private Long finalGroupChatRoomId;
 
-    @Column(name = "matched_at", nullable = false, updatable = false)
+    @Column(name = "matched_at", nullable = false)
     private LocalDateTime matchedAt;
 
     @Column(name = "final_room_created_at")
@@ -117,6 +117,16 @@ public class GMatchResult {
         }
         this.status = GMatchResultStatus.CANCELLED;
         this.cancelledAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void retryCancelledMatch() {
+        if (this.status != GMatchResultStatus.CANCELLED || this.finalGroupChatRoomId != null) {
+            throw new BusinessException(ErrorCode.MATCH_RESULT_STATE_INVALID);
+        }
+        this.status = GMatchResultStatus.MATCHED;
+        this.matchedAt = LocalDateTime.now();
+        this.cancelledAt = null;
         this.updatedAt = LocalDateTime.now();
     }
 

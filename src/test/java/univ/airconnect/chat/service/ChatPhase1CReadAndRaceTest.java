@@ -62,6 +62,8 @@ class ChatPhase1CReadAndRaceTest {
     @MockitoBean SimpMessageSendingOperations messagingTemplate;
     @MockitoBean NotificationService notifications;
     @MockitoBean UserBlockPolicyService blockPolicy;
+    @MockitoBean ChatMessageThrottleService chatMessageThrottleService;
+    @MockitoBean univ.airconnect.auth.security.AccessTokenRevocationService accessTokenRevocationService;
 
     private TransactionTemplate transaction;
     private User sender;
@@ -163,14 +165,16 @@ class ChatPhase1CReadAndRaceTest {
 
     @Test
     void deletedGroupMemberIsExcludedFromNewMessageUnreadCount() {
-        Long groupRoomId = transaction.execute(status -> chatService.createGroupRoomWithMembers(
-                "phase-1c-deleted-member",
-                List.of(sender.getId(), recipient.getId(), thirdUser.getId())).getId());
-        transaction.executeWithoutResult(status -> users.findByIdForUpdate(thirdUser.getId()).orElseThrow().markDeleted());
+        try (var databasePrecisionClock = DatabasePrecisionChatClock.open()) {
+            Long groupRoomId = transaction.execute(status -> chatService.createGroupRoomWithMembers(
+                    "phase-1c-deleted-member",
+                    List.of(sender.getId(), recipient.getId(), thirdUser.getId())).getId());
+            transaction.executeWithoutResult(status -> users.findByIdForUpdate(thirdUser.getId()).orElseThrow().markDeleted());
 
-        ChatMessageResponse response = send(sender.getId(), groupRoomId, "active recipients only", "phase-1c-active");
+            ChatMessageResponse response = send(sender.getId(), groupRoomId, "active recipients only", "phase-1c-active");
 
-        assertThat(response.getUnreadCount()).isEqualTo(1);
+            assertThat(response.getUnreadCount()).isEqualTo(1);
+        }
     }
 
     @Test

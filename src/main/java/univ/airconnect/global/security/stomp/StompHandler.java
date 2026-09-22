@@ -14,6 +14,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import univ.airconnect.chat.service.ChatService;
+import univ.airconnect.auth.security.AccessTokenRevocationService;
 import univ.airconnect.global.security.jwt.JwtProvider;
 import univ.airconnect.global.security.principal.CustomUserPrincipal;
 import univ.airconnect.groupmatching.service.GMatchingService;
@@ -22,8 +23,6 @@ import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
 import java.security.Principal;
-import java.util.Base64;
-import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -90,11 +89,10 @@ public class StompHandler implements ChannelInterceptor {
             }
         } catch (RuntimeException ex) {
             stompOpsMonitor.recordInboundFailure(command, ex);
-            log.warn("STOMP INBOUND FAIL: command={}, sessionId={}, type={}, message={}",
+            log.warn("STOMP INBOUND FAIL: command={}, sessionId={}, type={}",
                     command,
                     accessor.getSessionId(),
-                    ex.getClass().getSimpleName(),
-                    ex.getMessage());
+                    ex.getClass().getSimpleName());
             throw ex;
         }
 
@@ -103,10 +101,8 @@ public class StompHandler implements ChannelInterceptor {
 
     private void handleConnectWithLogging(StompHeaderAccessor accessor) {
         String token = extractToken(accessor);
-        String tokenSubject = extractSubjectForLog(token);
-
-        log.debug("STOMP CONNECT INBOUND: sessionId={}, subject={}, headerKey={}",
-                accessor.getSessionId(), tokenSubject, resolveAuthHeaderKey(accessor));
+        log.debug("STOMP CONNECT INBOUND: sessionId={}, headerKey={}",
+                accessor.getSessionId(), resolveAuthHeaderKey(accessor));
 
         try {
             jwtProvider.validateAccessToken(token);
@@ -118,27 +114,28 @@ public class StompHandler implements ChannelInterceptor {
                     new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 
             accessor.setUser(authentication);
-            sessionRegistry.register(accessor.getSessionId(), userId);
+            sessionRegistry.register(accessor.getSessionId(), userId,
+                    jwtProvider.getAccessTokenExpiresAt(token), AccessTokenRevocationService.fingerprint(token),
+                    jwtProvider.getDeviceId(token), jwtProvider.getSessionId(token));
             try {
                 // principal 정보가 이미 세팅되어 있으므로 Redis 세션 저장 실패로 CONNECT를 깨지 않는다.
                 chatService.saveSessionInfo(accessor.getSessionId(), userId);
             } catch (RuntimeException redisEx) {
                 stompOpsMonitor.recordSideEffectFailure("CONNECT_SAVE_SESSION", redisEx);
-                log.warn("STOMP CONNECT SIDE-EFFECT FAIL: sessionId={}, userId={}, type={}, message={}",
+                log.warn("STOMP CONNECT SIDE-EFFECT FAIL: sessionId={}, userId={}, type={}",
                         accessor.getSessionId(),
                         userId,
-                        redisEx.getClass().getSimpleName(),
-                        redisEx.getMessage());
+                        redisEx.getClass().getSimpleName());
             }
 
             stompOpsMonitor.recordConnectSuccess();
 
-            log.debug("STOMP CONNECT SUCCESS: sessionId={}, subject={}, userId={}",
-                    accessor.getSessionId(), tokenSubject, userId);
+            log.debug("STOMP CONNECT SUCCESS: sessionId={}, userId={}",
+                    accessor.getSessionId(), userId);
         } catch (Exception e) {
             stompOpsMonitor.recordConnectFailure(e);
-            log.warn("STOMP CONNECT FAIL: sessionId={}, subject={}, exceptionType={}, message={}",
-                    accessor.getSessionId(), tokenSubject, e.getClass().getSimpleName(), e.getMessage());
+            log.warn("STOMP CONNECT FAIL: sessionId={}, exceptionType={}",
+                    accessor.getSessionId(), e.getClass().getSimpleName());
             throw e;
         }
     }
@@ -204,12 +201,11 @@ public class StompHandler implements ChannelInterceptor {
             );
         } catch (RuntimeException ex) {
             stompOpsMonitor.recordSideEffectFailure("SUBSCRIBE_REGISTRATION", ex);
-            log.warn("STOMP SUBSCRIBE SIDE-EFFECT FAIL: sessionId={}, userId={}, roomId={}, type={}, message={}",
+            log.warn("STOMP SUBSCRIBE SIDE-EFFECT FAIL: sessionId={}, userId={}, roomId={}, type={}",
                     accessor.getSessionId(),
                     userId,
                     roomId,
-                    ex.getClass().getSimpleName(),
-                    ex.getMessage());
+                    ex.getClass().getSimpleName());
         }
 
         stompOpsMonitor.recordSubscribeSuccess();
@@ -302,33 +298,6 @@ public class StompHandler implements ChannelInterceptor {
             return "authorization";
         }
         return "missing";
-    }
-
-    private String extractSubjectForLog(String token) {
-        try {
-            String[] parts = token.split("\\.");
-            if (parts.length < 2) {
-                return "unknown";
-            }
-
-            byte[] decoded = Base64.getUrlDecoder().decode(parts[1]);
-            String payload = new String(decoded, StandardCharsets.UTF_8);
-            String marker = "\"sub\":\"";
-            int start = payload.indexOf(marker);
-            if (start < 0) {
-                return "unknown";
-            }
-
-            int valueStart = start + marker.length();
-            int valueEnd = payload.indexOf('"', valueStart);
-            if (valueEnd < 0) {
-                return "unknown";
-            }
-
-            return payload.substring(valueStart, valueEnd);
-        } catch (Exception ignored) {
-            return "unknown";
-        }
     }
 
     private Long extractUserId(StompHeaderAccessor accessor) {

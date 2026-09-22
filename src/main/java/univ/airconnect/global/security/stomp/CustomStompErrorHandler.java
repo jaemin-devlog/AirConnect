@@ -7,8 +7,6 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
 
-import java.nio.charset.StandardCharsets;
-
 @Slf4j
 public class CustomStompErrorHandler extends StompSubProtocolErrorHandler {
 
@@ -46,11 +44,9 @@ public class CustomStompErrorHandler extends StompSubProtocolErrorHandler {
     }
 
     private String toSafeMessage(Throwable ex) {
-        String message = ex.getMessage();
-        if (message == null || message.isBlank()) {
-            return "STOMP request failed";
-        }
-        return new String(message.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+        // Spring messaging/conversion exceptions may embed the original message,
+        // native Authorization headers, or database details in their text.
+        return "STOMP request failed";
     }
 }
 

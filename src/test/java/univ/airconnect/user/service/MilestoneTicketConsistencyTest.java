@@ -19,6 +19,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mock.web.MockMultipartFile;
@@ -81,6 +82,8 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
@@ -158,8 +161,12 @@ class MilestoneTicketConsistencyTest {
         });
         email = "fixture-" + userId + "@office.hanseo.ac.kr";
         when(redis.opsForValue()).thenReturn(redisValues);
-        when(redisValues.get(anyString())).thenAnswer(invocation ->
-                ("email_verification:" + email).equals(invocation.getArgument(0)) ? VALID_CODE : null);
+        when(redisValues.get(anyString())).thenReturn(null);
+        // This fixture models a freshly verified code per call; actual single-use Redis behavior is
+        // covered by verification security tests, while this suite checks committed ticket mutations.
+        when(redis.execute(any(RedisScript.class), eq(List.of(
+                "email_verification:" + email, "email_verification_attempts:" + email)),
+                eq(VALID_CODE), eq("5"), eq("300"))).thenReturn(1L);
         sqlCapture.clear();
     }
 

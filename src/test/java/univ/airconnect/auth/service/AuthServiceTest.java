@@ -22,6 +22,8 @@ import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.repository.SocialLoginDeviceBindingRepository;
 import univ.airconnect.auth.security.TokenHashService;
+import univ.airconnect.auth.security.RefreshTokenRotationService;
+import univ.airconnect.auth.security.AccessTokenRevocationService;
 import univ.airconnect.global.security.AttemptThrottleService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
@@ -43,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -69,6 +72,10 @@ class AuthServiceTest {
     @Mock
     private TokenHashService tokenHashService;
     @Mock
+    private RefreshTokenRotationService refreshTokenRotationService;
+    @Mock
+    private AccessTokenRevocationService accessTokenRevocationService;
+    @Mock
     private UserService userService;
     @Mock
     private AnalyticsService analyticsService;
@@ -93,8 +100,11 @@ class AuthServiceTest {
 
     @Test
     void logout_revokesRefreshTokenAndDeactivatesCurrentUsersDevice() {
-        authService.logout(41L, "device-logout");
+        java.time.Instant expiresAt = java.time.Instant.now().plusSeconds(300);
+        when(jwtProvider.getAccessTokenExpiresAt("logout-access-token")).thenReturn(expiresAt);
+        authService.logout(41L, "device-logout", "logout-access-token");
 
+        verify(accessTokenRevocationService).revoke("logout-access-token", expiresAt);
         verify(refreshTokenRepository).deleteById("41:device-logout");
         verify(pushDeviceService).deactivateIfPresent(41L, "device-logout");
         verify(chatService).invalidateSessionsByUserId(41L);
@@ -110,7 +120,7 @@ class AuthServiceTest {
         when(appleAuthClient.getEmail("apple-identity-token")).thenReturn("u11@airconnect.test");
         when(userRepository.findByProviderAndSocialId(SocialProvider.APPLE, "apple-social-id"))
                 .thenReturn(Optional.of(user));
-        when(jwtProvider.createAccessToken(11L)).thenReturn("access-token");
+        when(jwtProvider.createAccessToken(eq(11L), eq("device-12345678"), anyString())).thenReturn("access-token");
         when(jwtProvider.createRefreshToken(11L, "device-12345678")).thenReturn("refresh-token-raw");
         when(tokenHashService.hash("refresh-token-raw")).thenReturn("refresh-token-hash");
         when(userService.getMe(11L)).thenReturn(UserMeResponse.builder().userId(11L).build());
@@ -123,6 +133,8 @@ class AuthServiceTest {
         assertThat(response.getRefreshToken()).isEqualTo("refresh-token-raw");
         assertThat(refreshTokenCaptor.getValue().getToken()).isEqualTo("refresh-token-hash");
         assertThat(refreshTokenCaptor.getValue().getToken()).isNotEqualTo("refresh-token-raw");
+        assertThat(refreshTokenCaptor.getValue().getSessionId()).isNotBlank();
+        verify(jwtProvider).createAccessToken(11L, "device-12345678", refreshTokenCaptor.getValue().getSessionId());
     }
 
     @Test
@@ -138,7 +150,7 @@ class AuthServiceTest {
             ReflectionTestUtils.setField(created, "id", 51L);
             return created;
         });
-        when(jwtProvider.createAccessToken(51L)).thenReturn("access-token");
+        when(jwtProvider.createAccessToken(eq(51L), eq("device-kakao"), anyString())).thenReturn("access-token");
         when(jwtProvider.createRefreshToken(51L, "device-kakao")).thenReturn("refresh-token");
         when(tokenHashService.hash("refresh-token")).thenReturn("refresh-hash");
         when(userService.getMe(51L)).thenReturn(UserMeResponse.builder().userId(51L).build());
@@ -216,7 +228,7 @@ class AuthServiceTest {
         when(userRepository.findByProviderAndSocialId(SocialProvider.EMAIL, "admin@airconnect.test"))
                 .thenReturn(Optional.of(adminUser));
         when(passwordEncoder.matches("super-secret", "stored-hash")).thenReturn(true);
-        when(jwtProvider.createAccessToken(88L)).thenReturn("admin-access-token");
+        when(jwtProvider.createAccessToken(eq(88L), eq("device-admin"), anyString())).thenReturn("admin-access-token");
         when(jwtProvider.createRefreshToken(88L, "device-admin")).thenReturn("admin-refresh-token");
         when(tokenHashService.hash("admin-refresh-token")).thenReturn("admin-refresh-token-hash");
         when(refreshTokenRepository.findByUserId(88L)).thenReturn(List.of(legacyToken));
@@ -269,7 +281,32 @@ class AuthServiceTest {
     }
 
     @Test
-    void refresh_reuseDetected_deletesStoredTokenAndBlocksRequest() {
+    void adminLogin_blocksAccountBudgetEvenWithDifferentClientIp() {
+        when(adminAccountService.isEnabledAndConfigured()).thenReturn(true);
+        when(adminAccountService.loginAttemptIdentifier()).thenReturn("admin@airconnect.test");
+        when(attemptThrottleService.isLocked("admin_login", "admin@airconnect.test", "198.51.100.7"))
+                .thenReturn(false);
+        when(attemptThrottleService.isLocked("admin_login_account", "admin@airconnect.test", "account"))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> authService.adminLogin(
+                new EmailLoginRequest("admin@airconnect.test", "wrong", "device"), "198.51.100.7"))
+                .isInstanceOf(AuthException.class).extracting("errorCode")
+                .isEqualTo(AuthErrorCode.EMAIL_LOGIN_TEMPORARILY_LOCKED);
+        verify(userRepository, never()).findByProviderAndSocialId(any(), any());
+    }
+
+    @Test
+    void socialLogin_rejectsDeviceIdentifierTooLongForStorageBeforeCallingProvider() {
+        assertThatThrownBy(() -> authService.socialLogin(
+                new SocialLoginRequest(SocialProvider.APPLE, "dummy", "a".repeat(121))))
+                .isInstanceOf(AuthException.class).extracting("errorCode")
+                .isEqualTo(AuthErrorCode.INVALID_LOGIN_REQUEST);
+        verify(socialAuthResolver, never()).getClient(any());
+    }
+
+    @Test
+    void refresh_reuseDetected_preservesNewerSessionAndBlocksRequest() {
         TokenRefreshRequest request = new TokenRefreshRequest("refresh-token-raw", "device-12345678");
         Long userId = 15L;
         String refreshTokenKey = userId + ":" + request.getDeviceId();
@@ -287,7 +324,7 @@ class AuthServiceTest {
                 .extracting(ex -> ((AuthException) ex).getErrorCode())
                 .isEqualTo(AuthErrorCode.REFRESH_TOKEN_REUSE_DETECTED);
 
-        verify(refreshTokenRepository).deleteById(refreshTokenKey);
+        verify(refreshTokenRepository, never()).deleteById(refreshTokenKey);
         verify(userRepository, never()).findById(any());
     }
 
@@ -306,18 +343,22 @@ class AuthServiceTest {
                 .thenReturn(Optional.of(RefreshToken.create(userId, request.getDeviceId(), "legacy-refresh-token")));
         when(tokenHashService.matches(request.getRefreshToken(), "legacy-refresh-token")).thenReturn(false);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(jwtProvider.createAccessToken(userId)).thenReturn("new-access-token");
+        when(jwtProvider.createAccessToken(eq(userId), eq(request.getDeviceId()), anyString())).thenReturn("new-access-token");
         when(jwtProvider.createRefreshToken(userId, request.getDeviceId())).thenReturn("new-refresh-token");
         when(tokenHashService.hash("new-refresh-token")).thenReturn("new-refresh-token-hash");
+        when(refreshTokenRotationService.rotate(eq(refreshTokenKey), eq("legacy-refresh-token"), eq("new-refresh-token-hash"), anyString()))
+                .thenReturn(true);
 
         TokenPairResponse response = authService.refresh(request);
 
-        ArgumentCaptor<RefreshToken> refreshTokenCaptor = ArgumentCaptor.forClass(RefreshToken.class);
-        verify(refreshTokenRepository).save(refreshTokenCaptor.capture());
+        ArgumentCaptor<String> sessionId = ArgumentCaptor.forClass(String.class);
+        verify(refreshTokenRotationService).rotate(eq(refreshTokenKey), eq("legacy-refresh-token"), eq("new-refresh-token-hash"), sessionId.capture());
+        assertThat(sessionId.getValue()).isNotBlank();
+        verify(jwtProvider).createAccessToken(userId, request.getDeviceId(), sessionId.getValue());
+        verify(refreshTokenRepository, never()).save(any());
 
         assertThat(response.accessToken()).isEqualTo("new-access-token");
         assertThat(response.refreshToken()).isEqualTo("new-refresh-token");
-        assertThat(refreshTokenCaptor.getValue().getToken()).isEqualTo("new-refresh-token-hash");
         verify(refreshTokenRepository, never()).deleteById(refreshTokenKey);
     }
 
@@ -344,6 +385,29 @@ class AuthServiceTest {
                 .isEqualTo(AuthErrorCode.USER_SUSPENDED);
 
         verify(refreshTokenRepository).deleteById(refreshTokenKey);
+    }
+
+    @Test
+    void refreshPreservesLoginSessionAcrossRotation() {
+        TokenRefreshRequest request = new TokenRefreshRequest("refresh-token", "device-a");
+        when(jwtProvider.isRefreshToken("refresh-token")).thenReturn(true);
+        when(jwtProvider.getUserId("refresh-token")).thenReturn(15L);
+        when(jwtProvider.getDeviceId("refresh-token")).thenReturn("device-a");
+        when(refreshTokenRepository.findById("15:device-a"))
+                .thenReturn(Optional.of(RefreshToken.create(15L, "device-a", "stored-hash", "stable-session")));
+        when(tokenHashService.matches("refresh-token", "stored-hash")).thenReturn(true);
+        when(userRepository.findById(15L)).thenReturn(Optional.of(createUser(15L)));
+        when(jwtProvider.createAccessToken(15L, "device-a", "stable-session")).thenReturn("access-token");
+        when(jwtProvider.createRefreshToken(15L, "device-a")).thenReturn("next-refresh");
+        when(tokenHashService.hash("next-refresh")).thenReturn("next-hash");
+        when(refreshTokenRotationService.rotate("15:device-a", "stored-hash", "next-hash", "stable-session"))
+                .thenReturn(true);
+
+        TokenPairResponse result = authService.refresh(request);
+
+        assertThat(result.accessToken()).isEqualTo("access-token");
+        verify(refreshTokenRotationService).rotate("15:device-a", "stored-hash", "next-hash", "stable-session");
+        verify(refreshTokenRepository, never()).save(any());
     }
 
     private User createUser(Long userId) {

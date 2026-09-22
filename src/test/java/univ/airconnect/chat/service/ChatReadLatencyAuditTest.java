@@ -57,20 +57,28 @@ class ChatReadLatencyAuditTest {
     @MockitoBean SimpMessageSendingOperations broker;
     @MockitoBean NotificationService notifications;
     @MockitoBean UserBlockPolicyService blocks;
+    @MockitoBean ChatMessageThrottleService chatMessageThrottleService;
+    @MockitoBean univ.airconnect.auth.security.AccessTokenRevocationService accessTokenRevocationService;
     Long author, reader, room;
+    org.mockito.MockedStatic<java.time.Clock> databasePrecisionClock;
 
     @BeforeEach void setupWorker() {
+        databasePrecisionClock = DatabasePrecisionChatClock.open();
         worker = new ChatDeliveryWorker(events, dispatcher);
     }
 
     @AfterEach void cleanup() {
-        new TransactionTemplate(txManager).executeWithoutResult(s -> {
-            events.deleteAllInBatch();
-            messages.deleteAllInBatch();
-            members.deleteAllInBatch();
-            rooms.deleteAllInBatch();
-            users.deleteAllInBatch();
-        });
+        try {
+            new TransactionTemplate(txManager).executeWithoutResult(s -> {
+                events.deleteAllInBatch();
+                messages.deleteAllInBatch();
+                members.deleteAllInBatch();
+                rooms.deleteAllInBatch();
+                users.deleteAllInBatch();
+            });
+        } finally {
+            databasePrecisionClock.close();
+        }
     }
 
     List<ChatMessage> seed(int participants, int count) {

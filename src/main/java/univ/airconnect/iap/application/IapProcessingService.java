@@ -47,16 +47,16 @@ public class IapProcessingService {
 
     @Transactional
     public IapVerifyResponse verifyIos(Long userId, IosTransactionVerifyRequest request) {
-        log.info("IAP verifyIos started. userId={}, transactionId={}", userId, request.getTransactionId());
+        log.info("IAP verifyIos started. userId={}, transactionIdState={}", userId, logKeyState(request.getTransactionId()));
         StoreVerificationResult result = storeVerifierResolver.resolve(IapStore.APPLE).verify(userId, request);
-        log.info("IAP verifyIos store verification succeeded. userId={}, store={}, transactionId={}, productId={}",
-                userId, result.getStore(), result.getTransactionId(), result.getProductId());
+        log.info("IAP verifyIos store verification succeeded. userId={}, store={}, transactionIdState={}, productId={}",
+                userId, result.getStore(), logKeyState(result.getTransactionId()), result.getProductId());
         return process(userId, result);
     }
 
     @Transactional
     public IapVerifyResponse verifyAndroid(Long userId, AndroidPurchaseVerifyRequest request) {
-        log.info("IAP verifyAndroid started. userId={}, orderId={}", userId, request.getOrderId());
+        log.info("IAP verifyAndroid started. userId={}, orderIdState={}", userId, logKeyState(request.getOrderId()));
         StoreVerificationResult result = storeVerifierResolver.resolve(IapStore.GOOGLE).verify(userId, request);
         log.info("IAP verifyAndroid store verification succeeded. userId={}, store={}, purchaseTokenExists={}, productId={}",
                 userId, result.getStore(), result.getPurchaseToken() != null, result.getProductId());
@@ -79,8 +79,8 @@ public class IapProcessingService {
                 items.add(IapSyncItemResponse.builder().success(true).result(response).build());
                 successCount++;
             } catch (IapException e) {
-                log.warn("IAP syncIos item failed. userId={}, transactionId={}, errorCode={}, message={}",
-                        userId, item.getTransactionId(), e.getErrorCode().getCode(), e.getMessage());
+                log.warn("IAP syncIos item failed. userId={}, transactionIdState={}, errorCode={}",
+                        userId, logKeyState(item.getTransactionId()), e.getErrorCode().getCode());
                 items.add(IapSyncItemResponse.builder()
                         .success(false)
                         .errorCode(e.getErrorCode().getCode())
@@ -117,8 +117,8 @@ public class IapProcessingService {
                 items.add(IapSyncItemResponse.builder().success(true).result(response).build());
                 successCount++;
             } catch (IapException e) {
-                log.warn("IAP syncAndroid item failed. userId={}, orderId={}, errorCode={}, message={}",
-                        userId, item.getOrderId(), e.getErrorCode().getCode(), e.getMessage());
+                log.warn("IAP syncAndroid item failed. userId={}, orderIdState={}, errorCode={}",
+                        userId, logKeyState(item.getOrderId()), e.getErrorCode().getCode());
                 items.add(IapSyncItemResponse.builder()
                         .success(false)
                         .errorCode(e.getErrorCode().getCode())
@@ -219,7 +219,7 @@ public class IapProcessingService {
         if (result.getStore() == IapStore.APPLE) {
             IapOrder found = iapOrderRepository.findByStoreAndTransactionId(IapStore.APPLE, result.getTransactionId()).orElse(null);
             if (found != null) {
-                log.info("IAP existing order found. store=APPLE, orderId={}, transactionId={}", found.getId(), result.getTransactionId());
+                log.info("IAP existing order found. store=APPLE, orderId={}", found.getId());
             }
             return found;
         }
@@ -289,8 +289,8 @@ public class IapProcessingService {
                 && hasText(order.getOriginalTransactionId())
                 && hasText(result.getOriginalTransactionId())
                 && !order.getOriginalTransactionId().equals(result.getOriginalTransactionId())) {
-            log.warn("IAP process invalid: originalTransactionId mismatch on existing Apple order. orderId={}, txId={}",
-                    order.getId(), order.getTransactionId());
+            log.warn("IAP process invalid: originalTransactionId mismatch on existing Apple order. orderId={}",
+                    order.getId());
             throw new IapException(IapErrorCode.IAP_INVALID_TRANSACTION);
         }
     }

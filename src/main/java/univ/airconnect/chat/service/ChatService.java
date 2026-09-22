@@ -69,6 +69,7 @@ public class ChatService {
     private final ChatDeliveryService chatDeliveryService;
     private final UserBlockPolicyService userBlockPolicyService;
     private final StompSessionRegistry stompSessionRegistry;
+    private final ChatMessageThrottleService chatMessageThrottleService;
 
     private final Map<String, ChannelTopic> topics = new ConcurrentHashMap<>();
 
@@ -619,6 +620,7 @@ public class ChatService {
                                                     String content,
                                                     MessageType messageType,
                                                     String clientMessageId) {
+        chatMessageThrottleService.checkSend(userId);
         User user = findChatSenderForUpdateOrThrow(userId);
 
         validateMessagePayload(content, messageType);
@@ -763,6 +765,8 @@ public class ChatService {
                 ));
 
         Map<Long, User> counterpartByRoomId = buildCounterpartMap(roomIds, userId);
+        Set<Long> blockedCounterparts = userBlockPolicyService.resolveBlockedCounterpartIds(userId,
+                counterpartByRoomId.values().stream().map(User::getId).toList());
 
         return members.stream()
                 .map(member -> {
@@ -780,6 +784,9 @@ public class ChatService {
                     User targetUser = null;
                     if (room.getType() == ChatRoomType.PERSONAL) {
                         targetUser = counterpartByRoomId.get(room.getId());
+                        if (targetUser != null && blockedCounterparts.contains(targetUser.getId())) {
+                            targetUser = null;
+                        }
                     }
 
                     Long targetUserId = targetUser != null ? targetUser.getId() : null;
@@ -830,6 +837,7 @@ public class ChatService {
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "상대 사용자 정보를 찾을 수 없습니다."));
 
+        ensureProfileNotBlocked(userId, counterpart.getId());
         return toParticipantDetailResponse(counterpart);
     }
 
@@ -845,6 +853,7 @@ public class ChatService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "선택한 사용자가 해당 채팅방 참여자가 아닙니다.");
         }
 
+        ensureProfileNotBlocked(userId, targetUserId);
         User participant = userRepository.findAllByIdWithProfile(List.of(targetUserId)).stream()
                 .findFirst()
                 .orElseThrow(() -> new AuthException(AuthErrorCode.USER_NOT_FOUND));
@@ -875,10 +884,11 @@ public class ChatService {
 
         Map<Long, User> userMap = userRepository.findAllByIdWithProfile(senderIds).stream()
                 .collect(Collectors.toMap(User::getId, user -> user));
+        Set<Long> blockedSenders = userBlockPolicyService.resolveBlockedCounterpartIds(userId, senderIds);
 
         List<ChatMessageResponse> response = messages.stream()
                 .map(msg -> {
-                    User sender = userMap.get(msg.getSenderId());
+                    User sender = blockedSenders.contains(msg.getSenderId()) ? null : userMap.get(msg.getSenderId());
                     String profileImage = (sender != null && sender.getUserProfile() != null)
                             ? sender.getUserProfile().getProfileImagePath()
                             : null;
@@ -899,11 +909,15 @@ public class ChatService {
     public List<ChatParticipantDetailResponse> getParticipantProfiles(Long roomId, Long userId) {
         validateRoomAccess(roomId, userId);
 
-        return chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(roomId)).stream()
+        List<ChatRoomMember> members = chatRoomMemberRepository.findByChatRoomIdInWithUser(List.of(roomId));
+        Set<Long> blockedCounterparts = userBlockPolicyService.resolveBlockedCounterpartIds(userId,
+                members.stream().map(ChatRoomMember::getUser).filter(Objects::nonNull).map(User::getId).toList());
+        return members.stream()
                 .filter(member -> !member.isHidden())
                 .sorted(Comparator.comparing(ChatRoomMember::getJoinedAt))
                 .map(ChatRoomMember::getUser)
                 .filter(Objects::nonNull)
+                .filter(participant -> !blockedCounterparts.contains(participant.getId()))
                 .map(this::toParticipantDetailResponse)
                 .toList();
     }
@@ -1597,6 +1611,12 @@ public class ChatService {
     private void ensureNotBlockedPair(Long userAId, Long userBId) {
         if (userBlockPolicyService.hasBlockRelation(userAId, userBId)) {
             throw new BusinessException(ErrorCode.USER_BLOCKED_INTERACTION, "차단 관계에서는 1:1 채팅방을 생성할 수 없습니다.");
+        }
+    }
+
+    private void ensureProfileNotBlocked(Long userId, Long targetUserId) {
+        if (userBlockPolicyService.hasBlockRelation(userId, targetUserId)) {
+            throw new BusinessException(ErrorCode.USER_BLOCKED_INTERACTION);
         }
     }
 }

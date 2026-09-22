@@ -45,7 +45,7 @@ public class ApplePurchaseVerifier implements StorePurchaseVerifier {
     @Override
     public StoreVerificationResult verify(Long userId, Object request) {
         IosTransactionVerifyRequest req = (IosTransactionVerifyRequest) request;
-        log.info("Apple verifier started. userId={}, transactionId={}", userId, req.getTransactionId());
+        log.info("Apple verifier started. userId={}", userId);
         try {
             JsonNode payload = appleSignedTransactionVerifier.verifyAndExtractPayload(req.getSignedTransactionInfo());
             String bundleId = text(payload, "bundleId");
@@ -58,8 +58,8 @@ public class ApplePurchaseVerifier implements StorePurchaseVerifier {
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new IapException(IapErrorCode.IAP_UNAUTHORIZED));
             String issuedToken = user.ensureIosAppAccountToken();
-            log.info("Apple verifier payload parsed. userId={}, transactionId={}, productId={}, payloadEnv={}, configuredEnv={}",
-                    userId, transactionId, productId, env, iapProperties.getApple().getEnvironment());
+            log.info("Apple verifier payload parsed. userId={}, productId={}, payloadEnv={}, configuredEnv={}",
+                    userId, productId, env, iapProperties.getApple().getEnvironment());
 
             if (bundleId == null || !bundleId.equals(iapProperties.getApple().getBundleId())) {
                 throw new IapException(IapErrorCode.IAP_ENVIRONMENT_MISMATCH, "Apple bundleId 불일치");
@@ -74,7 +74,7 @@ public class ApplePurchaseVerifier implements StorePurchaseVerifier {
                 throw new IapException(IapErrorCode.IAP_INVALID_TRANSACTION, "요청 transactionId 불일치");
             }
             if (appAccountToken == null || !issuedToken.equals(appAccountToken)) {
-                log.warn("Apple verifier appAccountToken mismatch. userId={}, transactionId={}", userId, transactionId);
+                log.warn("Apple verifier appAccountToken mismatch. userId={}", userId);
                 throw new IapException(IapErrorCode.IAP_ACCOUNT_TOKEN_MISMATCH);
             }
             if (req.getAppAccountToken() != null
@@ -98,16 +98,15 @@ public class ApplePurchaseVerifier implements StorePurchaseVerifier {
                     .valid(!revoked)
                     .transactionRevoked(revoked)
                     .build();
-            log.info("Apple verifier completed. userId={}, transactionId={}, productId={}, hash={}",
-                    userId, transactionId, productId, result.getVerificationHash());
+            log.info("Apple verifier completed. userId={}, productId={}", userId, productId);
             return result;
         } catch (IapException e) {
-            log.warn("Apple verifier failed. userId={}, transactionId={}, errorCode={}, message={}",
-                    userId, req.getTransactionId(), e.getErrorCode().getCode(), e.getMessage());
+            log.warn("Apple verifier failed. userId={}, errorCode={}",
+                    userId, e.getErrorCode().getCode());
             throw e;
         } catch (Exception e) {
-            log.warn("Apple verifier parse failure. userId={}, transactionId={}, reason={}",
-                    userId, req.getTransactionId(), e.getMessage());
+            log.warn("Apple verifier parse failure. userId={}, type={}",
+                    userId, e.getClass().getSimpleName());
             throw new IapException(IapErrorCode.IAP_APPLE_VERIFY_FAILED, "Apple signedTransactionInfo 파싱 실패");
         }
     }

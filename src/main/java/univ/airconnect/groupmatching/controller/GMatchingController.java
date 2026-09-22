@@ -17,6 +17,7 @@ import univ.airconnect.groupmatching.dto.response.GMatchingResponse;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.service.GMatchingService;
 import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
+import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.user.domain.entity.User;
 import univ.airconnect.user.repository.UserRepository;
 
@@ -37,6 +38,7 @@ public class GMatchingController {
     private final GMatchingService matchingService;
     private final GTemporaryTeamMemberRepository temporaryTeamMemberRepository;
     private final UserRepository userRepository;
+    private final UserBlockPolicyService userBlockPolicyService;
 
     /**
      * 1단계. 임시 팀방을 생성한다.
@@ -233,13 +235,15 @@ public class GMatchingController {
         List<Long> userIds = members.stream().map(GTemporaryTeamMember::getUserId).toList();
         Map<Long, User> userMap = userRepository.findAllByIdWithProfile(userIds).stream()
                 .collect(Collectors.toMap(User::getId, user -> user));
+        var blockedUserIds = userBlockPolicyService.resolveBlockedCounterpartIds(currentUserId, userIds);
         int requiredTickets = room.getTeamSize().getValue();
         List<GMatchingResponse.TeamMemberSummaryResponse> memberResponses = members.stream()
                 .map(member -> {
                     User user = userMap.get(member.getUserId());
+                    boolean profileVisible = user != null && !blockedUserIds.contains(member.getUserId());
                     return new GMatchingResponse.TeamMemberSummaryResponse(member.getUserId(),
-                            user != null ? user.getNickname() : null, extractProfileImage(user),
-                            user != null && user.hasVerifiedSchoolEmail(),
+                            profileVisible ? user.getNickname() : null, profileVisible ? extractProfileImage(user) : null,
+                            profileVisible && user.hasVerifiedSchoolEmail(),
                             member.isLeader(), member.getJoinedAt(),
                             user != null && user.getTickets() >= requiredTickets);
                 }).toList();

@@ -100,7 +100,7 @@ class AdminChatInspectionControllerTest {
         translation.setAccessDeniedHandler(new RestAccessDeniedHandler(objectMapper));
         // Same ADMIN rule as SecurityConfig, without unrelated maintenance/activity filters.
         var security = new FilterChainProxy(new DefaultSecurityFilterChain(AnyRequestMatcher.INSTANCE,
-                new JwtAuthenticationFilter(jwtProvider, users),
+                new JwtAuthenticationFilter(jwtProvider, users, new ObjectMapper()),
                 new AnonymousAuthenticationFilter("inspection-controller-fixture-anonymous"),
                 translation,
                 new AuthorizationFilter(AuthorityAuthorizationManager.hasRole("ADMIN"))));

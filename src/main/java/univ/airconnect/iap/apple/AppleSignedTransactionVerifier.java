@@ -10,13 +10,9 @@ import org.springframework.stereotype.Component;
 import univ.airconnect.iap.exception.IapErrorCode;
 import univ.airconnect.iap.exception.IapException;
 
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
-import javax.net.ssl.X509TrustManager;
 import java.io.InputStream;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyStore;
 import java.security.cert.CertPath;
 import java.security.cert.CertStore;
 import java.security.cert.CertPathValidator;
@@ -74,7 +70,8 @@ public class AppleSignedTransactionVerifier {
 
     public JsonNode verifyAndExtractPayload(String signedTransactionInfo) {
         try {
-            if (signedTransactionInfo == null || signedTransactionInfo.isBlank()) {
+            if (signedTransactionInfo == null || signedTransactionInfo.isBlank()
+                    || signedTransactionInfo.length() > 65_536) {
                 throw new IapException(IapErrorCode.IAP_INVALID_TRANSACTION, "signedTransactionInfo가 비어 있습니다.");
             }
 
@@ -95,7 +92,7 @@ public class AppleSignedTransactionVerifier {
         } catch (IapException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("Apple signedTransactionInfo 검증 실패. reason={}", e.getMessage());
+            log.warn("Apple signedTransactionInfo 검증 실패. type={}", e.getClass().getSimpleName());
             throw new IapException(IapErrorCode.IAP_APPLE_VERIFY_FAILED, "Apple signedTransactionInfo 서명 검증 실패");
         }
     }
@@ -116,7 +113,7 @@ public class AppleSignedTransactionVerifier {
         }
 
         JsonNode x5cNode = header.get(HEADER_X5C);
-        if (x5cNode == null || !x5cNode.isArray() || x5cNode.isEmpty()) {
+        if (x5cNode == null || !x5cNode.isArray() || x5cNode.isEmpty() || x5cNode.size() > MAX_CHAIN_LENGTH) {
             throw new IapException(IapErrorCode.IAP_INVALID_TRANSACTION, "Apple JWS 인증서 체인이 누락되었습니다.");
         }
     }
@@ -262,20 +259,8 @@ public class AppleSignedTransactionVerifier {
                 return cachedTrustAnchors;
             }
             try {
-                TrustManagerFactory trustManagerFactory =
-                        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-                trustManagerFactory.init((KeyStore) null);
-
                 Set<TrustAnchor> trustAnchors = new HashSet<>();
-                for (TrustManager trustManager : trustManagerFactory.getTrustManagers()) {
-                    if (!(trustManager instanceof X509TrustManager x509TrustManager)) {
-                        continue;
-                    }
-                    for (X509Certificate certificate : x509TrustManager.getAcceptedIssuers()) {
-                        trustAnchors.add(new TrustAnchor(certificate, null));
-                    }
-                }
-
+                // TLS trust in an arbitrary public CA must not authorize that CA to sign App Store purchases.
                 for (X509Certificate certificate : loadBundledCertificates()) {
                     if (isSelfSigned(certificate)) {
                         trustAnchors.add(new TrustAnchor(certificate, null));

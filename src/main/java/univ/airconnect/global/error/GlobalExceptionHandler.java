@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 
@@ -18,6 +19,7 @@ import org.springframework.web.context.request.async.AsyncRequestNotUsableExcept
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.servlet.HandlerMapping;
 
 import univ.airconnect.ads.exception.AdsErrorCode;
 import univ.airconnect.ads.exception.AdsException;
@@ -48,6 +50,18 @@ import static univ.airconnect.global.web.TraceIdFilter.TRACE_ID_ATTRIBUTE;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody(
+            HttpMessageNotReadableException e, HttpServletRequest request) {
+        String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
+        ErrorCode ec = ErrorCode.INVALID_REQUEST;
+        // Jackson exception messages may contain the original password, token or profile text.
+        log.warn("Invalid JSON request [{}]", traceId);
+        ErrorBody body = new ErrorBody(ec.getCode(), ec.getMessage(),
+                ec.getHttpStatus().value(), traceId, null);
+        return jsonErrorResponse(ec.getHttpStatus(), body, traceId);
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(
@@ -164,7 +178,7 @@ public class GlobalExceptionHandler {
                 "UserException [{}] - method={}, path={}, code={}, status={}",
                 traceId,
                 request.getMethod(),
-                request.getRequestURI(),
+                logRoute(request),
                 uec.getCode(),
                 uec.getHttpStatus().value()
         );
@@ -338,7 +352,7 @@ public class GlobalExceptionHandler {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.INVALID_REQUEST;
 
-        log.warn("HttpMediaTypeNotSupportedException [{}] - {}", traceId, e.getMessage());
+        log.warn("HttpMediaTypeNotSupportedException [{}]", traceId);
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
@@ -359,7 +373,7 @@ public class GlobalExceptionHandler {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.INVALID_REQUEST;
 
-        log.warn("MultipartException [{}] - {}", traceId, e.getMessage());
+        log.warn("MultipartException [{}]", traceId);
 
         ErrorBody body = new ErrorBody(
                 ec.getCode(),
@@ -379,7 +393,7 @@ public class GlobalExceptionHandler {
     ) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.NOT_FOUND;
-        log.warn("NoResourceFoundException [{}] - {} {}", traceId, request.getMethod(), request.getRequestURI());
+        log.warn("NoResourceFoundException [{}] - {} {}", traceId, request.getMethod(), logRoute(request));
 
         Map<String, Object> details = new HashMap<>();
         details.put("method", request.getMethod());
@@ -404,7 +418,7 @@ public class GlobalExceptionHandler {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
         ErrorCode ec = ErrorCode.METHOD_NOT_ALLOWED;
         log.warn("HttpRequestMethodNotSupportedException [{}] - {} {} (allowed={})",
-                traceId, request.getMethod(), request.getRequestURI(), e.getSupportedMethods());
+                traceId, request.getMethod(), logRoute(request), e.getSupportedMethods());
 
         Map<String, Object> details = new HashMap<>();
         details.put("method", request.getMethod());
@@ -430,14 +444,17 @@ public class GlobalExceptionHandler {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
 
         log.debug("Client disconnected during response [{}] - {} {}",
-                traceId, request.getMethod(), request.getRequestURI());
+                traceId, request.getMethod(), logRoute(request));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception e, HttpServletRequest request) {
         String traceId = (String) request.getAttribute(TRACE_ID_ATTRIBUTE);
 
-        log.error("Unexpected exception [{}]", traceId, e);
+        // SQL/provider/parser exception messages can embed credentials or personal data.
+        // Keep the exception class and source locations for diagnosis, not the payload.
+        log.error("Unexpected exception [{}] type={}, frames={}", traceId,
+                e.getClass().getName(), java.util.Arrays.stream(e.getStackTrace()).limit(20).toList());
 
         ErrorCode ec = ErrorCode.INTERNAL_ERROR;
         ErrorBody body = new ErrorBody(
@@ -456,6 +473,11 @@ public class GlobalExceptionHandler {
         detail.put("field", error.getField());
         detail.put("message", error.getDefaultMessage());
         return detail;
+    }
+
+    private Object logRoute(HttpServletRequest request) {
+        Object route = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        return route != null ? route : "<unmapped>";
     }
 
     private Map<String, String> constraintViolationToDetail(ConstraintViolation<?> violation) {

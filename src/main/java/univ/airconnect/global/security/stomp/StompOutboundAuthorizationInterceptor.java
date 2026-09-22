@@ -6,7 +6,10 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessageType;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.stereotype.Component;
 import univ.airconnect.chat.repository.ChatRoomMemberRepository;
@@ -66,7 +69,13 @@ public class StompOutboundAuthorizationInterceptor implements ChannelInterceptor
         String sessionId = accessor.getSessionId();
         Long userId = sessionRegistry.findUserId(sessionId).orElse(null);
         if (userId == null) {
-            return deny(accessor, null, "inactive_or_revoked_session");
+            // Spring closes the WebSocket after sending ERROR, which also emits
+            // DISCONNECT and removes presence metadata. Silently dropping here
+            // would leave the client connected and suppress its chat push alerts.
+            StompHeaderAccessor error = StompHeaderAccessor.create(StompCommand.ERROR);
+            error.setSessionId(sessionId);
+            error.setMessage("STOMP authentication required");
+            return MessageBuilder.createMessage(new byte[0], error.getMessageHeaders());
         }
         // 전 사용자 브로드캐스트마다 DB를 조회하면 접속자 수 변동 1회가
         // 구독자 수만큼의 쿼리를 만들므로, 로컬에서 폐기되지 않은 인증 세션만 확인한다.

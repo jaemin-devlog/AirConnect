@@ -1,0 +1,17 @@
+// Read-only dependency inventory. Contains public Maven coordinates only, never application data.
+allprojects {
+    afterEvaluate {
+        tasks.register('securityDependencyInventory') {
+            doLast {
+                def modules = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts
+                    .collect { it.moduleVersion.id }
+                    .collect { [name: "${it.group}:${it.name}".toString(), version: it.version] }
+                    .unique().sort { a, b -> a.name <=> b.name }
+                def output = layout.buildDirectory.file('security-audit/runtime-dependencies.json').get().asFile
+                output.parentFile.mkdirs()
+                output.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(modules))
+                println "Resolved runtime modules: ${modules.size()}; inventory: ${output}"
+            }
+        }
+    }
+}

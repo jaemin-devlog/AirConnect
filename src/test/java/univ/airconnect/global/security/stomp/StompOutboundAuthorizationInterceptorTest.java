@@ -60,11 +60,15 @@ class StompOutboundAuthorizationInterceptorTest {
     }
 
     @Test
-    void revokedSessionReceivesNothingEvenWhenOldSubscriptionStillExists() {
+    void revokedSessionReceivesOnlySafeErrorEvenWhenOldSubscriptionStillExists() {
         when(sessionRegistry.findUserId("session-revoked")).thenReturn(Optional.empty());
 
-        assertThat(interceptor.preSend(
-                outbound("session-revoked", "/sub/chat/room/77"), channel)).isNull();
+        Message<?> result = interceptor.preSend(outbound("session-revoked", "/sub/chat/room/77"), channel);
+        var error = org.springframework.messaging.simp.stomp.StompHeaderAccessor.wrap(result);
+        assertThat(error.getCommand()).isEqualTo(org.springframework.messaging.simp.stomp.StompCommand.ERROR);
+        assertThat(error.getMessage()).isEqualTo("STOMP authentication required");
+        assertThat(error.getDestination()).isNull();
+        assertThat((byte[]) result.getPayload()).isEmpty();
     }
 
     @Test

@@ -3,6 +3,7 @@ package univ.airconnect.verification.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.iap.domain.entity.TicketLedger;
@@ -27,6 +28,7 @@ import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Locale;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -48,6 +50,25 @@ public class VerificationService {
     private static final String COOLDOWN_PREFIX = "email_verification_cooldown:";
     private static final String VERIFIED_TOKEN_PREFIX = "email_verified_token:";
     private static final String VERIFIED_ACTIVE_PREFIX = "email_verified_active:";
+    private static final String CODE_ATTEMPTS_PREFIX = "email_verification_attempts:";
+    // The comparison, attempt budget and single-use consumption share one Redis operation.
+    // The budget belongs to the email/code lifetime, not to an attacker-controlled IP.
+    static final DefaultRedisScript<Long> CONSUME_CODE = new DefaultRedisScript<>("""
+            local code = redis.call('GET', KEYS[1])
+            if not code then return 0 end
+            local attempts = redis.call('INCR', KEYS[2])
+            if attempts == 1 then redis.call('EXPIRE', KEYS[2], ARGV[3]) end
+            if attempts > tonumber(ARGV[2]) then return -2 end
+            if code ~= ARGV[1] then return -1 end
+            redis.call('DEL', KEYS[1], KEYS[2])
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> DELETE_IF_MATCHED = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+                return redis.call('DEL', KEYS[1])
+            end
+            return 0
+            """, Long.class);
     private static final long CODE_EXPIRATION_MINUTES = 5;
     private static final long RESEND_COOLDOWN_SECONDS = 60;
     private static final long VERIFIED_TOKEN_EXPIRATION_MINUTES = 20;
@@ -73,13 +94,12 @@ public class VerificationService {
         validateEmailDomain(normalizedEmail);
         resolvePurpose(purpose);
         ensureSendNotLocked(normalizedEmail, clientIp);
-        clearActiveVerifiedSession(normalizedEmail);
         checkResendCooldown(normalizedEmail);
         recordSendAttempt(normalizedEmail, clientIp);
+        clearActiveVerifiedSession(normalizedEmail);
 
         String code = generateCode();
         saveCode(normalizedEmail, code);
-        saveCooldown(normalizedEmail);
 
         try {
             mailService.sendVerificationCode(normalizedEmail, code);
@@ -89,7 +109,8 @@ public class VerificationService {
             throw e;
         } catch (Exception e) {
             clearVerificationData(normalizedEmail);
-            log.error("Unexpected error while sending verification code. email={}", maskEmail(normalizedEmail), e);
+            log.error("Unexpected error while sending verification code. email={}, type={}",
+                    maskEmail(normalizedEmail), e.getClass().getSimpleName());
             throw new VerificationException(VerificationErrorCode.MAIL_SEND_FAILED);
         }
     }
@@ -112,15 +133,21 @@ public class VerificationService {
         VerificationPurpose resolvedPurpose = resolvePurpose(purpose);
         ensureVerifyNotLocked(normalizedEmail, clientIp);
 
-        String savedCode = redisTemplate.opsForValue().get(VERIFICATION_PREFIX + normalizedEmail);
-        if (savedCode == null) {
+        Long verificationResult = redisTemplate.execute(CONSUME_CODE,
+                List.of(VERIFICATION_PREFIX + normalizedEmail, CODE_ATTEMPTS_PREFIX + normalizedEmail),
+                code == null ? "" : code.trim(), String.valueOf(VERIFY_MAX_ATTEMPTS),
+                String.valueOf(VERIFY_COUNTER_TTL_SECONDS));
+        if (verificationResult == null || verificationResult == 0) {
             throw recordVerifyFailure(normalizedEmail, clientIp, VerificationErrorCode.CODE_EXPIRED);
         }
-        if (!savedCode.equals(code.trim())) {
+        if (verificationResult == -2) {
+            throw new VerificationException(VerificationErrorCode.TOO_MANY_ATTEMPTS);
+        }
+        if (verificationResult != 1) {
             throw recordVerifyFailure(normalizedEmail, clientIp, VerificationErrorCode.CODE_MISMATCH);
         }
         clearVerifyFailures(normalizedEmail, clientIp);
-        clearVerificationData(normalizedEmail);
+        redisTemplate.delete(COOLDOWN_PREFIX + normalizedEmail);
         clearActiveVerifiedSession(normalizedEmail);
 
         if (userId == null && resolvedPurpose == VerificationPurpose.SIGN_UP && !isSignUpEmailAvailable(normalizedEmail)) {
@@ -153,12 +180,11 @@ public class VerificationService {
     public String consumeVerifiedEmail(String verificationToken) {
         String token = normalizeVerificationToken(verificationToken);
         String key = VERIFIED_TOKEN_PREFIX + token;
-        String email = redisTemplate.opsForValue().get(key);
+        String email = redisTemplate.opsForValue().getAndDelete(key);
         if (email == null || email.isBlank()) {
             throw new VerificationException(VerificationErrorCode.VERIFIED_EMAIL_TOKEN_EXPIRED);
         }
-        redisTemplate.delete(key);
-        redisTemplate.delete(VERIFIED_ACTIVE_PREFIX + email);
+        redisTemplate.execute(DELETE_IF_MATCHED, List.of(VERIFIED_ACTIVE_PREFIX + email), token);
         return email;
     }
 
@@ -190,8 +216,9 @@ public class VerificationService {
     }
 
     private void checkResendCooldown(String email) {
-        Boolean exists = redisTemplate.hasKey(COOLDOWN_PREFIX + email);
-        if (Boolean.TRUE.equals(exists)) {
+        Boolean reserved = redisTemplate.opsForValue().setIfAbsent(
+                COOLDOWN_PREFIX + email, "1", RESEND_COOLDOWN_SECONDS, TimeUnit.SECONDS);
+        if (!Boolean.TRUE.equals(reserved)) {
             throw new VerificationException(VerificationErrorCode.TOO_MANY_REQUESTS);
         }
     }
@@ -207,15 +234,6 @@ public class VerificationService {
                 code,
                 CODE_EXPIRATION_MINUTES,
                 TimeUnit.MINUTES
-        );
-    }
-
-    private void saveCooldown(String email) {
-        redisTemplate.opsForValue().set(
-                COOLDOWN_PREFIX + email,
-                "1",
-                RESEND_COOLDOWN_SECONDS,
-                TimeUnit.SECONDS
         );
     }
 

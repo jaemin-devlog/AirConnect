@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -89,7 +90,10 @@ class MatchingSafetyIntegrationTest {
 
         matchingService.connect(requesterId, targetId, UUID.randomUUID().toString());
 
-        Long eventId = events.findAll().get(0).getId();
+        var pendingEvent = events.findAll().get(0);
+        // Exercise delivery rollback independently from database timestamp precision or the host clock.
+        ReflectionTestUtils.setField(pendingEvent, "nextAttemptAt", LocalDateTime.of(2000, 1, 1, 0, 0));
+        Long eventId = events.saveAndFlush(pendingEvent).getId();
         assertThatThrownBy(() -> dispatcher.dispatch(eventId)).isInstanceOf(RuntimeException.class);
         assertThat(events.existsById(eventId)).isTrue();
         org.mockito.Mockito.reset(notificationService);

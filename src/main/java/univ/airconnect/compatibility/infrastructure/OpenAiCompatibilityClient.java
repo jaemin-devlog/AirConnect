@@ -54,7 +54,7 @@ public class OpenAiCompatibilityClient {
             return extractSummary(responseBody);
         } catch (Exception e) {
             log.warn("OpenAI compatibility summary failed. model={}, reason={}",
-                    properties.resolvedModel(), e.getMessage());
+                    properties.resolvedModel(), e.getClass().getSimpleName());
             return Optional.empty();
         }
     }
@@ -139,7 +139,7 @@ public class OpenAiCompatibilityClient {
             }
             return Optional.of(summaryNode.asText());
         } catch (Exception e) {
-            log.warn("Failed to parse OpenAI compatibility summary. reason={}", e.getMessage());
+            log.warn("Failed to parse OpenAI compatibility summary. errorType={}", e.getClass().getSimpleName());
             return Optional.empty();
         }
     }

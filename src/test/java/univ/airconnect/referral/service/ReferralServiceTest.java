@@ -266,4 +266,49 @@ class ReferralServiceTest {
         user.completeSignUp("테스트", nickname, 20260001, "컴퓨터공학과");
         return userRepository.save(user);
     }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void concurrentDifferentFriendsCrossMilestoneOnlyOnce() throws Exception {
+        Long[] ids = new TransactionTemplate(transactionManager).execute(status -> {
+            User referrer = saveEligibleUser("milestone-owner");
+            String code = referralService.getMe(referrer.getId()).referralCode();
+            for (int number = 0; number < 9; number++) {
+                referralService.redeem(saveEligibleUser("seed-friend-" + number).getId(), code);
+            }
+            return new Long[]{referrer.getId(), saveEligibleUser("friend-ten").getId(),
+                    saveEligibleUser("friend-eleven").getId()};
+        });
+        String code = referralService.getMe(ids[0]).referralCode();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> {
+                ready.countDown();
+                assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+                return referralService.redeem(ids[1], code);
+            });
+            var second = executor.submit(() -> {
+                ready.countDown();
+                assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+                return referralService.redeem(ids[2], code);
+            });
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(first.get(10, TimeUnit.SECONDS).firstApplied()).isTrue();
+            assertThat(second.get(10, TimeUnit.SECONDS).firstApplied()).isTrue();
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+        assertThat(userRepository.findById(ids[0]).orElseThrow().getTickets()).isEqualTo(10 + 11 * 3 + 5);
+        assertThat(referralRedemptionRepository.countByReferrerUserId(ids[0])).isEqualTo(11);
+        assertThat(ticketLedgerRepository.findAll()).filteredOn(row -> row.getUserId().equals(ids[0]))
+                .extracting(TicketLedger::getChangeAmount).filteredOn(amount -> amount == 8).hasSize(1);
+        verify(notificationService, times(1)).createAndEnqueue(argThat(command ->
+                command.type() == NotificationType.REFERRAL_MILESTONE_REWARDED));
+    }
 }

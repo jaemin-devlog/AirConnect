@@ -190,7 +190,7 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
             }
             return data;
         } catch (Exception e) {
-            log.warn("Failed to parse notification payload JSON. Falling back to raw payload: {}", e.getMessage());
+            log.warn("Failed to parse notification payload JSON. errorType={}", e.getClass().getSimpleName());
             data.put("payload", dataJson);
             return data;
         }
@@ -216,7 +216,8 @@ public class FirebasePushNotificationSender implements PushNotificationSender {
         String platformErrorCode = enumName(e);
         String messagingErrorCode = e.getMessagingErrorCode() != null ? e.getMessagingErrorCode().name() : null;
         String errorCode = messagingErrorCode != null ? messagingErrorCode : platformErrorCode;
-        String errorMessage = e.getMessage() != null ? e.getMessage() : "Firebase messaging request failed";
+        // Provider messages may contain registration tokens or notification contents.
+        String errorMessage = "Firebase messaging request failed (" + errorCode + ")";
 
         log.warn("FCM push failed: outboxId={}, errorCode={}, messagingErrorCode={}, message={}",
                 outbox.getId(), platformErrorCode, messagingErrorCode, errorMessage);

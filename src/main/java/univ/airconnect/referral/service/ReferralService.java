@@ -113,7 +113,9 @@ public class ReferralService {
                 ReferralRedemption.create(referrerUserId, userId, code, baseRewardTickets)
         );
 
-        long referredFriendCount = referralRedemptionRepository.countByReferrerUserId(referrerUserId);
+        // Earlier code lookups may have opened a MySQL repeatable-read snapshot before the user lock.
+        // A locking read counts every committed invitation after acquiring that lock, not the stale snapshot.
+        long referredFriendCount = referralRedemptionRepository.findIdsByReferrerUserIdForUpdate(referrerUserId).size();
         boolean milestoneReached = referredFriendCount % milestoneInterval == 0;
         int referrerRewardTickets = baseRewardTickets + (milestoneReached ? milestoneBonusTickets : 0);
 

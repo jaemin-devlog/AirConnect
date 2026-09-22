@@ -66,6 +66,7 @@ class ChatServiceReadTrackingTest {
     @Mock private NotificationService notificationService;
     @Mock private UserBlockPolicyService userBlockPolicyService;
     @Mock private StompSessionRegistry stompSessionRegistry;
+    @Mock private ChatMessageThrottleService chatMessageThrottleService;
 
     private ObjectMapper objectMapper;
     private ChatService chatService;
@@ -90,7 +91,8 @@ class ChatServiceReadTrackingTest {
                 objectMapper,
                 ChatDeliveryTestSupport.immediate(notificationService, redisTemplate, messagingTemplate, objectMapper),
                 userBlockPolicyService,
-                stompSessionRegistry
+                stompSessionRegistry,
+                chatMessageThrottleService
         );
         doAnswer(invocation -> {
             String payload = invocation.getArgument(1, String.class);

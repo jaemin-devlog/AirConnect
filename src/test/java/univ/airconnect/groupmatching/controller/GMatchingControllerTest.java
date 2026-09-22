@@ -31,6 +31,7 @@ class GMatchingControllerTest {
     @Mock GMatchingService matchingService;
     @Mock GTemporaryTeamMemberRepository memberRepository;
     @Mock UserRepository userRepository;
+    @Mock univ.airconnect.moderation.service.UserBlockPolicyService userBlockPolicyService;
     @InjectMocks GMatchingController controller;
 
     @Test
@@ -69,5 +70,27 @@ class GMatchingControllerTest {
                 .tickets(10)
                 .createdAt(LocalDateTime.now())
                 .build();
+    }
+
+    @Test
+    void roomSummaryHidesBlockedProfileWhilePreservingTeamShape() {
+        GTemporaryTeamRoom room = GTemporaryTeamRoom.createInviteOnly(1L, GTeamGender.M, GTeamSize.TWO);
+        ReflectionTestUtils.setField(room, "id", 100L);
+        room.addMember();
+        when(memberRepository.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(100L))
+                .thenReturn(List.of(GTemporaryTeamMember.create(100L, 1L, true),
+                        GTemporaryTeamMember.create(100L, 2L, false)));
+        when(userRepository.findAllByIdWithProfile(List.of(1L, 2L)))
+                .thenReturn(List.of(user(1L, "me"), user(2L, "private nickname")));
+        when(userBlockPolicyService.resolveBlockedCounterpartIds(1L, List.of(1L, 2L)))
+                .thenReturn(java.util.Set.of(2L));
+
+        GMatchingResponse.TemporaryTeamRoomResponse response = ReflectionTestUtils.invokeMethod(
+                controller, "toRoomResponse", room, 1L);
+
+        assertThat(response.members()).hasSize(2);
+        assertThat(response.members().get(1).nickname()).isNull();
+        assertThat(response.members().get(1).profileImage()).isNull();
+        assertThat(response.members().get(1).emailVerified()).isFalse();
     }
 }

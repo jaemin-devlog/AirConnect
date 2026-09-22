@@ -46,8 +46,8 @@ public class AdRewardSessionService {
     public AdRewardSessionCreateResponse createSession(Long userId) {
         ZoneId zoneId = ZoneId.of(dailyLimitZone);
         LocalDate today = LocalDate.now(zoneId);
-        LocalDateTime start = today.atStartOfDay();
-        LocalDateTime end = today.plusDays(1).atStartOfDay();
+        LocalDateTime start = today.atStartOfDay(zoneId).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+        LocalDateTime end = today.plusDays(1).atStartOfDay(zoneId).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
 
         long rewardedToday = adRewardSessionRepository.countRewardedToday(userId, start, end);
         if (rewardedToday >= dailyLimit) {
@@ -61,8 +61,8 @@ public class AdRewardSessionService {
                 AdRewardSession.createReady(sessionKey, userId, defaultRewardAmount, expiresAt)
         );
 
-        log.info("Ad reward session created. userId={}, sessionId={}, sessionKey={}, expiresAt={}",
-                userId, session.getId(), session.getSessionKey(), session.getExpiresAt());
+        log.info("Ad reward session created. userId={}, sessionId={}, expiresAt={}",
+                userId, session.getId(), session.getExpiresAt());
 
         return AdRewardSessionCreateResponse.builder()
                 .sessionKey(session.getSessionKey())

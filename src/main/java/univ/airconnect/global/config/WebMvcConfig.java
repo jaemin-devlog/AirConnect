@@ -11,6 +11,7 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import univ.airconnect.admin.AdminApiAuditInterceptor;
 import univ.airconnect.analytics.web.ApiRequestLoggingInterceptor;
 import univ.airconnect.global.security.resolver.CurrentUserIdArgumentResolver;
+import univ.airconnect.global.security.SensitiveApiRateLimitInterceptor;
 
 @Configuration
 @RequiredArgsConstructor
@@ -19,6 +20,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
     private final CurrentUserIdArgumentResolver currentUserIdArgumentResolver;
     private final AdminApiAuditInterceptor adminApiAuditInterceptor;
     private final ApiRequestLoggingInterceptor apiRequestLoggingInterceptor;
+    private final SensitiveApiRateLimitInterceptor sensitiveApiRateLimitInterceptor;
 
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
@@ -28,6 +30,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(apiRequestLoggingInterceptor)
+                .addPathPatterns("/api/v1/**");
+        registry.addInterceptor(sensitiveApiRateLimitInterceptor)
                 .addPathPatterns("/api/v1/**");
         registry.addInterceptor(adminApiAuditInterceptor)
                 .addPathPatterns("/api/v1/admin/**");

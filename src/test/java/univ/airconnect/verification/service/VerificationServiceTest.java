@@ -26,6 +26,8 @@ import univ.airconnect.verification.exception.VerificationException;
 import univ.airconnect.verification.repository.VerifiedSchoolEmailRepository;
 
 import java.util.Optional;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -80,7 +82,9 @@ class VerificationServiceTest {
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(anyString())).thenReturn(null);
-        when(valueOperations.get("email_verification:" + email)).thenReturn(code);
+        when(redisTemplate.execute(VerificationService.CONSUME_CODE,
+                List.of("email_verification:" + email, "email_verification_attempts:" + email),
+                code, "5", "300")).thenReturn(1L);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(user));
         when(userMilestoneRepository.findByUserIdAndMilestoneTypeForUpdate(userId, MilestoneType.EMAIL_VERIFIED))
@@ -131,7 +135,9 @@ class VerificationServiceTest {
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(anyString())).thenReturn(null);
-        when(valueOperations.get("email_verification:" + email)).thenReturn(code);
+        when(redisTemplate.execute(VerificationService.CONSUME_CODE,
+                List.of("email_verification:" + email, "email_verification_attempts:" + email),
+                code, "5", "300")).thenReturn(1L);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(user));
         when(userMilestoneRepository.findByUserIdAndMilestoneTypeForUpdate(userId, MilestoneType.EMAIL_VERIFIED))
@@ -148,7 +154,8 @@ class VerificationServiceTest {
         assertThat(user.getTickets()).isEqualTo(before);
         verify(userMilestoneRepository).save(any());
         verify(ticketLedgerRepository, never()).save(any(TicketLedger.class));
-        verify(redisTemplate).delete(eq("email_verification:" + email));
+        verify(redisTemplate).execute(VerificationService.CONSUME_CODE,
+                List.of("email_verification:" + email, "email_verification_attempts:" + email), code, "5", "300");
         verify(redisTemplate).delete(eq("email_verification_cooldown:" + email));
     }
 
@@ -169,7 +176,8 @@ class VerificationServiceTest {
         String email = "student@office.hanseo.ac.kr";
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.hasKey("email_verification_cooldown:" + email)).thenReturn(false);
+        when(valueOperations.setIfAbsent("email_verification_cooldown:" + email, "1", 60L, TimeUnit.SECONDS))
+                .thenReturn(true);
         when(valueOperations.get("email_verified_active:" + email)).thenReturn("active-token");
 
         service.sendCode(email, VerificationPurpose.SIGN_UP);
@@ -198,7 +206,8 @@ class VerificationServiceTest {
         ReflectionTestUtils.setField(existing, "id", 101L);
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.hasKey("email_verification_cooldown:" + email)).thenReturn(false);
+        when(valueOperations.setIfAbsent("email_verification_cooldown:" + email, "1", 60L, TimeUnit.SECONDS))
+                .thenReturn(true);
 
         service.sendCode(email, VerificationPurpose.SIGN_UP);
 
@@ -222,7 +231,8 @@ class VerificationServiceTest {
         String email = "student@office.hanseo.ac.kr";
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.hasKey("email_verification_cooldown:" + email)).thenReturn(false);
+        when(valueOperations.setIfAbsent("email_verification_cooldown:" + email, "1", 60L, TimeUnit.SECONDS))
+                .thenReturn(true);
 
         service.sendCode(email, VerificationPurpose.SIGN_UP);
 
@@ -246,7 +256,8 @@ class VerificationServiceTest {
         String email = "student@office.hanseo.ac.kr";
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.hasKey("email_verification_cooldown:" + email)).thenReturn(false);
+        when(valueOperations.setIfAbsent("email_verification_cooldown:" + email, "1", 60L, TimeUnit.SECONDS))
+                .thenReturn(true);
 
         service.sendCode(email, VerificationPurpose.SIGN_UP);
 
@@ -277,7 +288,9 @@ class VerificationServiceTest {
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(anyString())).thenReturn(null);
-        when(valueOperations.get("email_verification:" + email)).thenReturn(code);
+        when(redisTemplate.execute(VerificationService.CONSUME_CODE,
+                List.of("email_verification:" + email, "email_verification_attempts:" + email),
+                code, "5", "300")).thenReturn(1L);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.findByIdForTicketUpdate(userId)).thenReturn(Optional.of(user));
         when(userMilestoneRepository.findByUserIdAndMilestoneTypeForUpdate(userId, MilestoneType.EMAIL_VERIFIED))
@@ -312,7 +325,9 @@ class VerificationServiceTest {
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(anyString())).thenReturn(null);
-        when(valueOperations.get("email_verification:" + email)).thenReturn(code);
+        when(redisTemplate.execute(VerificationService.CONSUME_CODE,
+                List.of("email_verification:" + email, "email_verification_attempts:" + email),
+                code, "5", "300")).thenReturn(1L);
         when(verifiedSchoolEmailRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.empty());
 
         service.verifyCode(null, email, code, VerificationPurpose.SIGN_UP);
@@ -346,7 +361,9 @@ class VerificationServiceTest {
 
         when(attemptThrottleService.isLocked("school_email_verify", email, "203.0.113.9")).thenReturn(false);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("email_verification:" + email)).thenReturn(code);
+        when(redisTemplate.execute(VerificationService.CONSUME_CODE,
+                List.of("email_verification:" + email, "email_verification_attempts:" + email),
+                code, "5", "300")).thenReturn(1L);
         when(verifiedSchoolEmailRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.of(reservation));
 
         assertThatThrownBy(() -> service.verifyCode(userId, email, code, VerificationPurpose.SIGN_UP, "203.0.113.9"))

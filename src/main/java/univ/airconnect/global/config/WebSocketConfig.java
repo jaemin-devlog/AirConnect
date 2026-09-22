@@ -28,6 +28,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final StompHandler stompHandler;
     private final StompOutboundAuthorizationInterceptor stompOutboundAuthorizationInterceptor;
     private final StompOutboundLoggingInterceptor stompOutboundLoggingInterceptor;
+    private final StompOpsMonitor stompOpsMonitor;
 
     @Value("${app.websocket.inbound.core-pool-size:16}")
     private int inboundCorePoolSize;
@@ -75,6 +76,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        registry.setErrorHandler(stompSubProtocolErrorHandler(stompOpsMonitor));
         // 네이티브 앱 및 일반 WebSocket/STOMP 클라이언트용
         List<String> allowedOriginPatterns = resolveAllowedOriginPatterns();
 

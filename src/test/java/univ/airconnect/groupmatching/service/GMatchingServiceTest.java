@@ -30,6 +30,7 @@ import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.notification.domain.NotificationType;
 import univ.airconnect.notification.service.NotificationService;
+import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.user.domain.Gender;
 import univ.airconnect.user.domain.OnboardingStatus;
 import univ.airconnect.user.domain.UserStatus;
@@ -71,6 +72,7 @@ class GMatchingServiceTest {
     @Mock AnalyticsService analytics;
     @Mock TicketLedgerRepository ticketLedger;
     @Mock PlatformTransactionManager transactions;
+    @Mock UserBlockPolicyService blocks;
     @Spy ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks GMatchingService service;
@@ -337,6 +339,59 @@ class GMatchingServiceTest {
         GTemporaryTeamRoom room = GTemporaryTeamRoom.createInviteOnly(leaderId, gender, size);
         ReflectionTestUtils.setField(room, "id", id);
         return room;
+    }
+
+    @Test
+    void invitationCannotBypassBlockBetweenCurrentMemberAndJoiningUser() {
+        GTemporaryTeamRoom room = room(100L, 1L, GTeamGender.M, GTeamSize.TWO);
+        room.assignInviteCode("123456");
+        User joiner = user(2L, "joiner", 10);
+        when(rooms.findByInviteCode("123456")).thenReturn(Optional.of(room));
+        when(rooms.findByIdForUpdate(100L)).thenReturn(Optional.of(room));
+        when(users.findByIdForUpdate(2L)).thenReturn(Optional.of(joiner));
+        when(profiles.findByUserId(2L)).thenReturn(Optional.of(profile(joiner, Gender.MALE)));
+        when(members.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(100L))
+                .thenReturn(List.of(GTemporaryTeamMember.create(100L, 1L, true)));
+        when(blocks.findAnyBlockedCounterpart(2L, List.of(1L))).thenReturn(Optional.of(1L));
+
+        assertThatThrownBy(() -> service.joinRoomByInviteCode("123456", 2L))
+                .extracting("errorCode").isEqualTo(ErrorCode.USER_BLOCKED_INTERACTION);
+        assertThat(room.getCurrentMemberCount()).isEqualTo(1);
+        verify(members, never()).save(any());
+        verify(notifications, never()).createAndEnqueue(any());
+    }
+
+    @Test
+    void existingTeamMembershipDoesNotPermitBlockedProfileRead() {
+        when(rooms.findById(100L)).thenReturn(Optional.of(room(100L, 1L, GTeamGender.M, GTeamSize.TWO)));
+        when(members.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(100L, 1L)).thenReturn(true);
+        when(members.existsByTeamRoomIdAndUserIdAndLeftAtIsNull(100L, 2L)).thenReturn(true);
+        when(blocks.hasBlockRelation(1L, 2L)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.getTeamMemberProfile(100L, 1L, 2L))
+                .extracting("errorCode").isEqualTo(ErrorCode.USER_BLOCKED_INTERACTION);
+        verify(users, never()).findAllByIdWithProfile(any());
+    }
+
+    @Test
+    void blockedTeamsRemainQueuedWithoutSharedRoomOrTicketCharge() {
+        GTemporaryTeamRoom first = queueRoom(100L, 1L, GTeamGender.M, GTeamSize.TWO);
+        GTemporaryTeamRoom second = queueRoom(200L, 3L, GTeamGender.F, GTeamSize.TWO);
+        when(lists.range(any(), anyLong(), anyLong())).thenReturn(List.of(100L, 200L));
+        when(rooms.findByIdForUpdate(100L)).thenReturn(Optional.of(first));
+        when(rooms.findByIdForUpdate(200L)).thenReturn(Optional.of(second));
+        when(members.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(100L)).thenReturn(List.of(
+                GTemporaryTeamMember.create(100L, 1L, true), GTemporaryTeamMember.create(100L, 2L, false)));
+        when(members.findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(200L)).thenReturn(List.of(
+                GTemporaryTeamMember.create(200L, 3L, true), GTemporaryTeamMember.create(200L, 4L, false)));
+        when(blocks.findAnyBlockedCounterpart(1L, List.of(1L, 2L, 3L, 4L))).thenReturn(Optional.of(3L));
+
+        assertThat(service.processQueue(GTeamSize.TWO, -1)).isNull();
+        assertThat(first.getStatus()).isEqualTo(GTemporaryTeamRoomStatus.QUEUE_WAITING);
+        assertThat(second.getStatus()).isEqualTo(GTemporaryTeamRoomStatus.QUEUE_WAITING);
+        verify(matchResults, never()).save(any());
+        verify(chat, never()).createGroupRoomWithMembers(any(), any());
+        verify(ticketLedger, never()).save(any());
     }
 
     private GTemporaryTeamRoom queueRoom(Long id, Long leaderId, GTeamGender gender, GTeamSize size) {

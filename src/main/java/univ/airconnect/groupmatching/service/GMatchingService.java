@@ -34,6 +34,7 @@ import univ.airconnect.groupmatching.repository.GMatchResultRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamMemberRepository;
 import univ.airconnect.groupmatching.repository.GTemporaryTeamRoomRepository;
 import univ.airconnect.matching.dto.response.MatchingCandidateResponse;
+import univ.airconnect.moderation.service.UserBlockPolicyService;
 import univ.airconnect.iap.domain.entity.TicketLedger;
 import univ.airconnect.iap.repository.TicketLedgerRepository;
 import univ.airconnect.notification.domain.NotificationType;
@@ -110,6 +111,7 @@ public class GMatchingService {
     private final AnalyticsService analyticsService;
     private final TicketLedgerRepository ticketLedgerRepository;
     private final PlatformTransactionManager transactionManager;
+    private final UserBlockPolicyService userBlockPolicyService;
 
     @Value("${app.upload.profile-image-url-base:http://localhost:8080/api/v1/users/profile-images}")
     private String imageUrlBase;
@@ -185,6 +187,9 @@ public class GMatchingService {
             throw new BusinessException(ErrorCode.TEAM_MEMBER_NOT_FOUND);
         }
 
+        if (userBlockPolicyService.hasBlockRelation(requestUserId, targetUserId)) {
+            throw new BusinessException(ErrorCode.USER_BLOCKED_INTERACTION);
+        }
         User targetUser = findUserWithProfileOrThrow(targetUserId);
         return toMatchingCandidateResponse(targetUser);
     }
@@ -212,6 +217,7 @@ public class GMatchingService {
         if (!teamRoom.isFull() || members.size() != teamRoom.getTeamSize().getValue()) {
             throw new BusinessException(ErrorCode.TEAM_ROOM_NOT_FULL);
         }
+        ensureNoBlockedPair(extractUserIds(members));
         // 시작 시 검증하고 실제 차감은 최종 채팅방 생성 트랜잭션에서 한다.
         for (GTemporaryTeamMember member : members) {
             validateUserTeamGender(member.getUserId(), teamRoom.getTeamGender());
@@ -424,6 +430,13 @@ public class GMatchingService {
                 if (!first.canMatchWith(second)) {
                     continue;
                 }
+                List<Long> candidateMemberIds = new ArrayList<>(extractUserIds(temporaryTeamMemberRepository
+                        .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(first.getId())));
+                candidateMemberIds.addAll(extractUserIds(temporaryTeamMemberRepository
+                        .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(second.getId())));
+                if (hasBlockedPair(candidateMemberIds)) {
+                    continue;
+                }
                 return completeMatch(first, second);
             }
         }
@@ -547,6 +560,11 @@ public class GMatchingService {
             throw new BusinessException(ErrorCode.TEAM_ROOM_FULL);
         }
         validateUserTeamGender(userId, teamRoom.getTeamGender());
+        List<Long> currentMemberIds = extractUserIds(temporaryTeamMemberRepository
+                .findByTeamRoomIdAndLeftAtIsNullOrderByJoinedAtAsc(teamRoom.getId()));
+        if (userBlockPolicyService.findAnyBlockedCounterpart(userId, currentMemberIds).isPresent()) {
+            throw new BusinessException(ErrorCode.USER_BLOCKED_INTERACTION);
+        }
 
         Optional<GTemporaryTeamMember> existingMember = temporaryTeamMemberRepository.findByTeamRoomIdAndUserId(teamRoom.getId(), userId);
         if (existingMember.isPresent()) {
@@ -601,7 +619,12 @@ public class GMatchingService {
         first.markMatched();
         second.markMatched();
 
-        GMatchResult matchResult = matchResultRepository.save(GMatchResult.create(first.getId(), second.getId()));
+        GMatchResult matchResult = matchResultRepository.findByTeamPair(first.getId(), second.getId())
+                .map(cancelled -> {
+                    cancelled.retryCancelledMatch();
+                    return cancelled;
+                })
+                .orElseGet(() -> matchResultRepository.save(GMatchResult.create(first.getId(), second.getId())));
 
         if (shouldDelayMatchFinalization()) {
             removeRoomFromRedisQueue(first.getTeamSize(), first.getId(), firstQueueToken);
@@ -620,6 +643,7 @@ public class GMatchingService {
         finalMemberIds.addAll(extractUserIds(secondMembers));
 
         List<User> ticketUsers = lockAndValidateGroupMatchTickets(first.getTeamSize(), finalMemberIds);
+        ensureNoBlockedPair(finalMemberIds);
         ChatRoom finalChatRoom = chatService.createGroupRoomWithMembers(
                 buildFinalRoomName(first.getTeamSize()),
                 finalMemberIds
@@ -996,6 +1020,16 @@ public class GMatchingService {
         finalMemberIds.addAll(extractUserIds(secondMembers));
 
         List<User> ticketUsers = lockAndValidateGroupMatchTickets(first.getTeamSize(), finalMemberIds);
+        if (hasBlockedPair(finalMemberIds)) {
+            // A block may be created between pairing and the delayed room creation.
+            // Keep each team intact, without charging or creating a shared chat room.
+            matchResult.cancel();
+            first.reopenAfterCancelledMatch();
+            second.reopenAfterCancelledMatch();
+            matchingEventPublisher.publishStatus(first.getId(), first.getDisplayStatus().name());
+            matchingEventPublisher.publishStatus(second.getId(), second.getDisplayStatus().name());
+            return false;
+        }
         ChatRoom finalChatRoom = chatService.createGroupRoomWithMembers(
                 buildFinalRoomName(first.getTeamSize()),
                 finalMemberIds
@@ -1072,6 +1106,21 @@ public class GMatchingService {
         validateActiveMembership(teamRoomId, userId);
         if (!teamRoom.isLeader(userId)) {
             throw new BusinessException(ErrorCode.LEADER_ONLY_ACTION);
+        }
+    }
+
+    private boolean hasBlockedPair(Collection<Long> userIds) {
+        for (Long userId : userIds) {
+            if (userBlockPolicyService.findAnyBlockedCounterpart(userId, userIds).isPresent()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void ensureNoBlockedPair(Collection<Long> userIds) {
+        if (hasBlockedPair(userIds)) {
+            throw new BusinessException(ErrorCode.USER_BLOCKED_INTERACTION);
         }
     }
 

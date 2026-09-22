@@ -104,6 +104,8 @@ class ChatSendStatusSecurityTest {
     @MockitoBean SimpMessageSendingOperations messagingTemplate;
     @MockitoBean NotificationService notifications;
     @MockitoBean UserBlockPolicyService blockPolicy;
+    @MockitoBean ChatMessageThrottleService chatMessageThrottleService;
+    @MockitoBean univ.airconnect.auth.security.AccessTokenRevocationService accessTokenRevocationService;
     @MockitoBean GMatchingService matchingService;
     @MockitoBean JwtProvider jwtProvider;
     @Autowired StompSessionRegistry stompSessionRegistry;
@@ -114,10 +116,12 @@ class ChatSendStatusSecurityTest {
     private User sender;
     private Long roomId;
     private MockMvc rest;
+    private org.mockito.MockedStatic<java.time.Clock> databasePrecisionClock;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
+        databasePrecisionClock = DatabasePrecisionChatClock.open();
         transaction = new TransactionTemplate(transactionManager);
         ValueOperations<String, Object> values = mock(ValueOperations.class);
         SetOperations<String, Object> sets = mock(SetOperations.class);
@@ -131,6 +135,8 @@ class ChatSendStatusSecurityTest {
             roomId = chatService.createGroupRoomWithMembers("status-security", List.of(sender.getId(), recipient.getId())).getId();
         });
         when(jwtProvider.getUserId("test-token")).thenReturn(sender.getId());
+        var tokenExpiresAt = java.time.Instant.now().plusSeconds(3600);
+        when(jwtProvider.getAccessTokenExpiresAt("test-token")).thenReturn(tokenExpiresAt);
         handler = new StompHandler(jwtProvider, chatService, matchingService, new StompOpsMonitor(20), users,
                 stompSessionRegistry);
         controller = new ChatController(chatService);
@@ -138,7 +144,7 @@ class ChatSendStatusSecurityTest {
         // The production JWT filter and the same authenticated-only rule used for chat REST.
         // Unrelated maintenance/activity/email filters are deliberately not part of this slice.
         var security = new FilterChainProxy(new DefaultSecurityFilterChain(AnyRequestMatcher.INSTANCE,
-                new JwtAuthenticationFilter(jwtProvider, users),
+                new JwtAuthenticationFilter(jwtProvider, users, new ObjectMapper()),
                 new AnonymousAuthenticationFilter("test-anonymous"),
                 new ExceptionTranslationFilter(new RestAuthenticationEntryPoint(objectMapper)),
                 new AuthorizationFilter(AuthenticatedAuthorizationManager.authenticated())));
@@ -150,12 +156,16 @@ class ChatSendStatusSecurityTest {
     @AfterEach
     void cleanUp() {
         SecurityContextHolder.clearContext();
-        transaction.executeWithoutResult(tx -> {
-            messages.deleteAllInBatch();
-            members.deleteAllInBatch();
-            rooms.deleteAllInBatch();
-            users.deleteAllInBatch();
-        });
+        try {
+            transaction.executeWithoutResult(tx -> {
+                messages.deleteAllInBatch();
+                members.deleteAllInBatch();
+                rooms.deleteAllInBatch();
+                users.deleteAllInBatch();
+            });
+        } finally {
+            databasePrecisionClock.close();
+        }
     }
 
     @ParameterizedTest

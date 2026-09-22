@@ -20,6 +20,8 @@ import univ.airconnect.auth.exception.AuthException;
 import univ.airconnect.auth.repository.RefreshTokenRepository;
 import univ.airconnect.auth.repository.SocialLoginDeviceBindingRepository;
 import univ.airconnect.auth.security.TokenHashService;
+import univ.airconnect.auth.security.RefreshTokenRotationService;
+import univ.airconnect.auth.security.AccessTokenRevocationService;
 import univ.airconnect.auth.service.oauth.SocialAuthClient;
 import univ.airconnect.auth.service.oauth.SocialAuthResolver;
 import univ.airconnect.auth.service.oauth.apple.AppleAuthClient;
@@ -46,9 +48,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceRaceTest {
@@ -61,6 +66,8 @@ class AuthServiceRaceTest {
     @Mock private RefreshTokenRepository refreshTokenRepository;
     @Mock private SocialLoginDeviceBindingRepository socialLoginDeviceBindingRepository;
     @Mock private TokenHashService tokenHashService;
+    @Mock private RefreshTokenRotationService refreshTokenRotationService;
+    @Mock private AccessTokenRevocationService accessTokenRevocationService;
     @Mock private UserService userService;
     @Mock private AnalyticsService analyticsService;
     @Mock private AttemptThrottleService attemptThrottleService;
@@ -86,31 +93,24 @@ class AuthServiceRaceTest {
         String rawRefreshToken = "refresh-token-raw";
 
         User user = createUser(userId);
-        AtomicReference<RefreshToken> storedToken = new AtomicReference<>(RefreshToken.create(userId, deviceId, "stored-hash"));
-        AtomicInteger findCalls = new AtomicInteger();
-        CountDownLatch firstSaveDone = new CountDownLatch(1);
+        AtomicReference<String> storedToken = new AtomicReference<>("stored-hash");
+        CountDownLatch bothReadsFinished = new CountDownLatch(2);
 
         doNothing().when(jwtProvider).validateRefreshToken(rawRefreshToken);
         when(jwtProvider.isRefreshToken(rawRefreshToken)).thenReturn(true);
         when(jwtProvider.getUserId(rawRefreshToken)).thenReturn(userId);
         when(jwtProvider.getDeviceId(rawRefreshToken)).thenReturn(deviceId);
         when(refreshTokenRepository.findById(refreshTokenKey)).thenAnswer(invocation -> {
-            int call = findCalls.incrementAndGet();
-            if (call > 1) {
-                await(firstSaveDone, "refresh save");
-            }
-            return Optional.ofNullable(storedToken.get());
+            String token = storedToken.get();
+            bothReadsFinished.countDown();
+            await(bothReadsFinished, "both old-token reads");
+            return Optional.of(RefreshToken.create(userId, deviceId, token));
         });
-        when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> {
-            RefreshToken saved = invocation.getArgument(0);
-            storedToken.set(saved);
-            firstSaveDone.countDown();
-            return saved;
-        });
+        when(refreshTokenRotationService.rotate(eq(refreshTokenKey), eq("stored-hash"), eq("new-refresh-hash"), anyString()))
+                .thenAnswer(invocation -> storedToken.compareAndSet("stored-hash", "new-refresh-hash"));
         when(tokenHashService.matches(rawRefreshToken, "stored-hash")).thenReturn(true);
-        when(tokenHashService.matches(rawRefreshToken, "new-refresh-hash")).thenReturn(false);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(jwtProvider.createAccessToken(userId)).thenReturn("new-access-token");
+        when(jwtProvider.createAccessToken(eq(userId), eq(deviceId), anyString())).thenReturn("new-access-token");
         when(jwtProvider.createRefreshToken(userId, deviceId)).thenReturn("new-refresh-token");
         when(tokenHashService.hash("new-refresh-token")).thenReturn("new-refresh-hash");
 
@@ -144,10 +144,36 @@ class AuthServiceRaceTest {
 
             assertThat(successCount).isEqualTo(1);
             assertThat(reuseFailureCount).isEqualTo(1);
+            assertThat(storedToken.get()).isEqualTo("new-refresh-hash");
+            verify(refreshTokenRepository, never()).save(any());
+            verify(refreshTokenRepository, never()).deleteById(anyString());
         } finally {
             executor.shutdownNow();
             executor.awaitTermination(5, TimeUnit.SECONDS);
         }
+    }
+
+    @Test
+    void refreshCannotRecreateSessionDeletedByLogoutAfterRead() {
+        TokenRefreshRequest request = new TokenRefreshRequest("old-refresh", "device-race");
+        when(jwtProvider.isRefreshToken("old-refresh")).thenReturn(true);
+        when(jwtProvider.getUserId("old-refresh")).thenReturn(15L);
+        when(jwtProvider.getDeviceId("old-refresh")).thenReturn("device-race");
+        when(refreshTokenRepository.findById("15:device-race"))
+                .thenReturn(Optional.of(RefreshToken.create(15L, "device-race", "old-hash")));
+        when(tokenHashService.matches("old-refresh", "old-hash")).thenReturn(true);
+        when(userRepository.findById(15L)).thenReturn(Optional.of(createUser(15L)));
+        when(jwtProvider.createAccessToken(eq(15L), eq("device-race"), anyString())).thenReturn("next-access");
+        when(jwtProvider.createRefreshToken(15L, "device-race")).thenReturn("next-refresh");
+        when(tokenHashService.hash("next-refresh")).thenReturn("next-hash");
+        // Redis key is gone after logout, so atomic compare cannot succeed.
+        when(refreshTokenRotationService.rotate(eq("15:device-race"), eq("old-hash"), eq("next-hash"), anyString())).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.refresh(request))
+                .isInstanceOf(AuthException.class)
+                .extracting("errorCode").isEqualTo(AuthErrorCode.REFRESH_TOKEN_REUSE_DETECTED);
+        verify(refreshTokenRepository, never()).save(any());
+        verify(refreshTokenRepository, never()).deleteById(anyString());
     }
 
     private Callable<Object> task(CountDownLatch startGate, Callable<Object> delegate) {

@@ -9,6 +9,7 @@ import univ.airconnect.referral.domain.entity.ReferralRedemption;
 import jakarta.persistence.LockModeType;
 
 import java.util.Optional;
+import java.util.List;
 
 public interface ReferralRedemptionRepository extends JpaRepository<ReferralRedemption, Long> {
     Optional<ReferralRedemption> findByReferredUserId(Long referredUserId);
@@ -28,4 +29,8 @@ public interface ReferralRedemptionRepository extends JpaRepository<ReferralRede
                                                      @Param("pairHighUserId") Long pairHighUserId);
 
     long countByReferrerUserId(Long referrerUserId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r.id FROM ReferralRedemption r WHERE r.referrerUserId = :referrerUserId")
+    List<Long> findIdsByReferrerUserIdForUpdate(@Param("referrerUserId") Long referrerUserId);
 }

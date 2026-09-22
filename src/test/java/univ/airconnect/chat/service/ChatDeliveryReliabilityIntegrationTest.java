@@ -59,6 +59,8 @@ class ChatDeliveryReliabilityIntegrationTest {
     @MockitoBean RedisSubscriber redisSubscriber;
     @MockitoBean SimpMessageSendingOperations broker;
     @MockitoBean UserBlockPolicyService blockPolicy;
+    @MockitoBean ChatMessageThrottleService chatMessageThrottleService;
+    @MockitoBean univ.airconnect.auth.security.AccessTokenRevocationService accessTokenRevocationService;
     Long author, recipient, room;
     PushDevice device;
 

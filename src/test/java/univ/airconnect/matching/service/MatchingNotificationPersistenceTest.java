@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.*;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -20,6 +21,7 @@ import univ.airconnect.notification.domain.entity.PushDevice;
 import univ.airconnect.notification.repository.*;
 import univ.airconnect.notification.service.*;
 import java.util.List;
+import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -50,7 +52,10 @@ class MatchingNotificationPersistenceTest {
         var command = new NotificationService.CreateCommand(7L, NotificationType.MATCH_REQUEST_RECEIVED,
                 "새 요청", "연결 요청", "airconnect://matching/requests", 8L, null,
                 "{\"connectionId\":1}", "test-event");
-        var event = events.saveAndFlush(MatchingNotificationEvent.create(7L, 8L, mapper.writeValueAsString(command)));
+        var pendingEvent = MatchingNotificationEvent.create(7L, 8L, mapper.writeValueAsString(command));
+        // This test checks transaction rollback, not dispatch timing. Make the fixture unambiguously due.
+        ReflectionTestUtils.setField(pendingEvent, "nextAttemptAt", LocalDateTime.of(2000, 1, 1, 0, 0));
+        var event = events.saveAndFlush(pendingEvent);
         when(preferences.getDeliveryPolicy(anyLong(), any()))
                 .thenReturn(new NotificationPreferenceService.DeliveryPolicy(true, true));
         // Failure after notification insertion must roll back both notification and delivery state.

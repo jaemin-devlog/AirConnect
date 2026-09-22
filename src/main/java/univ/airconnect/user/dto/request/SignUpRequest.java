@@ -1,5 +1,6 @@
 package univ.airconnect.user.dto.request;
 
+import jakarta.validation.constraints.Size;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -18,21 +19,29 @@ public class SignUpRequest {
     private String deviceId;         // 디바이스 ID
 
     // 회원가입 추가 정보
+    @Size(max = 100)
     private String name;             // 사용자명
+    @Size(max = 100)
     private String nickname;         // 닉네임
     /** 하위 호환 필드명. 값은 전체 학번이 아니라 두 자리 입학 연도(예: 21)다. */
     private Integer studentNum;
+    @Size(max = 100)
     private String deptName;        // 학과명
 
     // 프로필 정보
     private Integer height;
     private Integer age;
+    @Size(max = 10)
     private String mbti;
+    @Size(max = 20)
     private String smoking;
     private Gender gender;
     private MilitaryStatus military;
+    @Size(max = 100)
     private String residence;
+    @Size(max = 500)
     private String intro;
+    @Size(max = 200)
     private String instagram;
 }
 

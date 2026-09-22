@@ -5,6 +5,7 @@ import org.springframework.http.MediaType;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
 import univ.airconnect.auth.exception.SocialApiException;
 
@@ -17,7 +18,11 @@ public class KakaoApiClient {
 
     public KakaoApiClient(KakaoProperties properties) {
         this.properties = properties;
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000);
+        factory.setReadTimeout(5000);
         this.restClient = RestClient.builder()
+                .requestFactory(factory)
                 .baseUrl(properties.baseUrl())
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .build();

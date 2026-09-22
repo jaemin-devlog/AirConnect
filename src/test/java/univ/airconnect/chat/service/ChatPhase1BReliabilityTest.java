@@ -71,6 +71,8 @@ class ChatPhase1BReliabilityTest {
     @MockitoBean SimpMessageSendingOperations messagingTemplate;
     @MockitoBean NotificationService notifications;
     @MockitoBean UserBlockPolicyService blockPolicy;
+    @MockitoBean ChatMessageThrottleService chatMessageThrottleService;
+    @MockitoBean univ.airconnect.auth.security.AccessTokenRevocationService accessTokenRevocationService;
 
     private TransactionTemplate transaction;
     private User sender;

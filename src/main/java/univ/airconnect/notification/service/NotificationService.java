@@ -206,7 +206,7 @@ public class NotificationService {
                 root.put("payload", payloadJson);
             }
         } catch (Exception e) {
-            log.warn("Failed to parse notification payload JSON. Falling back to raw payload: {}", e.getMessage());
+            log.warn("Failed to parse notification payload JSON. errorType={}", e.getClass().getSimpleName());
             root.put("payload", payloadJson);
         }
 
@@ -239,8 +239,8 @@ public class NotificationService {
         try {
             return objectMapper.writeValueAsString(payloadNode);
         } catch (Exception e) {
-            log.warn("Failed to serialize canonical notification payload. Falling back to original payload: {}",
-                    e.getMessage());
+            log.warn("Failed to serialize canonical notification payload. errorType={}",
+                    e.getClass().getSimpleName());
             return fallbackPayload;
         }
     }

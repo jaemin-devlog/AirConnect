@@ -9,15 +9,20 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
 @Component
 public class AppleTokenRevocationClient {
 
     private final AppleAuthProperties appleAuthProperties;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
 
     public AppleTokenRevocationClient(AppleAuthProperties appleAuthProperties) {
         this.appleAuthProperties = appleAuthProperties;
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000);
+        factory.setReadTimeout(5000);
+        this.restTemplate = new RestTemplate(factory);
     }
 
     public void revoke(String token, String tokenTypeHint, String clientSecret) {

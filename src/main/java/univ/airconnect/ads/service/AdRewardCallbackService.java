@@ -82,7 +82,7 @@ public class AdRewardCallbackService {
                     )
             );
         } catch (Exception e) {
-            log.error("Failed to save AdRewardCallback verification result", e);
+            log.error("Failed to save AdRewardCallback verification result. type={}", e.getClass().getSimpleName());
         }
 
         if (!signatureValid) {
@@ -134,7 +134,7 @@ public class AdRewardCallbackService {
         session.markRewarded(transactionId);
 
         log.info("Ad reward callback processed. sessionId={}, userId={}, txId={}, granted={}, before={}, after={}",
-                session.getId(), session.getUserId(), transactionId,
+                session.getId(), session.getUserId(), mask(transactionId),
                 grantResult.granted(), grantResult.beforeTickets(), grantResult.afterTickets());
 
         return AdRewardCallbackResponse.builder()

@@ -18,6 +18,10 @@ import java.security.PrivateKey;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -118,6 +122,25 @@ class AppleJwtVerifierTest {
                 .isInstanceOf(AuthException.class)
                 .extracting("errorCode")
                 .isEqualTo(AuthErrorCode.INVALID_APPLE_TOKEN);
+    }
+
+    @Test
+    void verificationFailureDoesNotLogProviderErrorContents() {
+        Logger logger = (Logger) LoggerFactory.getLogger(AppleJwtVerifier.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        when(applePublicKeyProvider.getPublicKey("dummy-token"))
+                .thenThrow(new IllegalArgumentException("private-mail@example.test sensitive-token-fragment"));
+        try {
+            assertThatThrownBy(() -> appleJwtVerifier.verify("dummy-token")).isInstanceOf(AuthException.class);
+            assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage)
+                    .noneMatch(message -> message.contains("private-mail") || message.contains("sensitive-token"));
+            assertThat(appender.list).isNotEmpty();
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
     }
 
     private KeyPair generateRsaKeyPair() throws Exception {

@@ -120,6 +120,8 @@ class GroupChatJoinSecurityTest {
     @MockitoBean SimpMessageSendingOperations messagingTemplate;
     @MockitoBean NotificationService notificationService;
     @MockitoBean UserBlockPolicyService blockPolicy;
+    @MockitoBean ChatMessageThrottleService chatMessageThrottleService;
+    @MockitoBean univ.airconnect.auth.security.AccessTokenRevocationService accessTokenRevocationService;
     @MockitoBean GMatchingEventPublisher matchingEvents;
     @MockitoBean GMatchingPushService matchingPush;
     @MockitoBean AnalyticsService analytics;
@@ -217,7 +219,8 @@ class GroupChatJoinSecurityTest {
 
         StompHandler handler = new StompHandler(mock(JwtProvider.class), chatService, matchingService,
                 new StompOpsMonitor(20), users, stompSessionRegistry);
-        stompSessionRegistry.register("attacker-session", attacker.getId());
+        stompSessionRegistry.register("attacker-session", attacker.getId(),
+                java.time.Instant.now().plusSeconds(3600), "attacker-fingerprint");
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setSessionId("attacker-session");
         accessor.setSubscriptionId("attacker-subscription");

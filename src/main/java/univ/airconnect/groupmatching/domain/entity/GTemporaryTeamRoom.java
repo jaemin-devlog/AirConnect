@@ -230,6 +230,16 @@ public class GTemporaryTeamRoom {
         touch();
     }
 
+    public void reopenAfterCancelledMatch() {
+        if (this.status != GTemporaryTeamRoomStatus.MATCHED) {
+            throw new BusinessException(ErrorCode.TEAM_ROOM_STATE_INVALID);
+        }
+        this.status = GTemporaryTeamRoomStatus.OPEN;
+        this.matchedAt = null;
+        clearQueueMetadata();
+        touch();
+    }
+
     public void cancel(Long requestUserId) {
         validateLeader(requestUserId);
         if (status.isTerminal()) {
