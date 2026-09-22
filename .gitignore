@@ -128,4 +128,15 @@ secrets/
 !/deploy/runtime/.gitkeep
 /backups/
 
+# Local worktrees, caches and downloaded installers (never publish)
+/.codex-worktrees/
+/.gradle-codex/
+/.pnpm-store/
+/tools/Git-2.55.0.3-64-bit.exe
+/tools/android-studio-quail4-windows.exe
+/tools/android-studio-quail4-windows-verified.exe
+
+# Offline coupon bearer codes: keep the print/export copy local
+/outputs/excel/festival-coupons-500.xlsx
+
 .md
