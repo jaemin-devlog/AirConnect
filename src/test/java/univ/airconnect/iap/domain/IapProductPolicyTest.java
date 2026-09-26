@@ -20,5 +20,9 @@ class IapProductPolicyTest {
         assertThat(IapProductPolicy.fromProductId("AirConnect_PremiumEconomy_10").getTickets()).isEqualTo(19);
         assertThat(IapProductPolicy.fromProductId("AirConnect_Business_30").getTickets()).isEqualTo(50);
         assertThat(IapProductPolicy.fromProductId("AirConnect_FirstClass_50").getTickets()).isEqualTo(115);
+        assertThat(IapProductPolicy.fromProductId("AirConnect_Economy_5").getCatalogPriceKrw()).isEqualTo(1_100);
+        assertThat(IapProductPolicy.fromProductId("AirConnect_PremiumEconomy_10").getCatalogPriceKrw()).isEqualTo(2_200);
+        assertThat(IapProductPolicy.fromProductId("AirConnect_Business_30").getCatalogPriceKrw()).isEqualTo(5_500);
+        assertThat(IapProductPolicy.fromProductId("AirConnect_FirstClass_50").getCatalogPriceKrw()).isEqualTo(11_000);
     }
 }

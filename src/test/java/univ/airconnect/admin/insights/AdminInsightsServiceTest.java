@@ -96,13 +96,18 @@ class AdminInsightsServiceTest {
         assertThat(n(list(map(r.get("activity")).get("retention")).get(0).get("returned"))).isEqualTo(1);
     }
     @Test void commerceSeparatesSandboxAndProductionAndNoQueriesMutateRecords() {
-        db.update("INSERT INTO iap_orders VALUES(1,1,'APPLE','tickets_10','GRANTED','SANDBOX',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','never-return',NULL)");
-        db.update("INSERT INTO iap_orders VALUES(2,2,'APPLE','tickets_10','GRANTED','PRODUCTION',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','never-return',NULL)");
+        db.update("INSERT INTO iap_orders VALUES(1,1,'APPLE','AirConnect_Economy_5','GRANTED','SANDBOX',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','never-return',NULL)");
+        db.update("INSERT INTO iap_orders VALUES(2,2,'APPLE','AirConnect_Economy_5','GRANTED','PRODUCTION',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','never-return',NULL)");
         db.update("INSERT INTO ticket_ledger VALUES(2,'IAP_ORDER',10,'2026-09-03 03:00:00')");
         var r=service.overview(FROM,TO);
         assertThat(list(map(r.get("commerce")).get("orders")))
                 .extracting(row -> row.get("environment") + ":" + n(row.get("orders")))
                 .containsExactly("PRODUCTION:1", "SANDBOX:1");
+        var pricing = map(map(r.get("commerce")).get("pricing"));
+        assertThat(n(pricing.get("catalog_price_krw"))).isEqualTo(1_100);
+        assertThat(n(pricing.get("priced_orders"))).isEqualTo(1);
+        assertThat(n(pricing.get("unknown_price_orders"))).isZero();
+        assertThat(map(r.get("commerce")).get("price_basis")).isEqualTo("CURRENT_CATALOG_PRICE");
         assertThat(db.queryForObject("SELECT COUNT(*) FROM iap_orders",Long.class)).isEqualTo(2);
         assertThat(db.queryForObject("SELECT COUNT(*) FROM users",Long.class)).isEqualTo(8);
         assertThat(r.toString()).doesNotContain("never-return");
@@ -159,9 +164,9 @@ class AdminInsightsServiceTest {
         assertThatThrownBy(() -> service.overview(FROM,TO,true)).isInstanceOf(BusinessException.class);
     }
     @Test void purchaseListShowsBuyerTicketTotalsWithoutReceiptSecrets() {
-        db.update("INSERT INTO iap_orders VALUES(1,1,'APPLE','tickets_10','GRANTED','PRODUCTION',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','secret-one',NULL)");
-        db.update("INSERT INTO iap_orders VALUES(2,1,'APPLE','tickets_10','REFUNDED','PRODUCTION',10,'2026-09-04 03:00:00','2026-09-04 03:00:00','secret-two',NULL)");
-        db.update("INSERT INTO iap_orders VALUES(3,2,'GOOGLE','tickets_30','GRANTED','PRODUCTION',30,'2026-09-05 03:00:00','2026-09-05 03:00:00','secret-three',NULL)");
+        db.update("INSERT INTO iap_orders VALUES(1,1,'APPLE','AirConnect_Economy_5','GRANTED','PRODUCTION',10,'2026-09-03 03:00:00','2026-09-03 03:00:00','secret-one',NULL)");
+        db.update("INSERT INTO iap_orders VALUES(2,1,'APPLE','AirConnect_Economy_5','REFUNDED','PRODUCTION',10,'2026-09-04 03:00:00','2026-09-04 03:00:00','secret-two',NULL)");
+        db.update("INSERT INTO iap_orders VALUES(3,2,'GOOGLE','AirConnect_Business_30','GRANTED','PRODUCTION',30,'2026-09-05 03:00:00','2026-09-05 03:00:00','secret-three',NULL)");
         db.update("INSERT INTO iap_orders VALUES(4,3,'APPLE','tickets_10','GRANTED','SANDBOX',10,'2026-09-05 03:00:00','2026-09-05 03:00:00','secret-four',NULL)");
         db.update("INSERT INTO iap_events VALUES(1,'APPLE','DID_PURCHASE','unlinked-transaction',NULL,'2026-09-06 03:00:00')");
         var result = service.purchases(FROM, TO, 0);
@@ -171,6 +176,8 @@ class AdminInsightsServiceTest {
         assertThat(n(summary.get("sandbox_orders"))).isEqualTo(1);
         assertThat(n(summary.get("buyers"))).isEqualTo(2);
         assertThat(n(summary.get("granted_tickets"))).isEqualTo(40);
+        assertThat(n(summary.get("catalog_price_krw"))).isEqualTo(6_600);
+        assertThat(n(summary.get("unknown_price_orders"))).isZero();
         assertThat(n(summary.get("refunded_orders"))).isEqualTo(1);
         assertThat(n(summary.get("unmatched_store_events"))).isEqualTo(1);
         assertThat(n(result.get("totalElements"))).isEqualTo(3);
@@ -178,6 +185,8 @@ class AdminInsightsServiceTest {
                 .containsExactly(3L, 2L, 1L);
         assertThat(list(result.get("items"))).extracting(row -> n(row.get("sandbox_orders")))
                 .containsExactly(1L, 0L, 0L);
+        assertThat(list(result.get("items"))).extracting(row -> n(row.get("catalog_price_krw")))
+                .containsExactly(0L, 5_500L, 1_100L);
         assertThat(result.toString()).doesNotContain("secret-one", "secret-two", "purchase_token", "transaction_id");
     }
     @Test void purchaseListIncludesLedgerOnlyBuyersAndUsesActualGrantedTicketHistory() {

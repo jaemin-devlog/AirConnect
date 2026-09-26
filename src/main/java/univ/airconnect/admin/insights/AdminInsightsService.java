@@ -31,6 +31,17 @@ public class AdminInsightsService {
             + " THEN 'both' ELSE 'photo' END ELSE CASE WHEN " + EMAIL + " THEN 'email' ELSE 'neither' END END";
     private static final String ACTIVITY = "e.type IN ('APP_SESSION_STARTED','APP_HEARTBEAT','SCREEN_VIEWED',"
             + "'USER_LOGGED_IN','MATCH_REQUEST_SENT','MATCH_REQUEST_ACCEPTED')";
+    // Current Korean catalog prices. These are reference prices, not receipt-recorded paid amounts.
+    private static final String CATALOG_PRICE_KRW = "CASE o.product_id"
+            + " WHEN 'AirConnect_Economy_5' THEN 1100"
+            + " WHEN 'AirConnect_PremiumEconomy_10' THEN 2200"
+            + " WHEN 'AirConnect_Business_30' THEN 5500"
+            + " WHEN 'AirConnect_FirstClass_50' THEN 11000"
+            + " WHEN 'com.airconnect.tickets.pack5' THEN 1100"
+            + " WHEN 'com.airconnect.tickets.pack12' THEN 2200"
+            + " WHEN 'com.airconnect.tickets.pack30' THEN 5500"
+            + " WHEN 'com.airconnect.tickets.pack50' THEN 5500"
+            + " WHEN 'com.airconnect.tickets.pack70' THEN 11000 END";
 
     @org.springframework.beans.factory.annotation.Autowired
     public AdminInsightsService(NamedParameterJdbcTemplate jdbc,
@@ -259,13 +270,23 @@ public class AdminInsightsService {
                 .orElseGet(() -> LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault()));
     }
     private Map<String, Object> commerce(MapSqlParameterSource p) {
-        return Map.of("orders", rows("SELECT o.environment,o.status,COUNT(*) AS orders,COUNT(DISTINCT o.user_id) AS members FROM iap_orders o "
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("orders", rows("SELECT o.environment,o.status,COUNT(*) AS orders,COUNT(DISTINCT o.user_id) AS members FROM iap_orders o "
                 + "JOIN users u ON u.id=o.user_id WHERE " + PURCHASE_ELIGIBLE
-                + " AND o.created_at>=:start AND o.created_at<:end GROUP BY o.environment,o.status ORDER BY o.environment,o.status", p),
-                "tickets", rows("SELECT l.ref_type, SUM(CASE WHEN l.change_amount>0 THEN l.change_amount ELSE 0 END) AS granted, "
+                + " AND o.created_at>=:start AND o.created_at<:end GROUP BY o.environment,o.status ORDER BY o.environment,o.status", p));
+        result.put("tickets", rows("SELECT l.ref_type, SUM(CASE WHEN l.change_amount>0 THEN l.change_amount ELSE 0 END) AS granted, "
                 + "SUM(CASE WHEN l.change_amount<0 THEN -l.change_amount ELSE 0 END) AS spent, COUNT(*) AS changes "
-                + "FROM ticket_ledger l WHERE " + eligibleId("l.user_id") + " AND l.created_at>=:start AND l.created_at<:end GROUP BY l.ref_type", p),
-                "revenue_status", "NOT_COLLECTED");
+                + "FROM ticket_ledger l WHERE " + eligibleId("l.user_id") + " AND l.created_at>=:start AND l.created_at<:end GROUP BY l.ref_type", p));
+        result.put("pricing", one("SELECT "
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN " + CATALOG_PRICE_KRW + " ELSE 0 END),0) AS catalog_price_krw,"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' AND (" + CATALOG_PRICE_KRW + ") IS NOT NULL THEN 1 ELSE 0 END),0) AS priced_orders,"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' AND (" + CATALOG_PRICE_KRW + ") IS NULL THEN 1 ELSE 0 END),0) AS unknown_price_orders "
+                + "FROM iap_orders o JOIN users u ON u.id=o.user_id WHERE " + PURCHASE_ELIGIBLE
+                + " AND o.created_at>=:start AND o.created_at<:end", p));
+        result.put("price_currency", "KRW");
+        result.put("price_basis", "CURRENT_CATALOG_PRICE");
+        result.put("revenue_status", "CATALOG_PRICE_ONLY");
+        return result;
     }
 
     public Map<String, Object> purchases(LocalDate from, LocalDate to, int page) {
@@ -287,6 +308,8 @@ public class AdminInsightsService {
                 + "COUNT(DISTINCT CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN o.user_id END) AS buyers, "
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' AND o.granted_tickets IS NULL THEN 1 ELSE 0 END),0) AS unknown_ticket_orders, "
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS granted_tickets, "
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN " + CATALOG_PRICE_KRW + " ELSE 0 END),0) AS catalog_price_krw, "
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' AND (" + CATALOG_PRICE_KRW + ") IS NULL THEN 1 ELSE 0 END),0) AS unknown_price_orders, "
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status IN ('REFUNDED','REVOKED') THEN 1 ELSE 0 END),0) AS refunded_orders"
                 + base, p);
         summary.put("order_granted_tickets", summary.get("granted_tickets"));
@@ -309,6 +332,8 @@ public class AdminInsightsService {
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN 1 ELSE 0 END),0) AS successful_orders,"
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' AND o.granted_tickets IS NULL THEN 1 ELSE 0 END),0) AS unknown_ticket_orders,"
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN COALESCE(o.granted_tickets,0) ELSE 0 END),0) AS order_granted_tickets,"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' THEN " + CATALOG_PRICE_KRW + " ELSE 0 END),0) AS catalog_price_krw,"
+                + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status='GRANTED' AND (" + CATALOG_PRICE_KRW + ") IS NULL THEN 1 ELSE 0 END),0) AS unknown_price_orders,"
                 + "COALESCE(SUM(CASE WHEN o.environment='PRODUCTION' AND o.status IN ('REFUNDED','REVOKED') THEN 1 ELSE 0 END),0) AS refunded_orders,"
                 + "MAX(o.created_at) AS last_order_at FROM iap_orders o WHERE 1=1" + orderWindow
                 + " GROUP BY o.user_id) oa";
@@ -330,6 +355,7 @@ public class AdminInsightsService {
                 + "COALESCE(oa.order_count,0) AS order_count,COALESCE(oa.production_orders,0) AS production_orders,"
                 + "COALESCE(oa.sandbox_orders,0) AS sandbox_orders,COALESCE(oa.successful_orders,0) AS successful_orders,"
                 + "COALESCE(oa.unknown_ticket_orders,0) AS unknown_ticket_orders,"
+                + "COALESCE(oa.catalog_price_krw,0) AS catalog_price_krw,COALESCE(oa.unknown_price_orders,0) AS unknown_price_orders,"
                 + "COALESCE(la.ledger_purchase_entries,0) AS ledger_purchase_entries,"
                 + "COALESCE(oa.order_granted_tickets,0) AS order_granted_tickets,"
                 + "CASE WHEN COALESCE(la.ledger_purchase_entries,0)>0 THEN la.ledger_granted_tickets ELSE COALESCE(oa.order_granted_tickets,0) END AS granted_tickets,"

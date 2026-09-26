@@ -169,6 +169,8 @@ public final class AdminDtos {
             String productId,
             IapOrderStatus status,
             Integer grantedTickets,
+            Integer catalogPriceKrw,
+            String priceBasis,
             Integer beforeTickets,
             Integer afterTickets,
             LocalDateTime processedAt,

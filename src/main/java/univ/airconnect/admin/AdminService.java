@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univ.airconnect.global.error.BusinessException;
 import univ.airconnect.global.error.ErrorCode;
+import univ.airconnect.iap.domain.IapProductPolicy;
 import univ.airconnect.iap.domain.entity.IapOrder;
 import univ.airconnect.iap.domain.entity.TicketLedger;
 import univ.airconnect.iap.repository.IapOrderRepository;
@@ -717,17 +718,22 @@ public class AdminService {
 
     private List<AdminDtos.PurchaseHistoryItem> loadPurchaseHistories(Long userId) {
         return iapOrderRepository.findTop20ByUserIdOrderByCreatedAtDesc(userId).stream()
-                .map(order -> new AdminDtos.PurchaseHistoryItem(
-                        order.getId(),
-                        order.getStore(),
-                        order.getProductId(),
-                        order.getStatus(),
-                        order.getGrantedTickets(),
-                        order.getBeforeTickets(),
-                        order.getAfterTickets(),
-                        order.getProcessedAt(),
-                        order.getCreatedAt()
-                ))
+                .map(order -> {
+                    IapProductPolicy product = IapProductPolicy.fromProductId(order.getProductId());
+                    return new AdminDtos.PurchaseHistoryItem(
+                            order.getId(),
+                            order.getStore(),
+                            order.getProductId(),
+                            order.getStatus(),
+                            order.getGrantedTickets(),
+                            product == null ? null : product.getCatalogPriceKrw(),
+                            product == null || product.getCatalogPriceKrw() == null ? null : "CURRENT_CATALOG_PRICE",
+                            order.getBeforeTickets(),
+                            order.getAfterTickets(),
+                            order.getProcessedAt(),
+                            order.getCreatedAt()
+                    );
+                })
                 .toList();
     }
 

@@ -313,7 +313,8 @@ class AdminPurchasePrivacyTest {
             item.fieldNames().forEachRemaining(fieldNames::add);
             // An exact allowlist also rejects private fields serialized as null.
             assertThat(fieldNames).containsExactlyInAnyOrder("orderId", "store", "productId", "status",
-                    "grantedTickets", "beforeTickets", "afterTickets", "processedAt", "createdAt");
+                    "grantedTickets", "catalogPriceKrw", "priceBasis", "beforeTickets", "afterTickets",
+                    "processedAt", "createdAt");
             assertThat(item.path("orderId").isIntegralNumber()).isTrue();
             assertThat(item.path("orderId").asLong()).isEqualTo(expected.get(i).getId());
             assertThat(item.path("store").asText()).isEqualTo(expected.get(i).getStore().name());
